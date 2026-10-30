@@ -1,0 +1,12 @@
+<Window x:Class="BootProbe.DataContextMain"
+        Title="DC" Width="200" Height="100"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:BootProbe">
+  <Window.DataContext>
+    <local:ProbeViewModel />
+  </Window.DataContext>
+  <Grid>
+    <TextBlock Text="{Binding Name}" />
+  </Grid>
+</Window>

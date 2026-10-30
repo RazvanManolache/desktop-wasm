@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <!-- No PackageReference and no project reference: AppModel must stay
+         free of WPF/WinForms/ASP.NET dependencies (see CATALOG-CONTRACT.md). -->
+  </PropertyGroup>
+
+</Project>

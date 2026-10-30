@@ -1,0 +1,44 @@
+@inject DemoState State
+@implements IDisposable
+
+<a class="workspace-brand" href="/"><span class="brand-mark">w<span>f</span></span><span>WPF Studio<small>WPF IN YOUR BROWSER</small></span></a>
+<div class="library-heading"><span class="eyebrow">YOUR LIBRARY</span><span class="count-badge">@DemoCatalog.All.Count</span></div>
+<div class="search-box"><span aria-hidden="true">⌕</span><input aria-label="Search demos" placeholder="Search demos…" @bind="_filter" @bind:event="oninput" />
+    @if (_filter.Length > 0) { <button aria-label="Clear search" @onclick="() => _filter = string.Empty">×</button> }
+</div>
+<div class="library-tabs" aria-label="Filter demo library">
+    @foreach (var group in Tabs)
+    {
+        <button class="@(_group == group ? "selected" : "")" aria-pressed="@(_group == group)" @onclick="() => _group = group">@group</button>
+    }
+</div>
+<nav class="app-list" aria-label="Demos">
+    @foreach (var group in DemoCatalog.Groups)
+    {
+        var entries = Filtered.Where(e => e.Group == group).ToList();
+        if (entries.Count == 0) { continue; }
+        <div class="app-group-heading">@group <span>@entries.Count</span></div>
+        @foreach (var entry in entries)
+        {
+            <button class="app-item @(State.CurrentSlug == entry.Slug ? "active" : "")" aria-current="@(State.CurrentSlug == entry.Slug ? "page" : null)" @onclick="() => State.Select(entry.Slug)">
+                <span class="app-icon blue">@entry.Icon</span><span class="app-item-copy"><strong>@entry.Label</strong><small>@entry.Description</small></span><span class="app-arrow">›</span>
+            </button>
+        }
+    }
+    @if (!Filtered.Any()) { <div class="empty-library"><strong>No demos found</strong><p>Try another name or category.</p><button class="subtle-button" @onclick="Reset">Reset filters</button></div> }
+</nav>
+<div class="sidebar-note"><span class="status-dot"></span><div>Runs locally in your browser<small>Select a demo to get started.</small></div></div>
+
+@code {
+    private static readonly string[] Tabs = ["All demos", .. DemoCatalog.Groups];
+    private string _filter = "";
+    private string _group = "All demos";
+    private IEnumerable<WpfDemo> Filtered => DemoCatalog.All.Where(e =>
+        (_group == "All demos" || e.Group == _group) &&
+        _filter.Split(' ', StringSplitOptions.RemoveEmptyEntries).All(word =>
+            (e.Label + " " + e.Description).Contains(word, StringComparison.OrdinalIgnoreCase)));
+    private void Reset() { _filter = ""; _group = "All demos"; }
+    protected override void OnInitialized() => State.Changed += OnStateChanged;
+    private void OnStateChanged() => InvokeAsync(StateHasChanged);
+    public void Dispose() => State.Changed -= OnStateChanged;
+}

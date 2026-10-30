@@ -1,0 +1,13 @@
+<!-- Publication portability: the migrated fork is regenerated from
+     in-repo sources (scripts/winforms/Ensure-RewrittenFork.ps1) instead
+     of resolving a staged inputs/ binary. Imported by the three consumers
+     of the rewritten-small assembly. -->
+<Project>
+  <PropertyGroup>
+    <RewrittenForkDir Condition="'$(RewrittenForkDir)' == ''">$(MSBuildProjectDirectory)/../../artifacts-local/rewritten-small</RewrittenForkDir>
+    <RewrittenForkDll>$(RewrittenForkDir)/WfWasm.WinForms.dll</RewrittenForkDll>
+  </PropertyGroup>
+  <Target Name="EnsureRewrittenFork" BeforeTargets="ResolveAssemblyReferences">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)/../../scripts/winforms/Ensure-RewrittenFork.ps1&quot; -RepoRoot &quot;$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../..'))&quot; -Configuration &quot;$(Configuration)&quot;" />
+  </Target>
+</Project>

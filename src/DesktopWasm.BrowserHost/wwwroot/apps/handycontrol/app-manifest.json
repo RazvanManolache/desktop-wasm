@@ -1,0 +1,170 @@
+{
+  "schemaVersion": 1,
+  "slug": "handycontrol",
+  "mapVersion": "wpf-convert-v1",
+  "status": "conversion-failed",
+  "entryAssembly": "HandyControlDemo",
+  "assemblies": [
+    {
+      "name": "HandyControlDemo",
+      "file": "HandyControlDemo.d326ea71cada099d0364bc5336e4f13b383454441d6d249b5b8f31c98e563ea0.bin",
+      "sha256": "d326ea71cada099d0364bc5336e4f13b383454441d6d249b5b8f31c98e563ea0",
+      "references": [
+        "System.Runtime",
+        "System.Threading",
+        "HandyControl",
+        "System.Diagnostics.Process",
+        "System.ComponentModel",
+        "System.Collections",
+        "GalaSoft.MvvmLight",
+        "System.ObjectModel",
+        "ICSharpCode.AvalonEdit",
+        "System.Diagnostics.FileVersionInfo",
+        "System.Xml.ReaderWriter",
+        "System.Net.WebClient",
+        "System.Linq.Expressions",
+        "System.ComponentModel.Primitives",
+        "System.Net.Requests",
+        "System.Linq",
+        "System.Runtime.InteropServices",
+        "System.ComponentModel.TypeConverter",
+        "HandyControlDemoCode",
+        "System.Net.WebHeaderCollection",
+        "System.Collections.Specialized",
+        "Newtonsoft.Json",
+        "Microsoft.CSharp",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "CBF85775EDA51BF8AE5371E750616627976DA68A3D6875578D4E14849A77EA0D"
+    },
+    {
+      "name": "HandyControl",
+      "file": "HandyControl.37e93b4de140cbbff3a8f48854ca85c0bd2b1bff6d8c1f9a7abc28f26e6442da.bin",
+      "sha256": "37e93b4de140cbbff3a8f48854ca85c0bd2b1bff6d8c1f9a7abc28f26e6442da",
+      "references": [
+        "System.Runtime",
+        "System.Collections",
+        "System.ObjectModel",
+        "System.ComponentModel.TypeConverter",
+        "System.Threading",
+        "System.Threading.Thread",
+        "System.Text.RegularExpressions",
+        "System.Runtime.InteropServices",
+        "System.Security.Permissions",
+        "System.Diagnostics.Process",
+        "System.ComponentModel",
+        "System.ComponentModel.Primitives",
+        "System.Collections.Concurrent",
+        "System.Linq",
+        "System.Security.Cryptography",
+        "Microsoft.Win32.Primitives",
+        "Microsoft.Win32.Registry",
+        "System.Windows.Extensions",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "428C57CBAE85B14C31D11134BC55CBE5FC074262DC0BC66CA1CFC7674F810211"
+    },
+    {
+      "name": "GalaSoft.MvvmLight",
+      "file": "GalaSoft.MvvmLight.0949ba2d3e371d811a933dc8db2c7200d416be9dc0450a9dc2587c3ff11ff61b.bin",
+      "sha256": "0949ba2d3e371d811a933dc8db2c7200d416be9dc0450a9dc2587c3ff11ff61b",
+      "references": [
+        "System.Runtime",
+        "System.Diagnostics.Debug",
+        "System.ObjectModel",
+        "System.Reflection",
+        "System.Linq.Expressions",
+        "System.Collections",
+        "System.Threading.Tasks",
+        "System.Threading",
+        "System.Globalization",
+        "System.Linq",
+        "System.Reflection.Extensions",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "B022F1DB20D5271CB3A10BFC89EB5303AB4403FBE539289E33BCFF2182BDE84C"
+    },
+    {
+      "name": "ICSharpCode.AvalonEdit",
+      "file": "ICSharpCode.AvalonEdit.da935e93c61b137bdf853cdafcdd071e923070023bcbc52640a6c2192225c33d.bin",
+      "sha256": "da935e93c61b137bdf853cdafcdd071e923070023bcbc52640a6c2192225c33d",
+      "references": [
+        "System.Runtime",
+        "System.Resources.ResourceManager",
+        "System.Diagnostics.Debug",
+        "System.ComponentModel",
+        "System.ObjectModel",
+        "System.Runtime.Extensions",
+        "System.ComponentModel.Primitives",
+        "System.Collections",
+        "System.Xml.ReaderWriter",
+        "System.Drawing.Primitives",
+        "System.Text.RegularExpressions",
+        "System.ComponentModel.TypeConverter",
+        "System.Runtime.InteropServices",
+        "System.Threading.Thread",
+        "System.Threading",
+        "System.Linq",
+        "System.Console",
+        "System.Text.Encoding.Extensions",
+        "System.Diagnostics.Process",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "6FAA54389A6C8542B3334B664B99F679EA4F499C0FA9E78BB59FD4C15F7C69FD"
+    },
+    {
+      "name": "HandyControlDemoCode",
+      "file": "HandyControlDemoCode.1bd35a31d011c43b95004bab65812c2bfd18331e3615849dfae22f6a4cc79394.bin",
+      "sha256": "1bd35a31d011c43b95004bab65812c2bfd18331e3615849dfae22f6a4cc79394",
+      "references": [
+        "System.Runtime",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "0113EE2EF8FCCC91553FC39D4B5C319DFB3529099B03F43E494B917C84FCC44E"
+    },
+    {
+      "name": "Newtonsoft.Json",
+      "file": "Newtonsoft.Json.ade10ca72ad6416d63d3e4716de41fb10a7c495afd461432340335ab4b4194f1.bin",
+      "sha256": "ade10ca72ad6416d63d3e4716de41fb10a7c495afd461432340335ab4b4194f1",
+      "references": [
+        "System.Runtime",
+        "System.Runtime.InteropServices",
+        "System.Runtime.Numerics",
+        "System.Xml.ReaderWriter",
+        "System.Xml.XDocument",
+        "System.Collections",
+        "System.Runtime.Serialization.Formatters",
+        "System.ComponentModel.TypeConverter",
+        "System.Linq.Expressions",
+        "System.Reflection.Emit.Lightweight",
+        "System.Reflection.Emit.ILGeneration",
+        "System.Reflection.Primitives",
+        "System.Runtime.Serialization.Primitives",
+        "System.Text.RegularExpressions",
+        "System.Linq",
+        "System.Collections.Concurrent",
+        "System.Diagnostics.TraceSource",
+        "System.ObjectModel",
+        "System.Data.Common",
+        "System.Threading",
+        "System.ComponentModel.Primitives",
+        "System.Text.Encoding.Extensions",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "22C649F75FCE5BE7C7CCDA8880473B634EF69ECF33F5D1AB8AD892CAF47D5A07"
+    }
+  ],
+  "gaps": [
+    {
+      "assembly": "HandyControl",
+      "kind": "missing-dependency",
+      "detail": "Referenced assembly \u0027System.Security.Permissions\u0027 is absent from upstream build output."
+    },
+    {
+      "assembly": "HandyControl",
+      "kind": "missing-dependency",
+      "detail": "Referenced assembly \u0027System.Windows.Extensions\u0027 is absent from upstream build output."
+    }
+  ],
+  "sourceCommit": "e9ad3d701b90e724399a413569fbd7f35a141053"
+}

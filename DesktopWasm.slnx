@@ -1,0 +1,72 @@
+﻿<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/DesktopWasm.BrowserHost/DesktopWasm.BrowserHost.csproj" />
+    <Project Path="src/DesktopWasm.Convert/DesktopWasm.Convert.csproj" />
+    <Project Path="src/DesktopWasm.Core/DesktopWasm.Core.csproj" />
+    <Project Path="src/DesktopWasm.Graphics/DesktopWasm.Graphics.csproj" />
+    <Project Path="src/DesktopWasm.Wpf/DesktopWasm.Wpf.csproj" />
+    <Project Path="src/Microsoft.Win32.SystemEvents/Microsoft.Win32.SystemEvents.csproj" />
+    <Project Path="src/WfWasm.Analyzer/WfWasm.Analyzer.csproj" />
+    <Project Path="src/WfWasm.ApiScan/WfWasm.ApiScan.csproj" />
+    <Project Path="src/WfWasm.AppIntegration/WfWasm.AppIntegration.csproj" />
+    <Project Path="src/WfWasm.CanvasDemo/WfWasm.CanvasDemo.csproj" />
+    <Project Path="src/WfWasm.CanvasHost/WfWasm.CanvasHost.csproj" />
+    <Project Path="src/WfWasm.Data.OleDb/WfWasm.Data.OleDb.csproj" />
+    <Project Path="src/WfWasm.Drawing/WfWasm.Drawing.csproj" />
+    <Project Path="src/WfWasm.ErrorLog/WfWasm.ErrorLog.csproj" />
+    <Project Path="src/WfWasm.Host.Server/WfWasm.Host.Server.csproj" />
+    <Project Path="src/WfWasm.IsolatedStorage/WfWasm.IsolatedStorage.csproj" />
+    <Project Path="src/WfWasm.Packager/WfWasm.Packager.csproj" />
+    <Project Path="src/WfWasm.PdnCpu/WfWasm.PdnCpu.csproj" />
+    <Project Path="src/WfWasm.Platform.Demo/WfWasm.Platform.Demo.csproj" />
+    <Project Path="src/WfWasm.Platform.Server/WfWasm.Platform.Server.csproj" />
+    <Project Path="src/WfWasm.Renderer/WfWasm.Renderer.csproj" />
+    <Project Path="src/WfWasm.Rendering.Gles/WfWasm.Rendering.Gles.csproj" />
+    <Project Path="src/WfWasm.Rendering/WfWasm.Rendering.csproj" />
+    <Project Path="src/WfWasm.Rewrite.Tool/WfWasm.Rewrite.Tool.csproj" />
+    <Project Path="src/WfWasm.Rewrite/WfWasm.Rewrite.csproj" />
+    <Project Path="src/WfWasm.Shim/WfWasm.Shim.csproj" />
+    <Project Path="src/WfWasm.Skia/WfWasm.Skia.csproj" />
+    <Project Path="src/WfWasm.SmokeDemo/WfWasm.SmokeDemo.csproj" />
+    <Project Path="src/WfWasm.WindowsExtensions/WfWasm.WindowsExtensions.csproj" />
+    <Project Path="src/WfWasm.WinForms/WfWasm.WinForms.csproj" />
+    <Project Path="src/WfWasm.WinRtStubs.Foundation/WfWasm.WinRtStubs.Foundation.csproj" />
+    <Project Path="src/WfWasm.WinRtStubs.Universal/WfWasm.WinRtStubs.Universal.csproj" />
+    <!-- peer-new, frozen 2026-10-30T12:02:06Z (owner lanes; not imports) -->
+    <Project Path="src/DesktopWasm.AppModel/DesktopWasm.AppModel.csproj" />
+    <Project Path="src/DesktopWasm.Catalog.Tool/DesktopWasm.Catalog.Tool.csproj" />
+    <Project Path="src/DesktopWasm.Catalog/DesktopWasm.Catalog.csproj" />
+    <Project Path="src/DesktopWasm.Host.Server/DesktopWasm.Host.Server.csproj" />
+    <Project Path="src/DesktopWasm.Interop/DesktopWasm.Interop.csproj" />
+    <Project Path="src/DesktopWasm.Packaging/DesktopWasm.Packaging.csproj" />
+    <Project Path="src/DesktopWasm.Web/DesktopWasm.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/DesktopWasm.Convert.Tests/DesktopWasm.Convert.Tests.csproj" />
+    <Project Path="tests/DesktopWasm.Core.Tests/DesktopWasm.Core.Tests.csproj" />
+    <Project Path="tests/DesktopWasm.Wpf.Tests/DesktopWasm.Wpf.Tests.csproj" />
+    <Project Path="tests/WfWasm.Analyzer.Tests/WfWasm.Analyzer.Tests.csproj" />
+    <Project Path="tests/WfWasm.AppIntegration.Tests/WfWasm.AppIntegration.Tests.csproj" />
+    <Project Path="tests/WfWasm.CanvasHost.Tests/WfWasm.CanvasHost.Tests.csproj" />
+    <Project Path="tests/WfWasm.Drawing.Tests/WfWasm.Drawing.Tests.csproj" />
+    <Project Path="tests/WfWasm.ErrorLog.Tests/WfWasm.ErrorLog.Tests.csproj" />
+    <Project Path="tests/WfWasm.Host.Server.Tests/WfWasm.Host.Server.Tests.csproj" />
+    <Project Path="tests/WfWasm.IsolatedStorage.Tests/WfWasm.IsolatedStorage.Tests.csproj" />
+    <Project Path="tests/WfWasm.Packager.Tests/WfWasm.Packager.Tests.csproj" />
+    <Project Path="tests/WfWasm.PdnCpu.Tests/WfWasm.PdnCpu.Tests.csproj" />
+    <Project Path="tests/WfWasm.Platform.Tests/WfWasm.Platform.Tests.csproj" />
+    <Project Path="tests/WfWasm.Renderer.Tests/WfWasm.Renderer.Tests.csproj" />
+    <Project Path="tests/WfWasm.Rendering.Gles.Tests/WfWasm.Rendering.Gles.Tests.csproj" />
+    <Project Path="tests/WfWasm.Rendering.Tests/WfWasm.Rendering.Tests.csproj" />
+    <Project Path="tests/WfWasm.Rewrite.Fixture/WfWasm.Rewrite.Fixture.csproj" />
+    <Project Path="tests/WfWasm.Rewrite.Tests/WfWasm.Rewrite.Tests.csproj" />
+    <Project Path="tests/WfWasm.Shim.Tests/WfWasm.Shim.Tests.csproj" />
+    <Project Path="tests/WfWasm.Skia.Tests/WfWasm.Skia.Tests.csproj" />
+    <Project Path="tests/WfWasm.WinForms.Tests/WfWasm.WinForms.Tests.csproj" />
+    <Project Path="tests/DesktopWasm.Catalog.Tests/DesktopWasm.Catalog.Tests.csproj" />
+    <Project Path="tests/DesktopWasm.Interop.Tests/DesktopWasm.Interop.Tests.csproj" />
+    <Project Path="tests/DesktopWasm.Packaging.Tests/DesktopWasm.Packaging.Tests.csproj" />
+    <Project Path="tests/DesktopWasm.Shell.Tests/DesktopWasm.Shell.Tests.csproj" />
+  </Folder>
+</Solution>
+

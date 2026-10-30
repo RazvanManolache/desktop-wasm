@@ -1,0 +1,27 @@
+{
+  "generatedUtc": "2026-10-30T12:03:16Z",
+  "conflicts": [],
+  "notes": [
+    "\u0027benchmark-advanceddatagridview\u0027 ~ \u0027datagrid\u0027: similar stems, distinct ids, no alias collision",
+    "\u0027benchmark-advanceddatagridview\u0027 ~ \u0027syncfusion-datagrid\u0027: similar stems, distinct ids, no alias collision",
+    "\u0027benchmark-external-calculator\u0027 ~ \u0027calculator\u0027: similar stems, distinct ids, no alias collision",
+    "\u0027benchmark-external-calculator\u0027 ~ \u0027wpf-calculator\u0027: similar stems, distinct ids, no alias collision",
+    "\u0027benchmark-gitextensions\u0027 ~ \u0027text\u0027: similar stems, distinct ids, no alias collision",
+    "\u0027benchmark-vgapainter\u0027 ~ \u0027paint\u0027: similar stems, distinct ids, no alias collision",
+    "\u0027binding\u0027 ~ \u0027simple-binding\u0027: similar stems, distinct ids, no alias collision",
+    "\u0027calculator\u0027 ~ \u0027pocket-calculator\u0027: similar stems, distinct ids, no alias collision",
+    "\u0027calculator\u0027 ~ \u0027wpf-calculator\u0027: similar stems, distinct ids, no alias collision",
+    "\u0027calendar\u0027 ~ \u0027syncfusion-calendar\u0027: similar stems, distinct ids, no alias collision",
+    "\u0027datagrid\u0027 ~ \u0027syncfusion-datagrid\u0027: similar stems, distinct ids, no alias collision",
+    "\u0027layout\u0027 ~ \u0027syncfusion-tile-layout\u0027: similar stems, distinct ids, no alias collision",
+    "\u0027pocket-calculator\u0027 ~ \u0027wpf-calculator\u0027: similar stems, distinct ids, no alias collision",
+    "\u0027scroll\u0027 ~ \u0027syncfusion-scroll-frame\u0027: similar stems, distinct ids, no alias collision",
+    "\u0027slider\u0027 ~ \u0027syncfusion-radial-slider\u0027: similar stems, distinct ids, no alias collision",
+    "\u0027slider\u0027 ~ \u0027syncfusion-range-slider\u0027: similar stems, distinct ids, no alias collision",
+    "\u0027syncfusion-chart\u0027 ~ \u0027syncfusion-pivot-chart\u0027: similar stems, distinct ids, no alias collision",
+    "\u0027syncfusion-chart\u0027 ~ \u0027syncfusion-smith-chart\u0027: similar stems, distinct ids, no alias collision",
+    "\u0027syncfusion-diagram\u0027 ~ \u0027telerik-diagram\u0027: similar stems, distinct ids, no alias collision",
+    "\u0027syncfusion-treeview\u0027 ~ \u0027treeview\u0027: similar stems, distinct ids, no alias collision",
+    "\u0027telerik-richtexteditor\u0027 ~ \u0027text\u0027: similar stems, distinct ids, no alias collision"
+  ]
+}

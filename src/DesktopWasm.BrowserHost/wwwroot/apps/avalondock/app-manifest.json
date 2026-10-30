@@ -1,0 +1,165 @@
+{
+  "schemaVersion": 1,
+  "slug": "avalondock",
+  "mapVersion": "wpf-convert-v1",
+  "status": "conversion-failed",
+  "entryAssembly": "TestApp",
+  "assemblies": [
+    {
+      "name": "AvalonDock",
+      "file": "AvalonDock.9a685dfbca1d9959d885ab4aab10499e3a92f5a7cb9737b11e6d49b205344d40.bin",
+      "sha256": "9a685dfbca1d9959d885ab4aab10499e3a92f5a7cb9737b11e6d49b205344d40",
+      "references": [
+        "mscorlib",
+        "System",
+        "AvalonDock.Core",
+        "System.Core",
+        "System.Xml",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "17EA86D020B20ED1582F66B90A7816240F8D6EC55B048D3BCD22D2CE9FAD9544"
+    },
+    {
+      "name": "AvalonDock.Serializer.Xml",
+      "file": "AvalonDock.Serializer.Xml.a760a7a7b1c791a765722d17934a9c322447a28c60296451c29151d520c1a29c.bin",
+      "sha256": "a760a7a7b1c791a765722d17934a9c322447a28c60296451c29151d520c1a29c",
+      "references": [
+        "netstandard",
+        "AvalonDock.Core",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "4E0457322E9ACCFFA7A244FF2235165A1061038EED3299956E3AD02873340050"
+    },
+    {
+      "name": "AvalonDock.Core",
+      "file": "AvalonDock.Core.103d1ff9f24678d00f55f4baa16ed1ef8fd9537345580acec3a518fee5fa6c88.bin",
+      "sha256": "103d1ff9f24678d00f55f4baa16ed1ef8fd9537345580acec3a518fee5fa6c88",
+      "references": [
+        "netstandard",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "4D2754FA55760F0C48509606AC40A2D97066591B981237FCC29B4C6FD85714B1"
+    },
+    {
+      "name": "AvalonDock.Themes.Arc",
+      "file": "AvalonDock.Themes.Arc.14f21558e7dd288bcd85be413a11fabc9ac11a54dad4b6f6a2b48b7eda3664b4.bin",
+      "sha256": "14f21558e7dd288bcd85be413a11fabc9ac11a54dad4b6f6a2b48b7eda3664b4",
+      "references": [
+        "mscorlib",
+        "AvalonDock",
+        "System",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "2B7C042D59D8601E19E7EB0C64521E53134B96F74FBE079FBFABAE7273C3BF37"
+    },
+    {
+      "name": "AvalonDock.Themes.VS2013",
+      "file": "AvalonDock.Themes.VS2013.ce779d701d72f0187fb6fc64c86c1d078bf303d7f3817ca77b88b728dd3a8562.bin",
+      "sha256": "ce779d701d72f0187fb6fc64c86c1d078bf303d7f3817ca77b88b728dd3a8562",
+      "references": [
+        "mscorlib",
+        "AvalonDock",
+        "AvalonDock.Themes.VS",
+        "System",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "23166091B4DF002632DD864E1B3844FB780B2848DCE0205E39801DE26FEF1FF6"
+    },
+    {
+      "name": "AvalonDock.Themes.VS",
+      "file": "AvalonDock.Themes.VS.0e0f05f91b67d3080af6934f6fb0396a193da3f6a5e21c0126ec81baae603dd9.bin",
+      "sha256": "0e0f05f91b67d3080af6934f6fb0396a193da3f6a5e21c0126ec81baae603dd9",
+      "references": [
+        "mscorlib",
+        "System",
+        "System.Text.Json",
+        "AvalonDock",
+        "System.Xml.Linq",
+        "System.Core",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "25348CBC4F7606E7832BB15503500EE52FFA17AB60678B0B2942EF95DE061D18"
+    },
+    {
+      "name": "AvalonDock.Themes.VS2010",
+      "file": "AvalonDock.Themes.VS2010.13f92bbe05a899caf9afea9d6dac6125d1a8d447c1178c865824d5c39d3a7132.bin",
+      "sha256": "13f92bbe05a899caf9afea9d6dac6125d1a8d447c1178c865824d5c39d3a7132",
+      "references": [
+        "mscorlib",
+        "AvalonDock",
+        "System",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "1A7B0A0335114FC758583E33159DF1D3A8E2B208279B671F5B2F8785FA525674"
+    },
+    {
+      "name": "AvalonDock.Themes.Expression",
+      "file": "AvalonDock.Themes.Expression.018844cb9079915e2c07d9a36ce343b32b4ef347bc4cbbbc1e8fc81089ca5a21.bin",
+      "sha256": "018844cb9079915e2c07d9a36ce343b32b4ef347bc4cbbbc1e8fc81089ca5a21",
+      "references": [
+        "mscorlib",
+        "AvalonDock",
+        "System",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "912410207E05160E6A8100F81DF7134AC77E8FE79EBFF1DF4E7AA6EBFFFEBAAC"
+    },
+    {
+      "name": "AvalonDock.Themes.Metro",
+      "file": "AvalonDock.Themes.Metro.0cc4adb281e74cc9ec2ddcc20e50bf271738b8568718de91e8f12418f0a42bcf.bin",
+      "sha256": "0cc4adb281e74cc9ec2ddcc20e50bf271738b8568718de91e8f12418f0a42bcf",
+      "references": [
+        "mscorlib",
+        "AvalonDock",
+        "System",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "ED5129F0D8ACA5A6441A387BBFE9FB128BE14664A0BFA063570D5F9ED6B8D492"
+    },
+    {
+      "name": "AvalonDock.Themes.Aero",
+      "file": "AvalonDock.Themes.Aero.79fae4a29087bc1ba8f6dc1e5246469d68153fa8d715387a0a7656987397493c.bin",
+      "sha256": "79fae4a29087bc1ba8f6dc1e5246469d68153fa8d715387a0a7656987397493c",
+      "references": [
+        "mscorlib",
+        "AvalonDock",
+        "System",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "4723FA37003B6EA243B6433B2B46938E5B8C16DD5AE0CAB939DFCE04A84CAA6A"
+    }
+  ],
+  "gaps": [
+    {
+      "assembly": "TestApp",
+      "kind": "unmapped-type",
+      "detail": "System.Windows.Forms:System.Windows.Forms.ContainerControl"
+    },
+    {
+      "assembly": "TestApp",
+      "kind": "unmapped-type",
+      "detail": "System.Windows.Forms:System.Windows.Forms.Padding"
+    },
+    {
+      "assembly": "TestApp",
+      "kind": "unmapped-type",
+      "detail": "System.Windows.Forms:System.Windows.Forms.AutoScaleMode"
+    },
+    {
+      "assembly": "TestApp",
+      "kind": "nested-type",
+      "detail": "System.Windows.Forms.Control/ControlCollection (nested framework types are not mapped)"
+    },
+    {
+      "assembly": "TestApp",
+      "kind": "stale-framework-reference",
+      "detail": "WindowsFormsIntegration:System.Windows.Forms.Integration.WindowsFormsHost"
+    },
+    {
+      "assembly": "TestApp",
+      "kind": "missing-dependency",
+      "detail": "Referenced assembly \u0027WindowsFormsIntegration\u0027 is absent from upstream build output."
+    }
+  ],
+  "sourceCommit": "10d1cc6fb3ef45284b31bf2372a35d83f3b3ca02"
+}

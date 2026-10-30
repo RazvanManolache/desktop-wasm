@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#156e61" />
+    <title>WPF Studio · Desktop apps, a new home</title>
+    <base href="/" />
+    <link rel="stylesheet" href="css/app.css" />
+    <link rel="stylesheet" href="css/studio.css" />
+</head>
+<body>
+    <div id="studio" class="studio-shell">
+        <aside class="studio-sidebar" id="library">
+            <a href="/" class="studio-brand" aria-label="WPF Studio home"><span class="studio-mark">W</span><span>WPF Studio<small>DESKTOP APPS. A NEW HOME.</small></span></a>
+            <div class="library-label">APP LIBRARY <span id="library-count"></span></div>
+            <label class="studio-search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Find an app or component…" aria-label="Search apps" /></label>
+            <div class="studio-filters" aria-label="Library filters">
+                <button data-filter="all" aria-pressed="true">All</button><button data-filter="ready" aria-pressed="false">Ready</button><button data-filter="external" aria-pressed="false">External</button><button data-filter="toolkit" aria-pressed="false">Toolkit</button>
+            </div>
+            <label class="category-label">Explore <select id="category" aria-label="App category"><option value="all">All categories</option></select></label>
+            <nav id="apps" aria-label="Applications"></nav>
+            <div class="studio-sidebar-footer"><span class="studio-dot"></span><span>Local preview · work in progress<small>App failures stay inside their session.</small></span></div>
+        </aside>
+        <main class="studio-main">
+            <header class="studio-header">
+                <div class="studio-heading"><button id="menu" class="studio-icon" aria-label="Toggle app library" aria-expanded="true">☰</button><div><div class="studio-eyebrow" id="app-kind">YOUR WPF WORKSPACE</div><h1 id="app-title">Desktop apps, a new home.</h1></div><span class="studio-pill" id="status">Choose an app</span></div>
+                <div class="studio-actions"><a id="source" target="_blank" rel="noopener noreferrer" hidden>View source ↗</a><button id="details">About this app</button><button id="errors">Errors <span id="error-count">0</span></button></div>
+            </header>
+            <section class="studio-metrics" aria-label="Measured loading statistics">
+                <div><span>APP OPEN</span><strong id="load-time">—</strong><small>Selection → first painted frame</small></div>
+                <div><span>LOADED</span><strong id="loaded-mb">—</strong><small>Decoded resource bodies</small></div>
+                <div><span>NETWORK</span><strong id="network-mb">—</strong><small>Transferred bytes incl. headers</small></div>
+                <div><span>HTTP REUSE</span><strong id="cache-count">—</strong><small>Resource Timing · disk/memory unknown</small></div>
+                <div><span>RUNTIME START</span><strong id="runtime-time">—</strong><small>This isolated app session</small></div>
+            </section>
+            <section class="studio-workspace"><div class="studio-stagebar"><span><i class="studio-dot"></i><span id="stage-caption">Your application workspace</span></span><div><button id="rendering" aria-expanded="false" aria-controls="rendering-panel">Rendering · <span id="renderer-backend">Automatic</span></button><button id="restart" disabled>↻ Restart</button><button id="stop" disabled>□ Stop</button><button id="capture" disabled>↓ Screenshot</button></div></div>
+                <section id="rendering-panel" class="rendering-panel" aria-label="Application rendering" hidden>
+                    <div><label for="renderer-choice">Application renderer</label><select id="renderer-choice"><option value="auto">Automatic · prefer WebGL</option><option value="webgl">WebGL · Skia</option><option value="canvas2d">Canvas2D</option></select><p>Changes apply to the open app without restarting its state.</p></div>
+                    <div><label class="diagnostics-check"><input id="renderer-diagnostics" type="checkbox" /> Show frame diagnostics</label><p id="renderer-device">Select an app to see its actual backend.</p><p id="renderer-reason"></p></div>
+                    <div id="renderer-timings" hidden><span>LAST DRAW SUBMISSION <strong id="renderer-draw">—</strong></span><span>INPUT → SUBMISSION <strong id="renderer-input">—</strong></span><small>CPU timings; GPU execution and display presentation are not measured.</small><button id="renderer-loss" disabled>Simulate context loss</button></div>
+                </section>
+                <div id="stage"></div></section>
+            <footer class="studio-footer"><span>WPF → WebAssembly <b>PREVIEW</b></span><span id="foot-status">The launcher is ready before the .NET runtime starts.</span><span>One app · selectable renderer</span></footer>
+        </main>
+        <dialog id="info-dialog"><form method="dialog"><button class="dialog-close" aria-label="Close details">×</button></form><div id="info-content"></div></dialog>
+        <dialog id="error-dialog"><form method="dialog"><button class="dialog-close" aria-label="Close errors">×</button></form><h2>Session errors</h2><p>Every report includes its app, session and loading phase.</p><div id="error-list"></div><button id="export-errors">Download error report</button></dialog>
+    </div>
+    <div id="app" hidden></div>
+    <div id="wpf-a11y-live" role="status" aria-live="polite" class="wpf-a11y-live"></div>
+    <div id="blazor-error-ui" role="alert">The runtime encountered an error. Return to the library or restart the app.</div>
+    <script type="module" src="entry.mjs"></script>
+</body>
+</html>

@@ -1,0 +1,109 @@
+{
+  "name": "wpf-manifests",
+  "source": "<wpf-root>\\src\\DesktopWasm.BrowserHost\\wwwroot\\apps",
+  "sourceSha256": "",
+  "extractedUtc": "2026-10-30T12:03:16Z",
+  "data": {
+    "count": 14,
+    "entries": [
+      {
+        "slug": "avalondock",
+        "manifestSha256": "6ACF34A819ABDD0ECA4418AFDAEC9DA64453A1A8FAF299009261F91007769D3B",
+        "status": "conversion-failed",
+        "entryAssembly": "TestApp",
+        "assemblies": 10
+      },
+      {
+        "slug": "avalonedit",
+        "manifestSha256": "6CB2FCE21A923CD524D2AFB3F8B1AB1CF938A8C2EFB6447D12865574DEE81823",
+        "status": "conversion-failed",
+        "entryAssembly": "ICSharpCode.AvalonEdit.Sample",
+        "assemblies": 0
+      },
+      {
+        "slug": "geometry",
+        "manifestSha256": "FFC8BDDA76AA99DD72E2772B6592DBFC4EF3AC3FEB21E12C5E4ED6EFD6360C44",
+        "status": "converted",
+        "entryAssembly": "Geometry",
+        "assemblies": 1
+      },
+      {
+        "slug": "handycontrol",
+        "manifestSha256": "22CA588C65BBB0E16564A518FBE8B96EA60EBEDD50CEDE538BBA46C6C1EC62B0",
+        "status": "conversion-failed",
+        "entryAssembly": "HandyControlDemo",
+        "assemblies": 6
+      },
+      {
+        "slug": "hello-real",
+        "manifestSha256": "E51A1047325C35E6AC5C204E07BF617578096A0F524D5A591C7D282B56EFFBDC",
+        "status": "converted",
+        "entryAssembly": "HelloWorld",
+        "assemblies": 1
+      },
+      {
+        "slug": "ilspy",
+        "manifestSha256": "E6AC3F65CAE825BCDF01B2396C3B95245777E841B27967125FAEC9240C6F5583",
+        "status": "conversion-failed",
+        "entryAssembly": "ILSpy",
+        "assemblies": 15
+      },
+      {
+        "slug": "mahapps",
+        "manifestSha256": "1BF68E76FAAEA3CD0F8D61F4A748A1EE51BFD8E31F6350076D507080D1796C4B",
+        "status": "conversion-failed",
+        "entryAssembly": "MahApps.Metro.Demo",
+        "assemblies": 3
+      },
+      {
+        "slug": "material-design",
+        "manifestSha256": "0935A365203809BFE6093AC202C5049E0FEF5C928813A99D219859C968B9B676",
+        "status": "converted",
+        "entryAssembly": "MaterialDesignDemo",
+        "assemblies": 11
+      },
+      {
+        "slug": "oxyplot",
+        "manifestSha256": "AA804A239E975E94C62AC08034E9E6BCE41E8D48CE520EA4C2B93C9D8B62834E",
+        "status": "converted",
+        "entryAssembly": "ExampleBrowser.WPF",
+        "assemblies": 5
+      },
+      {
+        "slug": "pc-space-map",
+        "manifestSha256": "B41A8A9F1290B9A4FDB0D7A18155C9146402A975FAC64CFAD2D38CEAD77C4391",
+        "status": "conversion-failed",
+        "entryAssembly": "PC Space Map",
+        "assemblies": 1
+      },
+      {
+        "slug": "screen-to-gif",
+        "manifestSha256": "0CB342486A978F2CA50ECD8E86CA387640ABA6A4A47A087C2942483372CF60A2",
+        "status": "conversion-failed",
+        "entryAssembly": "ScreenToGif",
+        "assemblies": 15
+      },
+      {
+        "slug": "simple-binding",
+        "manifestSha256": "987C5819F4DA5DDC0BC58756453D5C2FE360D36559A7D8E097826419DFC85725",
+        "status": "converted",
+        "entryAssembly": "SimpleBinding",
+        "assemblies": 1
+      },
+      {
+        "slug": "wpf-calculator",
+        "manifestSha256": "4D7A442045362678DFBA4393CC4463A5F4CEFB21243EEEC50C76DD347BEAA67D",
+        "status": "converted",
+        "entryAssembly": "CalculatorDemo",
+        "assemblies": 1
+      },
+      {
+        "slug": "wpf-gallery",
+        "manifestSha256": "65ECEA648ADC65F2E6BC6156BACA502AE73F7F69A6683400FE2FDF04586FCDDF",
+        "status": "converted",
+        "entryAssembly": "WPFGallery",
+        "assemblies": 29
+      }
+    ]
+  }
+}

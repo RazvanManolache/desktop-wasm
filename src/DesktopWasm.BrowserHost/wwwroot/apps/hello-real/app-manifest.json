@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "slug": "hello-real",
+  "mapVersion": "wpf-convert-v1",
+  "status": "converted",
+  "entryAssembly": "HelloWorld",
+  "assemblies": [
+    {
+      "name": "HelloWorld",
+      "file": "HelloWorld.3fb9c9617cc6ed4d970529d9947c39bfa87e557cb3acbb88f39bacde8b413eb0.bin",
+      "sha256": "3fb9c9617cc6ed4d970529d9947c39bfa87e557cb3acbb88f39bacde8b413eb0",
+      "references": [
+        "System.Runtime",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "7A25CB18D06F53DB4B83CEDB276543954223BF9244EB24C4411735E85694A0EF"
+    }
+  ],
+  "gaps": [],
+  "sourceCommit": "811d01e95c8c929e68539d698d0a0609e94fd185"
+}

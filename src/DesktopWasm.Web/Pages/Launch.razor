@@ -1,0 +1,95 @@
+@page "/launch/{AppId}"
+@inject HttpClient Http
+@inject NavigationManager Nav
+@inject WinFormsRuntimeAdapter WinForms
+@inject WpfRuntimeAdapter Wpf
+@inject MixedSession Mixed
+
+<PageTitle>@(_app?.Label ?? AppId) · unified shell</PageTitle>
+
+@if (_loadError is not null)
+{
+    <div class="stage-overlay error" role="alert">
+        <h2>The app could not load</h2>
+        <p>@_loadError</p>
+        <p><a href="/">Back to the catalog</a> <button @onclick="RetryAsync">Try again</button></p>
+    </div>
+}
+else if (_app is null)
+{
+    <p role="status">Opening @AppId…</p>
+}
+else
+{
+    <h1>@_app.Label <code>@_app.Id</code></h1>
+    <p>@_app.Description</p>
+    <p>Session: <code>@_sessionId</code> · Frameworks: @string.Join(" + ", _app.Frameworks) · Status: @_app.Status</p>
+    @if (!_app.Available)
+    {
+        <div class="stage-overlay error" role="alert">
+            <h2>Not available yet</h2>
+            <p>@string.Join("; ", _app.Gaps)</p>
+        </div>
+    }
+    <h2>Runtime adapters</h2>
+    <ul>
+        <li>Windows Forms: @_wfStatus (@_wfDetail)</li>
+        <li>WPF: @_wpfStatus (@_wpfDetail)</li>
+    </ul>
+    @if (_app.Mixed)
+    {
+        <h2>Mixed session</h2>
+        <p>@Mixed.Verdict</p>
+    }
+    @if (_provenance is not null)
+    {
+        <h2>Provenance</h2>
+        <p>Source: @_provenance.SourceUrl ?? @_provenance.Repository ?? "native demo"</p>
+        @if (_provenance.Boundary is not null) { <p>Boundary: @_provenance.Boundary</p> }
+    }
+    <p><a href="/">Back to the catalog</a></p>
+}
+
+@code {
+    [Parameter] public string AppId { get; set; } = "";
+    private CatalogEntry? _app;
+    private ProvenanceInfo? _provenance;
+    private string? _loadError, _sessionId;
+    private string _wfStatus = "…", _wpfStatus = "…", _wfDetail = "", _wpfDetail = "";
+
+    protected override async Task OnParametersSetAsync() => await OpenAsync();
+
+    private async Task RetryAsync() => await OpenAsync();
+
+    private async Task OpenAsync()
+    {
+        _loadError = null; _app = null;
+        try
+        {
+            _app = await Http.GetFromJsonAsync<CatalogEntry>($"api/catalog/{Uri.EscapeDataString(AppId)}");
+            if (_app is null) throw new InvalidOperationException($"No app is registered under '{AppId}'.");
+            _provenance = _app.Provenance;
+            var query = new Uri(Nav.Uri).Query;
+            string? session = query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries)
+                .FirstOrDefault(p => p.StartsWith("session=", StringComparison.Ordinal))?["session=".Length..];
+            if (string.IsNullOrWhiteSpace(session))
+            {
+                var created = await Http.PostAsJsonAsync("api/sessions", new { appId = _app.Id, sessionId = (string?)null });
+                created.EnsureSuccessStatusCode();
+                var info = await created.Content.ReadFromJsonAsync<SessionInfo>();
+                session = info?.SessionId;
+                Nav.NavigateTo($"/launch/{_app.Id}?session={Uri.EscapeDataString(session ?? "")}", replace: true);
+            }
+            _sessionId = Uri.UnescapeDataString(session ?? "");
+            var wf = await WinForms.StatusAsync(_app);
+            var wpf = await Wpf.StatusAsync(_app);
+            _wfStatus = wf.CanBoot ? "ready" : "not bootable"; _wfDetail = wf.Detail;
+            _wpfStatus = wpf.CanBoot ? "ready" : "not bootable"; _wpfDetail = wpf.Detail;
+            if (_app.Mixed) await Mixed.AttachAsync(_app, _sessionId);
+        }
+        catch (Exception ex)
+        {
+            _loadError = ex.GetBaseException().Message;
+        }
+    }
+}

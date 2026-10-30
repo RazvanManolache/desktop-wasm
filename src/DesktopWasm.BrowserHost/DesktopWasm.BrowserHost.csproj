@@ -1,0 +1,90 @@
+<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- WASM0001 pinvoke-scan noise is entirely about the staged full
+         WindowsBase copy (inert user32 payload, merge preparation only; the
+         engine executes zero P/Invokes, guarded by the Step-10
+         neutralization tests). The scan cannot model user32 signatures by
+         design, so the warning carries no signal for this project. -->
+    <NoWarn>$(NoWarn);WASM0001</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="9.0.20" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="9.0.20" PrivateAssets="all" />
+    <!-- Integrated application renderer: pinned Skia browser bindings. The SkiaSharp
+         version here must match DesktopWasm.Graphics exactly (one
+         libSkiaSharp per process). -->
+    <PackageReference Include="SkiaSharp" Version="4.153.1" />
+    <PackageReference Include="SkiaSharp.NativeAssets.WebAssembly" Version="4.153.1" />
+    <PackageReference Include="SkiaSharp.Views.Blazor" Version="4.153.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DesktopWasm.Wpf\DesktopWasm.Wpf.csproj" />
+  </ItemGroup>
+
+  <!-- On-demand local converted inputs. Stage physically under the static
+       content root: Link metadata alone yields empty responses in DevServer. -->
+  <ItemGroup>
+    <Content Remove="wwwroot\apps\**" />
+    <Content Include="wwwroot\apps\**\*.bin" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="wwwroot\apps\**\*.json" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- Publication portability: converted-app staging is optional. Each copy
+       is skipped when its ConvertedApps input is absent (excluded from this
+       repo); the catalog already reports those entries missing-input, so no
+       stub files and no false ready claims. -->
+  <Target Name="StageConvertedPreviewApps" BeforeTargets="PrepareForBuild">
+    <MakeDir Directories="$(MSBuildProjectDirectory)\wwwroot\apps\hello-real" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\ConvertedApps\HelloWorld\HelloWorld.dll" DestinationFiles="$(MSBuildProjectDirectory)\wwwroot\apps\hello-real\HelloWorld.bin" SkipUnchangedFiles="true" Condition="Exists('$(MSBuildProjectDirectory)\ConvertedApps\HelloWorld\HelloWorld.dll')" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\ConvertedApps\HelloWorld\HelloWorld.receipt.json" DestinationFiles="$(MSBuildProjectDirectory)\wwwroot\apps\hello-real\HelloWorld.receipt.json" SkipUnchangedFiles="true" Condition="Exists('$(MSBuildProjectDirectory)\ConvertedApps\HelloWorld\HelloWorld.receipt.json')" />
+    <MakeDir Directories="$(MSBuildProjectDirectory)\wwwroot\apps\wpf-calculator" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\ConvertedApps\CalculatorDemo\CalculatorDemo.dll" DestinationFiles="$(MSBuildProjectDirectory)\wwwroot\apps\wpf-calculator\CalculatorDemo.bin" SkipUnchangedFiles="true" Condition="Exists('$(MSBuildProjectDirectory)\ConvertedApps\CalculatorDemo\CalculatorDemo.dll')" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\ConvertedApps\CalculatorDemo\CalculatorDemo.receipt.json" DestinationFiles="$(MSBuildProjectDirectory)\wwwroot\apps\wpf-calculator\CalculatorDemo.receipt.json" SkipUnchangedFiles="true" Condition="Exists('$(MSBuildProjectDirectory)\ConvertedApps\CalculatorDemo\CalculatorDemo.receipt.json')" />
+  </Target>
+
+  <!-- WindowsBase full-copy staging (winforms-wasm PrepareFullWindowsBase pattern).
+       The DesktopWasm engine is facade-free by design (clean-room types, no
+       System.Windows references), so these targets are merge preparation: they
+       stay armed-but-idle (Prepare skips soft when no full copy is installed)
+       and the gate passes when WindowsBase is absent from the bundle. -->
+  <Target Name="PrepareFullWindowsBase" BeforeTargets="ResolveAssemblyReferences">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)/../../scripts/wpf/Ensure-FullAssembly.ps1&quot; -AssemblyName WindowsBase -IntermediateDir &quot;$(IntermediateOutputPath)&quot;" />
+  </Target>
+
+  <Target Name="UseFullWindowsBase" AfterTargets="ResolveAssemblyReferences">
+    <ItemGroup>
+      <_WindowsBaseFacade Include="@(ReferenceCopyLocalPaths)" Condition="%(FileName) == 'WindowsBase'" />
+    </ItemGroup>
+    <PropertyGroup>
+      <_WindowsBaseFullDll>$(IntermediateOutputPath)full-assembly\WindowsBase.dll</_WindowsBaseFullDll>
+    </PropertyGroup>
+    <Message Condition="@(_WindowsBaseFacade->Count()) == '0'" Text="No WindowsBase reference (facade-free engine); full-copy swap skipped." Importance="High" />
+    <Error Condition="@(_WindowsBaseFacade->Count()) != '0' and !Exists('$(_WindowsBaseFullDll)')"
+      Text="WindowsBase facade would bundle: full copy missing at $(_WindowsBaseFullDll)" />
+    <ItemGroup Condition="@(_WindowsBaseFacade->Count()) != '0' and Exists('$(_WindowsBaseFullDll)')">
+      <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)" Condition="%(FileName) == 'WindowsBase'" />
+      <ReferencePath Remove="@(ReferencePath)" Condition="%(FileName) == 'WindowsBase'" />
+      <ReferenceCopyLocalPaths Include="$(_WindowsBaseFullDll)">
+        <CopyLocal>true</CopyLocal>
+        <DestinationSubPath>WindowsBase.dll</DestinationSubPath>
+      </ReferenceCopyLocalPaths>
+      <ReferencePath Include="$(_WindowsBaseFullDll)">
+        <CopyLocal>true</CopyLocal>
+        <FusionName>WindowsBase</FusionName>
+      </ReferencePath>
+    </ItemGroup>
+    <Message Condition="@(_WindowsBaseFacade->Count()) != '0' and Exists('$(_WindowsBaseFullDll)')"
+      Text="WindowsBase facade replaced with full copy ($(_WindowsBaseFullDll))" Importance="High" />
+  </Target>
+
+  <Target Name="GateBundleWindowsBase" AfterTargets="Build">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)/../../scripts/wpf/BundleCheck.ps1&quot; -Root &quot;$(TargetDir)wwwroot/_framework&quot; -AssemblyName WindowsBase -StagedDll &quot;$(IntermediateOutputPath)full-assembly/WindowsBase.dll&quot;" />
+  </Target>
+
+</Project>

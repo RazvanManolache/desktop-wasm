@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "slug": "simple-binding",
+  "mapVersion": "wpf-convert-v1",
+  "status": "converted",
+  "entryAssembly": "SimpleBinding",
+  "assemblies": [
+    {
+      "name": "SimpleBinding",
+      "file": "SimpleBinding.cd2b842841ad0e04b4e63a543950e74485a76f031332c6886725a8ecfdb94b48.bin",
+      "sha256": "cd2b842841ad0e04b4e63a543950e74485a76f031332c6886725a8ecfdb94b48",
+      "references": [
+        "System.Runtime",
+        "System.ObjectModel",
+        "System.Threading",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "1AE602AD50319C369B4C5259944FAA3916C746672BA810E4827B760C3F9D2AA8"
+    }
+  ],
+  "gaps": [],
+  "sourceCommit": "811d01e95c8c929e68539d698d0a0609e94fd185"
+}

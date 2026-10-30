@@ -1,0 +1,117 @@
+{
+  "schemaVersion": 1,
+  "slug": "pc-space-map",
+  "mapVersion": "wpf-convert-v1",
+  "status": "conversion-failed",
+  "entryAssembly": "PC Space Map",
+  "assemblies": [
+    {
+      "name": "PC Space Map",
+      "file": "PC%20Space%20Map.709a8d3ca13ff1b5cf25ceced7169f87165a205300c03283baa03c42cce1c462.bin",
+      "sha256": "709a8d3ca13ff1b5cf25ceced7169f87165a205300c03283baa03c42cce1c462",
+      "references": [
+        "System.Runtime",
+        "System.ComponentModel",
+        "System.Collections",
+        "System.IO.FileSystem.DriveInfo",
+        "Microsoft.AspNetCore",
+        "Microsoft.AspNetCore.Http.Abstractions",
+        "Microsoft.Extensions.Primitives",
+        "Microsoft.AspNetCore.Server.Kestrel.Core",
+        "System.ComponentModel.TypeConverter",
+        "System.Linq",
+        "System.Security.Cryptography",
+        "Microsoft.AspNetCore.Http.Features",
+        "Microsoft.AspNetCore.Http.Results",
+        "System.Threading",
+        "System.Diagnostics.Process",
+        "System.Text.Json",
+        "Microsoft.AspNetCore.Http.Extensions",
+        "System.Net.Primitives",
+        "Microsoft.Extensions.Hosting.Abstractions",
+        "Microsoft.Extensions.Logging",
+        "Microsoft.AspNetCore.Server.Kestrel",
+        "Microsoft.AspNetCore.Routing",
+        "Microsoft.AspNetCore.Hosting.Server.Abstractions",
+        "Microsoft.Extensions.DependencyInjection.Abstractions",
+        "Microsoft.Extensions.Features",
+        "System.Text.Encoding.Extensions",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "710418EFC55BFFC4564EADB88831AC26D02EEFAFF84AE38BF4E0EA436D6D92F7"
+    }
+  ],
+  "gaps": [
+    {
+      "assembly": "PC Space Map",
+      "kind": "missing-dependency",
+      "detail": "Referenced assembly \u0027Microsoft.AspNetCore\u0027 is absent from upstream build output."
+    },
+    {
+      "assembly": "PC Space Map",
+      "kind": "missing-dependency",
+      "detail": "Referenced assembly \u0027Microsoft.AspNetCore.Http.Abstractions\u0027 is absent from upstream build output."
+    },
+    {
+      "assembly": "PC Space Map",
+      "kind": "missing-dependency",
+      "detail": "Referenced assembly \u0027Microsoft.Extensions.Primitives\u0027 is absent from upstream build output."
+    },
+    {
+      "assembly": "PC Space Map",
+      "kind": "missing-dependency",
+      "detail": "Referenced assembly \u0027Microsoft.AspNetCore.Server.Kestrel.Core\u0027 is absent from upstream build output."
+    },
+    {
+      "assembly": "PC Space Map",
+      "kind": "missing-dependency",
+      "detail": "Referenced assembly \u0027Microsoft.AspNetCore.Http.Features\u0027 is absent from upstream build output."
+    },
+    {
+      "assembly": "PC Space Map",
+      "kind": "missing-dependency",
+      "detail": "Referenced assembly \u0027Microsoft.AspNetCore.Http.Results\u0027 is absent from upstream build output."
+    },
+    {
+      "assembly": "PC Space Map",
+      "kind": "missing-dependency",
+      "detail": "Referenced assembly \u0027Microsoft.AspNetCore.Http.Extensions\u0027 is absent from upstream build output."
+    },
+    {
+      "assembly": "PC Space Map",
+      "kind": "missing-dependency",
+      "detail": "Referenced assembly \u0027Microsoft.Extensions.Hosting.Abstractions\u0027 is absent from upstream build output."
+    },
+    {
+      "assembly": "PC Space Map",
+      "kind": "missing-dependency",
+      "detail": "Referenced assembly \u0027Microsoft.Extensions.Logging\u0027 is absent from upstream build output."
+    },
+    {
+      "assembly": "PC Space Map",
+      "kind": "missing-dependency",
+      "detail": "Referenced assembly \u0027Microsoft.AspNetCore.Server.Kestrel\u0027 is absent from upstream build output."
+    },
+    {
+      "assembly": "PC Space Map",
+      "kind": "missing-dependency",
+      "detail": "Referenced assembly \u0027Microsoft.AspNetCore.Routing\u0027 is absent from upstream build output."
+    },
+    {
+      "assembly": "PC Space Map",
+      "kind": "missing-dependency",
+      "detail": "Referenced assembly \u0027Microsoft.AspNetCore.Hosting.Server.Abstractions\u0027 is absent from upstream build output."
+    },
+    {
+      "assembly": "PC Space Map",
+      "kind": "missing-dependency",
+      "detail": "Referenced assembly \u0027Microsoft.Extensions.DependencyInjection.Abstractions\u0027 is absent from upstream build output."
+    },
+    {
+      "assembly": "PC Space Map",
+      "kind": "missing-dependency",
+      "detail": "Referenced assembly \u0027Microsoft.Extensions.Features\u0027 is absent from upstream build output."
+    }
+  ],
+  "sourceCommit": "1363cf73e1efe6078f31e65accc0ca3dcb98c673"
+}

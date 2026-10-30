@@ -1,0 +1,210 @@
+{
+  "schemaVersion": 1,
+  "slug": "material-design",
+  "mapVersion": "wpf-convert-v1",
+  "status": "converted",
+  "entryAssembly": "MaterialDesignDemo",
+  "assemblies": [
+    {
+      "name": "MaterialDesignDemo",
+      "file": "MaterialDesignDemo.470af677cd9d6edf135fa861c4550b51d8458b992f796f786a6cea892e37fdc3.bin",
+      "sha256": "470af677cd9d6edf135fa861c4550b51d8458b992f796f786a6cea892e37fdc3",
+      "references": [
+        "System.Runtime",
+        "System.Collections",
+        "System.ObjectModel",
+        "System.CommandLine",
+        "MaterialDesignThemes.Wpf",
+        "System.Drawing.Primitives",
+        "MaterialDesignDemo.Shared",
+        "CommunityToolkit.Mvvm",
+        "MaterialDesignColors",
+        "BluwolfIcons",
+        "System.Linq",
+        "ShowMeTheXAML",
+        "System.Collections.Specialized",
+        "System.Diagnostics.TraceSource",
+        "System.Runtime.InteropServices",
+        "System.Diagnostics.Process",
+        "System.ComponentModel",
+        "System.Threading.Thread",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "19A5462E21B0EF57BF457479047DD5D87B28E246ADC7BF5B10E3C94B73C757DA"
+    },
+    {
+      "name": "System.CommandLine",
+      "file": "System.CommandLine.2c2dc8e41f52e7fed3285916bba94985d48f34eec8e78307d19e485302ad4cdf.bin",
+      "sha256": "2c2dc8e41f52e7fed3285916bba94985d48f34eec8e78307d19e485302ad4cdf",
+      "references": [
+        "System.Runtime",
+        "System.Collections",
+        "System.Runtime.InteropServices",
+        "System.Console",
+        "System.Linq",
+        "System.Memory",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "2B5EE7C20FDBD08AF6C5DD7271C4E6B53FEDAB72864EE85ABEE94A647ABA704E"
+    },
+    {
+      "name": "MaterialDesignThemes.Wpf",
+      "file": "MaterialDesignThemes.Wpf.6698c49c56f3c9e16a15c6967a50358fcd37fac830b67249c213d72794b1e79e.bin",
+      "sha256": "6698c49c56f3c9e16a15c6967a50358fcd37fac830b67249c213d72794b1e79e",
+      "references": [
+        "System.Runtime",
+        "Microsoft.Xaml.Behaviors",
+        "MaterialDesignColors",
+        "System.Collections",
+        "System.ComponentModel.Primitives",
+        "System.ObjectModel",
+        "System.ComponentModel",
+        "System.ComponentModel.TypeConverter",
+        "System.Runtime.InteropServices",
+        "System.Threading",
+        "System.Linq",
+        "System.Threading.Thread",
+        "System.Diagnostics.TraceSource",
+        "Microsoft.Win32.Registry",
+        "System.Memory",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "3C42C5321A5ED015C31552253A148792A224ED1624D30245203B5624EAB658A8"
+    },
+    {
+      "name": "MaterialDesignDemo.Shared",
+      "file": "MaterialDesignDemo.Shared.e71e8b44b548702a1776a4317ce2fbe071dcafa836d97b9facbccdc85d394160.bin",
+      "sha256": "e71e8b44b548702a1776a4317ce2fbe071dcafa836d97b9facbccdc85d394160",
+      "references": [
+        "System.Runtime",
+        "System.ObjectModel",
+        "System.Collections",
+        "MaterialDesignThemes.Wpf",
+        "CommunityToolkit.Mvvm",
+        "MaterialDesignColors",
+        "System.ComponentModel",
+        "ShowMeTheXAML",
+        "System.Linq",
+        "System.Runtime.InteropServices",
+        "System.Threading",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "4C85556ADFD32FA5622322C0BF4F0DE48742FF34112A5109EA9EED71C8B5C2E7"
+    },
+    {
+      "name": "CommunityToolkit.Mvvm",
+      "file": "CommunityToolkit.Mvvm.1dc6eefd719ff027d6032abc78cc6b0c72f166510b0a971f5f5c4b71ccfafdf0.bin",
+      "sha256": "1dc6eefd719ff027d6032abc78cc6b0c72f166510b0a971f5f5c4b71ccfafdf0",
+      "references": [
+        "System.Runtime",
+        "System.Linq.Expressions",
+        "System.Collections",
+        "System.ObjectModel",
+        "System.ComponentModel",
+        "System.ComponentModel.Annotations",
+        "System.Linq",
+        "System.Threading",
+        "System.Memory",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "19B2144FED9600D58A742A5A4A5FD7B10D4D0D2C2E79F5D8019307CF5657044F"
+    },
+    {
+      "name": "MaterialDesignColors",
+      "file": "MaterialDesignColors.dee4c7e47fdb7dc99f27b5f2930575e2ad77b91cf335c7326a00bd4025b23c0e.bin",
+      "sha256": "dee4c7e47fdb7dc99f27b5f2930575e2ad77b91cf335c7326a00bd4025b23c0e",
+      "references": [
+        "System.Runtime",
+        "System.Collections",
+        "System.Text.RegularExpressions",
+        "System.Linq",
+        "System.Threading",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "2D2DDB5499F25EE7093597CEBF3F4326AE5AE0B4B6BE7F34DF0C73DA85D148D6"
+    },
+    {
+      "name": "BluwolfIcons",
+      "file": "BluwolfIcons.6a005683e0a9ce2092c68591963dd2cdc0a43db429b6f9ef530f22371131fe50.bin",
+      "sha256": "6a005683e0a9ce2092c68591963dd2cdc0a43db429b6f9ef530f22371131fe50",
+      "references": [
+        "mscorlib",
+        "System",
+        "System.Core",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "FD0574C6465213C2F817409A52071CAF765B08CAF67F7C7D4C59303C65DB5288"
+    },
+    {
+      "name": "ShowMeTheXAML",
+      "file": "ShowMeTheXAML.2799899c20f403a6cb5be3f963731bba5a7e89436efb9948c80770fee122820c.bin",
+      "sha256": "2799899c20f403a6cb5be3f963731bba5a7e89436efb9948c80770fee122820c",
+      "references": [
+        "System.Runtime",
+        "System.Collections",
+        "System.Xml.XDocument",
+        "System.Xml.ReaderWriter",
+        "System.Text.RegularExpressions",
+        "System.Linq",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "A957AB59B3D34CF6A44373AF0D1BEBC563C3D9A11B25D1878B5791097AFF483D"
+    },
+    {
+      "name": "Microsoft.Xaml.Behaviors",
+      "file": "Microsoft.Xaml.Behaviors.6fad9291c09a011148ede7f16a1ea3088f7e50302bb120fc511e0a771f475932.bin",
+      "sha256": "6fad9291c09a011148ede7f16a1ea3088f7e50302bb120fc511e0a771f475932",
+      "references": [
+        "System.Runtime",
+        "System.ObjectModel",
+        "System.Collections",
+        "System.Xml.ReaderWriter",
+        "System.ComponentModel.TypeConverter",
+        "System.Threading",
+        "System.Linq",
+        "System.Xml.XmlSerializer",
+        "System.Diagnostics.Process",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "DB87C0A9AD8603E7A8E3E6ACAA3B49D93BFA5D8762A947A2C7E49F86F6845240"
+    },
+    {
+      "name": "ShowMeTheXAML.AvalonEdit",
+      "file": "ShowMeTheXAML.AvalonEdit.b235514989ad6ebae697fc8dad437a8b66130d105ff097e4497eef25f88f3472.bin",
+      "sha256": "b235514989ad6ebae697fc8dad437a8b66130d105ff097e4497eef25f88f3472",
+      "references": [
+        "System.Runtime",
+        "ICSharpCode.AvalonEdit",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "635C9C2ADB5318E968BB3005A5E3D179304C4CFD62C8135B4F40C571BCA87483"
+    },
+    {
+      "name": "ICSharpCode.AvalonEdit",
+      "file": "ICSharpCode.AvalonEdit.6ad47bc65e3776c161cc91fe5f20fccfded07b97f1f5bf07707a7f9c6e8a51ec.bin",
+      "sha256": "6ad47bc65e3776c161cc91fe5f20fccfded07b97f1f5bf07707a7f9c6e8a51ec",
+      "references": [
+        "System.Runtime",
+        "System.ComponentModel",
+        "System.ObjectModel",
+        "System.ComponentModel.Primitives",
+        "System.Collections",
+        "System.Xml.ReaderWriter",
+        "System.Drawing.Primitives",
+        "System.Text.RegularExpressions",
+        "System.ComponentModel.TypeConverter",
+        "System.Runtime.InteropServices",
+        "System.Threading.Thread",
+        "System.Threading",
+        "System.Linq",
+        "System.Console",
+        "System.Text.Encoding.Extensions",
+        "System.Diagnostics.Process",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "0FE9AC94AA22E60B32D670A3D35C58FEF628D1B3352D56F32F2986BF5F96F844"
+    }
+  ],
+  "gaps": [],
+  "sourceCommit": "087728011a8d71926ccf86cb28dc99439e9b1c3f"
+}

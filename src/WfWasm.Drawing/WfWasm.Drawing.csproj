@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- 0436 by design: this assembly intentionally redefines the framework's
+         System.Drawing surface with web-compatible implementations. -->
+    <NoWarn>0436</NoWarn>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Display Graphics adapter (Graphics.ForDisplay): Drawing may reference
+         the neutral Rendering leaf (no Renderer/CanvasHost cycle). -->
+    <ProjectReference Include="..\WfWasm.Rendering\WfWasm.Rendering.csproj" />
+  </ItemGroup>
+
+</Project>

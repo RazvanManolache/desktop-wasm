@@ -1,0 +1,146 @@
+{
+  "name": "winforms-benchmarks",
+  "source": "<winforms-root>\\src\\WfWasm.CanvasHost\\DesktopBenchmarks.json",
+  "sourceSha256": "6879E925958B5F5F84E33EC92AB83C945A9AA7B7B701E08E230C5ACB2B1AAE75",
+  "extractedUtc": "2026-10-30T12:03:16Z",
+  "data": {
+    "count": 27,
+    "entries": [
+      {
+        "slug": "benchmark-advanceddatagridview",
+        "build": "dotnet",
+        "manual": false
+      },
+      {
+        "slug": "benchmark-bizhawk",
+        "build": "dotnet",
+        "manual": false
+      },
+      {
+        "slug": "benchmark-chip8",
+        "build": "managed-binary",
+        "manual": false
+      },
+      {
+        "slug": "benchmark-componentone",
+        "build": "dotnet",
+        "manual": false
+      },
+      {
+        "slug": "benchmark-cyotek",
+        "build": "msbuild",
+        "manual": false
+      },
+      {
+        "slug": "benchmark-devexpress",
+        "build": "dotnet",
+        "manual": false
+      },
+      {
+        "slug": "benchmark-dockpanel",
+        "build": "msbuild",
+        "manual": false
+      },
+      {
+        "slug": "benchmark-external-calculator",
+        "build": "msbuild",
+        "manual": false
+      },
+      {
+        "slug": "benchmark-fastcoloredtextbox",
+        "build": "msbuild",
+        "manual": false
+      },
+      {
+        "slug": "benchmark-fiddler-classic",
+        "build": "installer-archive",
+        "manual": false
+      },
+      {
+        "slug": "benchmark-gitextensions",
+        "build": "dotnet",
+        "manual": false
+      },
+      {
+        "slug": "benchmark-hexbox",
+        "build": "dotnet",
+        "manual": false
+      },
+      {
+        "slug": "benchmark-infragistics",
+        "build": "dotnet",
+        "manual": false
+      },
+      {
+        "slug": "benchmark-keepass",
+        "build": "archive",
+        "manual": false
+      },
+      {
+        "slug": "benchmark-krypton",
+        "build": "dotnet",
+        "manual": false
+      },
+      {
+        "slug": "benchmark-linqpad5",
+        "build": "archive",
+        "manual": false
+      },
+      {
+        "slug": "benchmark-minesweeper",
+        "build": "dotnet",
+        "manual": false
+      },
+      {
+        "slug": "benchmark-mremoteng",
+        "build": "msbuild",
+        "manual": false
+      },
+      {
+        "slug": "benchmark-naps2",
+        "build": "msbuild",
+        "manual": false
+      },
+      {
+        "slug": "benchmark-openpdn",
+        "build": "msbuild",
+        "manual": false
+      },
+      {
+        "slug": "benchmark-pkhex",
+        "build": "dotnet",
+        "manual": false
+      },
+      {
+        "slug": "benchmark-realtaiizor",
+        "build": "dotnet",
+        "manual": false
+      },
+      {
+        "slug": "benchmark-reflector",
+        "build": "installer-archive",
+        "manual": false
+      },
+      {
+        "slug": "benchmark-sharex",
+        "build": "msbuild",
+        "manual": false
+      },
+      {
+        "slug": "benchmark-subtitleedit",
+        "build": "msbuild",
+        "manual": false
+      },
+      {
+        "slug": "benchmark-treemap",
+        "build": "dotnet",
+        "manual": false
+      },
+      {
+        "slug": "benchmark-vgapainter",
+        "build": "msbuild",
+        "manual": false
+      }
+    ]
+  }
+}

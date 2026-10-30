@@ -1,0 +1,7 @@
+<Window x:Class="DesktopWasm.Wpf.Tests.WindowChromeMain"
+        Title="Chrome" Width="400" Height="300"
+        Background="{StaticResource ChromeBackground}"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Grid x:Name="ChromeSurface"/>
+</Window>

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "slug": "geometry",
+  "mapVersion": "wpf-convert-v1",
+  "status": "converted",
+  "entryAssembly": "Geometry",
+  "assemblies": [
+    {
+      "name": "Geometry",
+      "file": "Geometry.7a95af2cd65a6286d9317ae45638e81462dd47bec8d7db392177cef3730a3bcf.bin",
+      "sha256": "7a95af2cd65a6286d9317ae45638e81462dd47bec8d7db392177cef3730a3bcf",
+      "references": [
+        "System.Runtime",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "D0F6B2D50D0050DD31B82986FFF8E5F837E472040A26E0FE5A7A7339FEE55C93"
+    }
+  ],
+  "gaps": [],
+  "sourceCommit": "811d01e95c8c929e68539d698d0a0609e94fd185"
+}

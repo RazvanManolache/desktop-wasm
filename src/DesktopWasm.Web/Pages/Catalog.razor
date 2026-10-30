@@ -1,0 +1,94 @@
+@page "/"
+@inject HttpClient Http
+
+<PageTitle>DesktopWasm catalog · unified shell</PageTitle>
+<h1>DesktopWasm catalog</h1>
+<p>One registry for Windows Forms and WPF apps. Source of truth: <code>catalog/apps.json</code> via <code>/api/catalog</code>.</p>
+
+<div class="filters">
+    <input placeholder="Filter text" @bind="_query" @bind:event="oninput" aria-label="Filter text" />
+    <select @bind="_framework" aria-label="Framework filter">
+        <option value="">All frameworks</option>
+        <option value="winforms">Windows Forms</option>
+        <option value="wpf">WPF</option>
+        <option value="mixed">Mixed (both)</option>
+    </select>
+    <select @bind="_status" aria-label="Status filter">
+        <option value="">Any status</option>
+        <option value="ready">ready</option>
+        <option value="not-converted">not-converted</option>
+        <option value="unavailable">unavailable</option>
+    </select>
+    <button @onclick="ReloadAsync">Apply</button>
+    <button @onclick="ClearAsync">Clear</button>
+</div>
+
+@if (_loadError is not null)
+{
+    <div class="stage-overlay error" role="alert">
+        <h2>The catalog could not load</h2>
+        <p>@_loadError</p>
+        <button @onclick="ClearAsync">Clear</button>
+    </div>
+}
+else if (_apps is null)
+{
+    <p role="status">Loading catalog…</p>
+}
+else if (_apps.Count == 0)
+{
+    <p role="status">No apps match the current filters. <button @onclick="ClearAsync">Clear filters</button></p>
+}
+else
+{
+    <p role="status">@_apps.Count app(s).</p>
+    <ul class="catalog">
+        @foreach (var app in _apps)
+        {
+            <li>
+                <strong>@app.Label</strong>
+                <code>@app.Id</code>
+                <span class="frameworks">@string.Join(" + ", app.Frameworks)</span>
+                @if (app.Mixed) { <span class="mixed">mixed</span> }
+                <span class="status">@app.Status</span>
+                @if (!app.Available) { <span class="unavailable">unavailable</span> }
+                <p>@app.Description</p>
+                @if (app.Gaps.Length > 0) { <p class="gaps">Gaps: @string.Join("; ", app.Gaps)</p> }
+                <a href="/launch/@app.Id">Open</a>
+            </li>
+        }
+    </ul>
+}
+
+@code {
+    private List<CatalogEntry>? _apps;
+    private string? _loadError;
+    private string _query = "", _framework = "", _status = "";
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _loadError = null; _apps = null;
+        try
+        {
+            var url = "api/catalog?" + string.Join("&", new[]
+            {
+                string.IsNullOrWhiteSpace(_framework) ? "" : $"framework={Uri.EscapeDataString(_framework)}",
+                string.IsNullOrWhiteSpace(_status) ? "" : $"status={Uri.EscapeDataString(_status)}",
+                string.IsNullOrWhiteSpace(_query) ? "" : $"q={Uri.EscapeDataString(_query)}",
+            }.Where(p => p.Length > 0));
+            _apps = await Http.GetFromJsonAsync<List<CatalogEntry>>(url) ?? [];
+        }
+        catch (Exception ex)
+        {
+            _loadError = ex.GetBaseException().Message;
+        }
+    }
+
+    private async Task ClearAsync()
+    {
+        _query = ""; _framework = ""; _status = ""; _loadError = null;
+        await ReloadAsync();
+    }
+}

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "slug": "wpf-calculator",
+  "mapVersion": "wpf-convert-v1",
+  "status": "converted",
+  "entryAssembly": "CalculatorDemo",
+  "assemblies": [
+    {
+      "name": "CalculatorDemo",
+      "file": "CalculatorDemo.9fc7cf6047a8d9398fd5aa205847c6db583830384163b85112e19a88169bb179.bin",
+      "sha256": "9fc7cf6047a8d9398fd5aa205847c6db583830384163b85112e19a88169bb179",
+      "references": [
+        "System.Runtime",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "C61E14A3A24AFC136AB63723BDDABC9ABEE38868568FAB5508349A820ECB202D"
+    }
+  ],
+  "gaps": [],
+  "sourceCommit": "811d01e95c8c929e68539d698d0a0609e94fd185"
+}

@@ -1,0 +1,74 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.2" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\DesktopWasm.Wpf\DesktopWasm.Wpf.csproj" />
+    <ProjectReference Include="..\..\src\DesktopWasm.Graphics\DesktopWasm.Graphics.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="Fixtures\*.xaml" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Theme-chain fixture: implicit styles resolve by Type through the
+         defining assembly's generic.xaml, like vendor theme dictionaries. -->
+    <EmbeddedResource Include="Themes\Generic.xaml">
+      <LogicalName>Themes/Generic.xaml</LogicalName>
+    </EmbeddedResource>
+    <!-- Boot fixtures resolve through loaded-assembly manifest lookup. -->
+    <EmbeddedResource Include="Fixtures\Boot\*.xaml" />
+    <!-- Pack-stream probe: raw bytes resolved through FindPackBytes. -->
+    <EmbeddedResource Include="Fixtures\Pack\*.bin" />
+    <!-- BOM probe: UTF-8 BOM loose XAML resolved through FindPackText. -->
+    <EmbeddedResource Include="Fixtures\Pack\*.xaml" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Exercise the actual scene builders; no BrowserHost/Blazor dependency. -->
+    <Compile Include="..\..\src\DesktopWasm.BrowserHost\Demos.cs" Link="Studio\Demos.cs" />
+    <Compile Include="..\..\src\DesktopWasm.BrowserHost\DemoContent.cs" Link="Studio\DemoContent.cs" />
+    <Compile Include="..\..\src\DesktopWasm.BrowserHost\StudioDemos.cs" Link="Studio\StudioDemos.cs" />
+    <Compile Include="..\..\src\DesktopWasm.BrowserHost\FilesClipboardDemo.cs" Link="Studio\FilesClipboardDemo.cs" />
+    <!-- Gallery automation slice lab (no BrowserHost/Blazor dependency). -->
+    <Compile Include="..\..\src\DesktopWasm.BrowserHost\A11yEventsDemo.cs" Link="Studio\A11yEventsDemo.cs" />
+    <!-- ScreenToGif drag-drop/data-object + HwndSource slice lab (no BrowserHost/Blazor dependency). -->
+    <Compile Include="..\..\src\DesktopWasm.BrowserHost\DragDropDemo.cs" Link="Studio\DragDropDemo.cs" />
+    <!-- ScreenToGif Thumb/RepeatButton/Popup slice lab (no BrowserHost/Blazor dependency). -->
+    <Compile Include="..\..\src\DesktopWasm.BrowserHost\PrimitivesDemo.cs" Link="Studio\PrimitivesDemo.cs" />
+    <!-- ScreenToGif TabControl/ProgressBar/ToolTip slice lab (no BrowserHost/Blazor dependency). -->
+    <Compile Include="..\..\src\DesktopWasm.BrowserHost\TabsDemo.cs" Link="Studio\TabsDemo.cs" />
+    <!-- ScreenToGif HideableTabControl animation-clock slice lab (no BrowserHost/Blazor dependency). -->
+    <Compile Include="..\..\src\DesktopWasm.BrowserHost\AnimationDemo.cs" Link="Studio\AnimationDemo.cs" />
+    <!-- DynamicResource + hit-test slice lab (no BrowserHost/Blazor dependency). -->
+    <Compile Include="..\..\src\DesktopWasm.BrowserHost\HitTestDemo.cs" Link="Studio\HitTestDemo.cs" />
+    <!-- ScreenToGif typeface/decoration/DPI slice lab (no BrowserHost/Blazor dependency). -->
+    <Compile Include="..\..\src\DesktopWasm.BrowserHost\TextLab.cs" Link="Studio\TextLab.cs" />
+    <!-- Template cluster slice lab (no BrowserHost/Blazor dependency). -->
+    <Compile Include="..\..\src\DesktopWasm.BrowserHost\TemplatesDemo.cs" Link="Studio\TemplatesDemo.cs" />
+    <!-- ScreenToGif DataGrid row/cell/sort slice lab (no BrowserHost/Blazor dependency). -->
+    <Compile Include="..\..\src\DesktopWasm.BrowserHost\GridRowsLab.cs" Link="Studio\GridRowsLab.cs" />
+    <!-- ScreenToGif shell/windowing slice lab (no BrowserHost/Blazor dependency). -->
+    <Compile Include="..\..\src\DesktopWasm.BrowserHost\ShellLab.cs" Link="Studio\ShellLab.cs" />
+    <!-- ScreenToGif effects/hosts slice lab (no BrowserHost/Blazor dependency). -->
+    <Compile Include="..\..\src\DesktopWasm.BrowserHost\EffectsLab.cs" Link="Studio\EffectsLab.cs" />
+  </ItemGroup>
+
+</Project>

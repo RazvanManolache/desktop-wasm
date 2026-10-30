@@ -1,0 +1,389 @@
+@page "/"
+@page "/demo/{DemoSlug}"
+@page "/runtime/{DemoSlug}"
+@layout DesktopWasm.BrowserHost.Layout.RuntimeLayout
+@using SkiaSharp
+@using SkiaSharp.Views.Blazor
+@inject IJSRuntime JS
+@inject DemoState State
+@inject HttpClient Http
+@implements IAsyncDisposable
+
+<PageTitle>@State.Current.Label · WPF Studio</PageTitle>
+<div class="stage-layout"><div class="live-stage">
+<div id="wpfTelemetry" hidden></div>
+<div id="inputSurface" class="runtime-input" tabindex="0" aria-label="Live interactive @State.Current.Label"
+     @onpointerdown="OnPointerDown" @onpointerup="OnPointerUp" @onpointermove="OnPointerMove" @onpointercancel="OnPointerCancel"
+     @onkeydown="OnKeyDown" @onkeydown:preventDefault @onkeyup="OnKeyUp" @onwheel="OnWheel" @onwheel:preventDefault>
+@if (_gpu)
+{
+    <SKGLView @key="_surfaceGeneration" @ref="_glView" OnPaintSurface="PaintGpu" EnableRenderLoop="false"
+              IgnorePixelScaling="false" AdditionalAttributes="_viewAttributes" />
+}
+else
+{
+    <canvas id="wpfCanvas" width="800" height="600" aria-label="Application canvas" tabindex="0"></canvas>
+}
+</div>
+@if (_loading || _loadError is not null)
+{
+    <div class="stage-overlay @(_loadError is null ? "" : "error")" role="status">
+        @if (_loadError is null) { <div class="spinner"></div><h2>Opening @State.Current.Label</h2><p>Preparing the application renderer…</p> }
+        else { <h2>The app could not load</h2><p>@_loadError</p> }
+    </div>
+}
+@if (_unknownSlug is not null)
+{
+    <div class="stage-overlay error" role="alert"><h2>Unknown app</h2><p>No app is registered under ‘@_unknownSlug’.</p></div>
+}
+</div></div>
+
+@code {
+    [Parameter] public string? DemoSlug { get; set; }
+    private readonly WasmWindowHandle _window = new(1);
+    private WasmWpfHost? _host;
+    private WasmInputRouter? _router;
+    private ApplicationPackageLoader? _appLoader;
+    private SKGLView? _glView;
+    private SkiaCommandRenderer? _renderer;
+    private DotNetObjectReference<Home>? _self;
+    private readonly Dictionary<string, object> _viewAttributes = new()
+    { ["id"] = "wpfCanvas", ["style"] = "width:100%;height:100%;display:block;", ["aria-label"] = "Application canvas" };
+    private bool _initialized, _gpu, _glAvailable, _loopStarted, _watchAttached, _disposed, _diagnostics;
+    private bool _loading = true, _needsRender = true, _forceGpu = true, _captureRequested, _switching = true;
+    private int _frameSeq, _surfaceGeneration;
+    private long _gpuRevision = -1, _inputTicks = -1, _lastReport;
+    private string? _loadError, _unknownSlug;
+    private string _currentSlug = "", _preference = "auto", _fallbackReason = "", _device = "";
+    private string _surfaceInfo = "", _contextStatus = "initializing";
+    private double? _drawMs, _inputMs;
+
+    protected override bool ShouldRender() { var result = _needsRender; _needsRender = false; return result; }
+
+    protected override void OnParametersSet()
+    {
+        var slug = string.IsNullOrEmpty(DemoSlug) ? DemoCatalog.All[0].Slug : DemoSlug;
+        var known = DemoCatalog.All.Any(d => d.Slug == slug);
+        _unknownSlug = System.Text.RegularExpressions.Regex.IsMatch(slug, "^[a-z0-9]+(?:-[a-z0-9]+)*$") ? null : slug;
+        if (_currentSlug != slug) { _currentSlug = slug; _host = null; _router = null; _gpuRevision = -1; }
+        State.SyncFromRoute(known ? slug : null); _needsRender = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_unknownSlug is not null || _disposed || _loadError is not null) return;
+        try
+        {
+            if (!_initialized)
+            {
+                _initialized = true; _self = DotNetObjectReference.Create(this);
+                var settings = await JS.InvokeAsync<RendererSettings>("wasmWpfRenderer.initialize", _self);
+                _glAvailable = settings.Present; _device = settings.Device;
+                _preference = settings.Preference; _diagnostics = settings.Diagnostics;
+                _gpu = _glAvailable && _preference != "canvas2d";
+                _fallbackReason = !_glAvailable && _preference != "canvas2d" ? "WebGL unavailable" : "";
+                await EnsureHostAsync();
+                _loading = false; _needsRender = true; StateHasChanged(); return;
+            }
+            if (_gpu)
+            {
+                if (!_watchAttached) _watchAttached = await JS.InvokeAsync<bool>("wasmWpfRenderer.watchContext", "wpfCanvas", _self);
+                _contextStatus = "active"; _forceGpu = true;
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("wasmWpfRenderer.unwatch");
+                await JS.InvokeVoidAsync("wfwasm.configureCanvas", "wpfCanvas", 800, 600);
+                await PaintCanvasAsync(0);
+            }
+            if (!_loopStarted)
+            {
+                _loopStarted = true;
+                await JS.InvokeVoidAsync("wasmWpfLoop.start", _self, "inputSurface");
+            }
+            _switching = false;
+            await ReportRendererAsync();
+        }
+        catch (Exception ex) { await FailAsync(ex); }
+    }
+
+    private async Task EnsureHostAsync()
+    {
+        if (_host is not null) return;
+        var catalog = System.Text.Json.JsonSerializer.Deserialize<CatalogApp[]>(await Http.GetStringAsync("app-library.json"), new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web))!;
+        var selected = catalog.SingleOrDefault(app => app.Slug == _currentSlug)
+            ?? throw new InvalidOperationException($"No app is registered under '{_currentSlug}'.");
+        if (selected.Kind == "external") State.SyncExternal(selected.Slug, selected.Label, selected.Description);
+        // One font family is shared by layout metrics, Skia replay and Canvas2D.
+        TextShaper.RegisterEmbeddedFont(await Http.GetByteArrayAsync("fonts/NotoSans-Regular.ttf"), ["sans-serif", "system-ui", "Arial", "Segoe UI"]);
+        TextShaper.RegisterEmbeddedFont(await Http.GetByteArrayAsync("fonts/NotoSansMono-Regular.ttf"), ["monospace", "Consolas", "Courier New"]);
+        await JS.InvokeVoidAsync("wasmWpfRenderer.loadFonts");
+        var router = new WasmInputRouter();
+        var host = new WasmWpfHost(new WasmDispatcherPump(), router);
+        Window window;
+        if (selected.Kind == "external")
+        {
+            await JS.InvokeVoidAsync("studioRuntime.progress", "Loading the original application's manifest and referenced assemblies…");
+            var manifest = System.Text.Json.JsonSerializer.Deserialize<DesktopWasm.Core.ApplicationPackage>(
+                await Http.GetStringAsync($"apps/{selected.Slug}/app-manifest.json"), new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web))!;
+            var totalFiles = manifest.Assemblies.Length;
+            var doneFiles = 0;
+            _appLoader = await ApplicationPackageLoader.CreateAsync(manifest, selected.Slug,
+                file => Http.GetByteArrayAsync($"apps/{selected.Slug}/{Uri.EscapeDataString(file)}"),
+                async phase => await JS.InvokeVoidAsync("studioRuntime.progress",
+                    $"Package {System.Threading.Interlocked.Increment(ref doneFiles)}/{totalFiles}: {phase}"));
+            await JS.InvokeVoidAsync("studioRuntime.progress", "Package verified — booting the original application…");
+            Action<string> bootPhase = phase => { _ = JS.InvokeVoidAsync("studioRuntime.progress", phase); };
+            window = _appLoader.Boot(bootPhase);
+            var postBootCtx = System.Threading.SynchronizationContext.Current?.GetType().FullName ?? "<null>";
+            var postBootSched = System.Threading.Tasks.TaskScheduler.Current?.GetType().FullName ?? "<null>";
+            await JS.InvokeVoidAsync("studioRuntime.progress", "Application booted ctx=" + postBootCtx + " sched=" + postBootSched + " tid=" + System.Threading.Thread.CurrentThread.ManagedThreadId + " | — preparing first frame…");
+        }
+        else window = State.Current.Build();
+        host.AddWindow(window, new WpfSize(800, 600));
+        await JS.InvokeVoidAsync("studioRuntime.progress", "host: window added — wiring demos…");
+        State.Current.OnHostReady?.Invoke(host);
+        await FileDialogDemoBrowser.TryWireAsync(State.Current.Slug, host, JS);
+        await A11yEventsBrowser.TryWireAsync(State.Current.Slug, host, JS);
+        await DragDropBrowser.TryWireAsync(State.Current.Slug, JS, _self);
+        await PrimitivesBrowser.TryWireAsync(State.Current.Slug, JS, _self);
+        await TabsBrowser.TryWireAsync(State.Current.Slug, JS, _self);
+        await HitTestBrowser.TryWireAsync(State.Current.Slug, JS, _self);
+    await TemplatesBrowser.TryWireAsync(State.Current.Slug, JS, _self);
+        await AnimationBrowser.TryWireAsync(State.Current.Slug, JS, _self);
+        await TextBrowser.TryWireAsync(State.Current.Slug, JS, _self);
+        await GridRowsBrowser.TryWireAsync(State.Current.Slug, JS, _self);
+        await ShellBrowser.TryWireAsync(State.Current.Slug, JS, _self);
+        await EffectsBrowser.TryWireAsync(State.Current.Slug, JS, _self);
+        await GalleryBrowser.WireAsync(_currentSlug, window, JS);
+        await OxyPlotBrowser.WireAsync(_currentSlug, window, host, JS);
+        await JS.InvokeVoidAsync("studioRuntime.progress", "host: ready — rendering first frame…");
+        _router = router; _host = host;
+    }
+
+    [JSInvokable] public void OnResize() { _host?.Invalidate(); _forceGpu = true; }
+
+    [JSInvokable]
+    public async Task OnFrame(double timestamp)
+    {
+        if (_disposed || _switching || _host is null || _loadError is not null) return;
+        try
+        {
+            if (_gpu)
+            {
+                _host.Tick(new FrameContext(++_frameSeq, timestamp));
+                if (_glView is not null && (_forceGpu || _captureRequested || _gpuRevision != _host.GeneratedRevision))
+                { _forceGpu = false; _glView.Invalidate(); }
+            }
+            else await PaintCanvasAsync(timestamp);
+            if (_diagnostics && Environment.TickCount64 - _lastReport > 1000) await ReportRendererAsync();
+        }
+        catch (Exception ex) { if (_gpu) await FallBackAsync(ex.Message); else await FailAsync(ex); }
+    }
+
+    private void PaintGpu(SKPaintGLSurfaceEventArgs e)
+    {
+        if (_disposed || _host is null) return;
+        var timer = _diagnostics ? System.Diagnostics.Stopwatch.StartNew() : null;
+        try
+        {
+            _host.Tick(new FrameContext(++_frameSeq, 0));
+            var canvas = e.Surface.Canvas;
+            canvas.Clear(new SKColor(0xE8, 0xED, 0xE5));
+            var scale = Math.Min(e.Info.Width / 800f, e.Info.Height / 600f);
+            var saved = canvas.Save();
+            try
+            {
+                canvas.Translate((e.Info.Width - 800 * scale) / 2, (e.Info.Height - 600 * scale) / 2); canvas.Scale(scale);
+                (_renderer ??= new SkiaCommandRenderer()).Replay(canvas, _host.CurrentCommands);
+            }
+            finally { canvas.RestoreToCount(saved); }
+            canvas.Flush(); _gpuRevision = _host.GeneratedRevision;
+            _surfaceInfo = $"{e.Info.Width} × {e.Info.Height}";
+            if (timer is not null) { _drawMs = timer.Elapsed.TotalMilliseconds; ConsumeInputTime(); }
+            if (_captureRequested)
+            {
+                _captureRequested = false;
+                using var image = e.Surface.Snapshot(); using var png = image.Encode(SKEncodedImageFormat.Png, 100);
+                _ = JS.InvokeVoidAsync("studioRuntime.screenshot", "data:image/png;base64," + Convert.ToBase64String(png.ToArray()));
+            }
+            _ = JS.InvokeVoidAsync("studioRuntime.ready");
+        }
+        catch (Exception ex) { _ = InvokeAsync(() => FallBackAsync(ex.Message)); }
+    }
+
+    private async Task PaintCanvasAsync(double timestamp)
+    {
+        var revision = _host!.PresentedRevision;
+        var timer = _diagnostics ? System.Diagnostics.Stopwatch.StartNew() : null;
+        await _host.PublishAsync("wpfCanvas", new JsFrameSink(JS), new FrameContext(++_frameSeq, timestamp));
+        if (revision != _host.PresentedRevision)
+        {
+            if (timer is not null) { _drawMs = timer.Elapsed.TotalMilliseconds; ConsumeInputTime(); }
+            await JS.InvokeVoidAsync("studioRuntime.ready");
+        }
+    }
+
+    [JSInvokable]
+    public async Task SetRenderer(string preference)
+    {
+        if (preference is not ("auto" or "webgl" or "canvas2d")) return;
+        _preference = preference; _fallbackReason = "";
+        var gpu = preference != "canvas2d" && _glAvailable;
+        if (!gpu && preference != "canvas2d") _fallbackReason = "WebGL unavailable";
+        if (gpu != _gpu || gpu) { _switching = true; _gpu = gpu; _surfaceGeneration++; _watchAttached = false; _gpuRevision = -1; _forceGpu = true; _host?.NoteSinkChanged(); _needsRender = true; StateHasChanged(); }
+        await ReportRendererAsync();
+    }
+
+    [JSInvokable] public async Task SetDiagnostics(bool enabled) { _diagnostics = enabled; _inputTicks = -1; _drawMs = _inputMs = null; await ReportRendererAsync(); }
+    [JSInvokable] public Task OnGpuContextLost() => _gpu ? FallBackAsync("WebGL context lost; application state preserved") : Task.CompletedTask;
+    [JSInvokable] public void CaptureGpu() { _captureRequested = true; _forceGpu = true; }
+
+    private async Task FallBackAsync(string reason)
+    {
+        _switching = true; _gpu = false; _fallbackReason = reason; _contextStatus = "fallback";
+        _watchAttached = false; _host?.NoteSinkChanged();
+        _needsRender = true; StateHasChanged(); await ReportRendererAsync();
+    }
+    private async Task ReportRendererAsync()
+    {
+        _lastReport = Environment.TickCount64;
+        await JS.InvokeVoidAsync("studioRuntime.renderer", new { backend = _gpu ? "WebGL · Skia" : "Canvas2D", preference = _preference,
+            device = _device, available = _glAvailable, context = _contextStatus, fallback = _fallbackReason, surface = _surfaceInfo,
+            diagnostics = _diagnostics, drawMs = _drawMs, inputMs = _inputMs, revision = _gpu ? _gpuRevision : _host?.PresentedRevision });
+        if (_host is not null)
+        {
+            try
+            {
+                var telemetry = System.Text.Json.JsonSerializer.SerializeToNode(_host.GetTelemetry())!.AsObject();
+                telemetry["backend"] = _gpu ? "webgl" : "canvas2d";
+                telemetry["fallbackReason"] = _fallbackReason;
+                await JS.InvokeVoidAsync("wasmWpfRenderer.telemetry", telemetry.ToJsonString());
+            }
+            catch (Exception) { }
+        }
+    }
+    private void NoteInput() { if (_diagnostics) _inputTicks = System.Diagnostics.Stopwatch.GetTimestamp(); }
+    private void ConsumeInputTime() { if (_inputTicks < 0) return; _inputMs = (System.Diagnostics.Stopwatch.GetTimestamp() - _inputTicks) * 1000.0 / System.Diagnostics.Stopwatch.Frequency; _inputTicks = -1; }
+    private async Task FailAsync(Exception error) { _loadError = error.GetBaseException().Message; _needsRender = true; StateHasChanged(); await JS.InvokeVoidAsync("studioRuntime.fail", _loadError); }
+
+    private sealed class RendererSettings
+    {
+        public bool Present { get; set; }
+        public string Device { get; set; } = "";
+        public string Preference { get; set; } = "auto";
+        public bool Diagnostics { get; set; }
+    }
+    private sealed record CatalogApp(string Slug, string Label, string Description, string Kind);
+    private static WasmPointerButton MapButton(long button) => button switch
+    {
+        0 => WasmPointerButton.Left,
+        1 => WasmPointerButton.Middle,
+        2 => WasmPointerButton.Right,
+        _ => WasmPointerButton.None,
+    };
+
+    /// <summary>
+    /// Maps CSS offsets to logical scene coordinates through the shared
+    /// contain-fit viewport (WpfViewport), inverting the object-fit display
+    /// scaling and letterboxing. Falls back to raw offsets when measuring fails.
+    /// </summary>
+    private (double X, double Y) MapToScene(double offsetX, double offsetY)
+    {
+        try
+        {
+            var size = ((IJSInProcessRuntime)JS).Invoke<double[]>("wfwasm.measureCanvas", "inputSurface");
+            if (size is { Length: >= 2 })
+                return WpfViewport.MapToLogical(offsetX, offsetY, size[0], size[1], 800, 600);
+        }
+        catch (Exception) { }
+        return (offsetX, offsetY);
+    }
+
+    [JSInvokable]
+    public Task OnBrowserFilesDropped(System.Text.Json.JsonElement payload)
+    {
+        if (!string.Equals(_currentSlug, "drag-drop", StringComparison.Ordinal)) return Task.CompletedTask;
+        if (DragDropLab.Current is not { } lab) return Task.CompletedTask;
+        NoteInput();
+        var files = new List<(string Name, byte[] Bytes)>();
+        if (payload.TryGetProperty("files", out var list))
+        {
+            foreach (var file in list.EnumerateArray())
+            {
+                if (files.Count >= 4) break;
+                var name = file.TryGetProperty("name", out var nameElement) ? nameElement.GetString() ?? "device-file" : "device-file";
+                if (file.TryGetProperty("tooLarge", out var tooLarge) && tooLarge.GetBoolean())
+                {
+                    lab.SetFilesStatus("Drop rejected: \u0027" + name + "\u0027 exceeds 8 MB.");
+                    return Task.CompletedTask;
+                }
+                var encoded = file.TryGetProperty("bytesBase64", out var bytesElement) ? bytesElement.GetString() ?? string.Empty : string.Empty;
+                byte[] bytes;
+                try { bytes = Convert.FromBase64String(encoded); }
+                catch (FormatException)
+                {
+                    lab.SetFilesStatus("Drop failed: \u0027" + name + "\u0027 arrived undecodable.");
+                    return Task.CompletedTask;
+                }
+                files.Add((name, bytes));
+            }
+        }
+        lab.BrowserDrop(files);
+        return Task.CompletedTask;
+    }
+
+    private void OnPointerDown(PointerEventArgs e)
+    {
+        NoteInput();
+        var p = MapToScene(e.OffsetX, e.OffsetY);
+        _router?.DispatchPointer(new WasmPointerArgs(_window, p.X, p.Y, MapButton(e.Button), true)
+            { Kind = WasmPointerKind.Down, PointerId = (int)e.PointerId });
+        try { _ = JS.InvokeVoidAsync("wasmWpfRenderer.capturePointer", "inputSurface", e.PointerId); } catch (Exception) { }
+    }
+
+    private void OnPointerUp(PointerEventArgs e)
+    {
+        NoteInput();
+        var p = MapToScene(e.OffsetX, e.OffsetY);
+        _router?.DispatchPointer(new WasmPointerArgs(_window, p.X, p.Y, MapButton(e.Button), false)
+            { Kind = WasmPointerKind.Up, PointerId = (int)e.PointerId });
+    }
+
+    private void OnPointerMove(PointerEventArgs e)
+    {
+        var p = MapToScene(e.OffsetX, e.OffsetY);
+        _router?.DispatchPointer(new WasmPointerArgs(_window, p.X, p.Y, WasmPointerButton.None, false)
+            { Kind = WasmPointerKind.Move, PointerId = (int)e.PointerId });
+    }
+
+    private void OnPointerCancel(PointerEventArgs e)
+    {
+        var p = MapToScene(e.OffsetX, e.OffsetY);
+        _router?.DispatchPointer(new WasmPointerArgs(_window, p.X, p.Y, MapButton(e.Button), false)
+            { Kind = WasmPointerKind.Cancel, PointerId = (int)e.PointerId });
+    }
+
+    private void OnKeyDown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
+    {
+        NoteInput();
+        _router?.DispatchKeyboard(new WasmKeyArgs(_window, e.Key, true, e.CtrlKey, e.ShiftKey, e.AltKey));
+    }
+
+    private void OnKeyUp(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e) =>
+        _router?.DispatchKeyboard(new WasmKeyArgs(_window, e.Key, false, e.CtrlKey, e.ShiftKey, e.AltKey));
+
+    private void OnWheel(WheelEventArgs e)
+    {
+        NoteInput();
+        var p = MapToScene(e.OffsetX, e.OffsetY);
+        _router?.DispatchWheel(new WasmWheelArgs(_window, p.X, p.Y, e.DeltaY));
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        try { await JS.InvokeVoidAsync("wasmWpfLoop.stop"); await JS.InvokeVoidAsync("wasmWpfRenderer.dispose"); await JS.InvokeVoidAsync("wpfDragDrop.detach", "inputSurface"); } catch (Exception) { }
+        _appLoader?.Dispose(); _renderer?.Dispose(); _self?.Dispose();
+    }
+}

@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 1,
+  "slug": "oxyplot",
+  "mapVersion": "wpf-convert-v1",
+  "status": "converted",
+  "entryAssembly": "ExampleBrowser.WPF",
+  "assemblies": [
+    {
+      "name": "ExampleBrowser.WPF",
+      "file": "ExampleBrowser.WPF.f830dd2f19a1e9ad49766f55ff3ab3ccbbc3f5514752695122e731fcddbdf809.bin",
+      "sha256": "f830dd2f19a1e9ad49766f55ff3ab3ccbbc3f5514752695122e731fcddbdf809",
+      "references": [
+        "System.Runtime",
+        "System.ObjectModel",
+        "OxyPlot",
+        "ExampleLibrary",
+        "OxyPlot.Wpf",
+        "System.Linq",
+        "System.Threading",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "6050F90407EB8229DF9814CC79003A9019206C4D8D69056AFD9027E91D057DA2"
+    },
+    {
+      "name": "OxyPlot",
+      "file": "OxyPlot.8e24919ee8b09f895ee21673f841b4653ced63de010d8420dd4862e81f7ec3f7.bin",
+      "sha256": "8e24919ee8b09f895ee21673f841b4653ced63de010d8420dd4862e81f7ec3f7",
+      "references": [
+        "System.Runtime",
+        "System.Collections",
+        "System.Text.RegularExpressions",
+        "System.IO.Compression",
+        "System.Linq",
+        "System.Xml.ReaderWriter",
+        "System.Threading",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "1A161C60FE6A03D29DDAC500B08C588BA8FDC34FAAA825812E31E5C7EBD47DD8"
+    },
+    {
+      "name": "ExampleLibrary",
+      "file": "ExampleLibrary.46de4f3e7530c600adf4543999fcc157e1bcbed90be2c0876d58b103d057437f.bin",
+      "sha256": "46de4f3e7530c600adf4543999fcc157e1bcbed90be2c0876d58b103d057437f",
+      "references": [
+        "System.Runtime",
+        "OxyPlot",
+        "System.Collections",
+        "System.Net.Requests",
+        "System.Threading",
+        "System.Linq",
+        "System.Net.WebHeaderCollection",
+        "System.Collections.Specialized",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "FA6C00C21B16B7895A102B3660F9B7CA0B72D6B6C6468DB8A26F3AF539C675B1"
+    },
+    {
+      "name": "OxyPlot.Wpf",
+      "file": "OxyPlot.Wpf.ba9de00c2b98489b7898b55a4ae57e92af45d5155c4c459f7111650403d1341b.bin",
+      "sha256": "ba9de00c2b98489b7898b55a4ae57e92af45d5155c4c459f7111650403d1341b",
+      "references": [
+        "System.Runtime",
+        "OxyPlot",
+        "System.Collections",
+        "OxyPlot.Wpf.Shared",
+        "System.Xml.ReaderWriter",
+        "System.Linq",
+        "System.ObjectModel",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "42857C635EF872ACD7810EEBE341F0116816BA78FA3C0F5EDA366785E09D82E3"
+    },
+    {
+      "name": "OxyPlot.Wpf.Shared",
+      "file": "OxyPlot.Wpf.Shared.7ec970c16704689ba121590428ec91a0088452ed65b8631896066443839516a5.bin",
+      "sha256": "7ec970c16704689ba121590428ec91a0088452ed65b8631896066443839516a5",
+      "references": [
+        "System.Runtime",
+        "OxyPlot",
+        "System.ObjectModel",
+        "System.Threading",
+        "System.Linq",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "36D7CA4BE8535BA06139BCC888EE7FEBE934393613945F4621A0AD104E386D2C"
+    }
+  ],
+  "gaps": [],
+  "sourceCommit": "dc188b7b72a0a2d605b52fae45a1de1d6166e1f1"
+}

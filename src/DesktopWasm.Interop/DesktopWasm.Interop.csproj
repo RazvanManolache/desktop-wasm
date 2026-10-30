@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DesktopWasm.Core\DesktopWasm.Core.csproj" />
+    <ProjectReference Include="..\DesktopWasm.Graphics\DesktopWasm.Graphics.csproj" />
+    <ProjectReference Include="..\DesktopWasm.Wpf\DesktopWasm.Wpf.csproj" />
+    <!-- Real WinForms fork (source build, repointed to inputs/winforms).
+         Fork-only alias: no global fork types, so the WPF platform shims
+         never collide; every fork type is reached as Fork::. -->
+    <ProjectReference Include="..\WfWasm.WinForms\WfWasm.WinForms.csproj">
+      <Aliases>Fork</Aliases>
+    </ProjectReference>
+    <!-- Canvas-backed drawing the fork binds; WasmDraw-only alias. -->
+    <ProjectReference Include="..\WfWasm.Drawing\WfWasm.Drawing.csproj">
+      <Aliases>WasmDraw</Aliases>
+    </ProjectReference>
+  </ItemGroup>
+
+</Project>

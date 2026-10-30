@@ -1,0 +1,12 @@
+<Page x:Class="DesktopWasm.Wpf.Tests.ToggleNavigationTests+NavProbePage" WindowTitle="Geo" Loaded="OnPageLoaded"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <StackPanel>
+    <RadioButton x:Name="First" GroupName="Samples" Checked="OnSampleChecked">One</RadioButton>
+    <RadioButton x:Name="Second" GroupName="Samples">Two</RadioButton>
+    <RadioButton x:Name="Other" GroupName="Else">Other</RadioButton>
+    <CheckBox x:Name="Box" IsChecked="True">Check</CheckBox>
+    <ToggleButton x:Name="Toggle" Visibility="Hidden">Unseen</ToggleButton>
+    <Frame x:Name="Host" NavigationUIVisibility="Hidden" ContentRendered="OnFrameRendered" />
+  </StackPanel>
+</Page>

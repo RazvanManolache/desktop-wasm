@@ -1,0 +1,16 @@
+{
+  "name": "winforms-apptransform",
+  "source": "<winforms-root>\\src\\WfWasm.Host.Server\\AppTransform.cs",
+  "sourceSha256": "3E2562C3ADB307A6C2C18AB8D9672F620C50D54911FEBB3E3534473B16E60D92",
+  "extractedUtc": "2026-10-30T12:03:16Z",
+  "data": {
+    "staticKeys": [
+      "calculator",
+      "calendar",
+      "paintnet",
+      "tictactoe",
+      "todo"
+    ],
+    "dynamicRule": "benchmarks where build != manual plus all syncfusion demos"
+  }
+}

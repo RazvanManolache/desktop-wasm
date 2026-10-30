@@ -1,0 +1,3019 @@
+{
+  "schemaVersion": 1,
+  "slug": "ilspy",
+  "mapVersion": "wpf-convert-v1",
+  "status": "conversion-failed",
+  "entryAssembly": "ILSpy",
+  "assemblies": [
+    {
+      "name": "System.Composition.AttributedModel",
+      "file": "System.Composition.AttributedModel.79b8faa050932e74a5bbddff96e3b5daecc63d4b887a5ac85849d3cd7194e917.bin",
+      "sha256": "79b8faa050932e74a5bbddff96e3b5daecc63d4b887a5ac85849d3cd7194e917",
+      "references": [
+        "System.Runtime",
+        "System.Runtime.InteropServices",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "7046AC8EA7073004060EDE6987BB83EDECEA8DE664F327A2FB3D366851E168C6"
+    },
+    {
+      "name": "TomsToolbox.Composition",
+      "file": "TomsToolbox.Composition.1dc6de70dbd1a944a58156a99b96e76b8efb2da237e87d9d556c4468fda089c6.bin",
+      "sha256": "1dc6de70dbd1a944a58156a99b96e76b8efb2da237e87d9d556c4468fda089c6",
+      "references": [
+        "System.Runtime",
+        "System.Collections",
+        "System.Reflection.DispatchProxy",
+        "System.Linq",
+        "TomsToolbox.Essentials",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "003D507BE01EEEEC31133AC8077FA3B2A594B481F68540505657A9998A3E1338"
+    },
+    {
+      "name": "Microsoft.Extensions.DependencyInjection.Abstractions",
+      "file": "Microsoft.Extensions.DependencyInjection.Abstractions.7f157cfd9115dc3c0381eae23e5f55ce721a9e8b91bf0c2dc8e69f96c22ccf12.bin",
+      "sha256": "7f157cfd9115dc3c0381eae23e5f55ce721a9e8b91bf0c2dc8e69f96c22ccf12",
+      "references": [
+        "System.Runtime",
+        "System.Runtime.Loader",
+        "System.Runtime.InteropServices",
+        "System.Collections.Concurrent",
+        "System.ComponentModel",
+        "System.Linq.Expressions",
+        "System.Collections",
+        "System.Memory",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "67FA4325000DB017DC0C35829B416F024F042D24EFB868BCF17A895EE6500A93"
+    },
+    {
+      "name": "ICSharpCode.ILSpyX",
+      "file": "ICSharpCode.ILSpyX.281b0e465d2f3596e4097d5f75969e299b128f1166efe4b5682226c377ba720e.bin",
+      "sha256": "281b0e465d2f3596e4097d5f75969e299b128f1166efe4b5682226c377ba720e",
+      "references": [
+        "System.Runtime",
+        "System.ObjectModel",
+        "System.Threading.Thread",
+        "System.Threading",
+        "System.Collections",
+        "System.Xml.XDocument",
+        "ICSharpCode.Decompiler",
+        "System.Collections.Immutable",
+        "System.Reflection.Metadata",
+        "Mono.Cecil",
+        "System.IO.Compression",
+        "System.IO.MemoryMappedFiles",
+        "System.Xml.ReaderWriter",
+        "System.Collections.Concurrent",
+        "System.Text.RegularExpressions",
+        "System.Linq",
+        "System.Text.Json",
+        "System.Composition.AttributedModel",
+        "System.Diagnostics.TraceSource",
+        "System.IO.Compression.ZipFile",
+        "System.Runtime.InteropServices",
+        "Mono.Cecil.Pdb",
+        "System.Linq.Parallel",
+        "K4os.Compression.LZ4",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "3995FB721245511AA970AF8CAD89CA9C470B2188D5CDFAD147B6F0D1F58916A5"
+    },
+    {
+      "name": "Microsoft.Extensions.DependencyInjection",
+      "file": "Microsoft.Extensions.DependencyInjection.7ba056a8864d15caf428a9f28aa939b347085153cb0b02c4be7ba2beeec337fc.bin",
+      "sha256": "7ba056a8864d15caf428a9f28aa939b347085153cb0b02c4be7ba2beeec337fc",
+      "references": [
+        "System.Runtime",
+        "System.Runtime.InteropServices",
+        "System.Collections",
+        "Microsoft.Extensions.DependencyInjection.Abstractions",
+        "System.ComponentModel",
+        "System.Diagnostics.Tracing",
+        "System.Linq.Expressions",
+        "System.Collections.Concurrent",
+        "System.Threading.ThreadPool",
+        "System.Reflection.Emit.Lightweight",
+        "System.Reflection.Emit.ILGeneration",
+        "System.Threading",
+        "System.Linq",
+        "System.Reflection.Primitives",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "158761CE778E799949F3A3060C461B1055BB35F1F5A65EFF0E42397849F09ECD"
+    },
+    {
+      "name": "ICSharpCode.Decompiler",
+      "file": "ICSharpCode.Decompiler.9b0d00c135e96849ae32c46529fb3a59a2b962cb344ebe87ffc6bb166e134c0a.bin",
+      "sha256": "9b0d00c135e96849ae32c46529fb3a59a2b962cb344ebe87ffc6bb166e134c0a",
+      "references": [
+        "netstandard",
+        "System.Memory",
+        "System.Reflection.Metadata",
+        "System.Collections.Immutable",
+        "System.Runtime.CompilerServices.Unsafe",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "34167A1D37ECA10E9E9AD8731EA37746B60EAA7C2F6D0E3AC40AADDCD7558AC2"
+    },
+    {
+      "name": "TomsToolbox.Essentials",
+      "file": "TomsToolbox.Essentials.e2729eab73b44ba34de92de5c97d64da9e2a900034aff2d1c2d196d71f8ac4cf.bin",
+      "sha256": "e2729eab73b44ba34de92de5c97d64da9e2a900034aff2d1c2d196d71f8ac4cf",
+      "references": [
+        "System.Runtime",
+        "System.Collections",
+        "System.ComponentModel.TypeConverter",
+        "System.ComponentModel.Primitives",
+        "System.ObjectModel",
+        "System.Threading",
+        "System.Threading.Thread",
+        "System.Linq.Expressions",
+        "System.Text.RegularExpressions",
+        "System.Collections.Concurrent",
+        "System.Xml.XDocument",
+        "System.Linq",
+        "System.Diagnostics.TraceSource",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "3B41E4F5718911FE89F34F72D9E5631075D05D5F0022EA161932C1F205BA6826"
+    },
+    {
+      "name": "TomsToolbox.Wpf.Composition.AttributedModel",
+      "file": "TomsToolbox.Wpf.Composition.AttributedModel.815d3eed334904484b39409e4defde4e6ec15ebf6bdfa9c40b3b489e0c2a6b67.bin",
+      "sha256": "815d3eed334904484b39409e4defde4e6ec15ebf6bdfa9c40b3b489e0c2a6b67",
+      "references": [
+        "System.Runtime",
+        "System.Composition.AttributedModel",
+        "TomsToolbox.Wpf.Composition",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "70F57322D963B9869867ABBC451508936F782643F8273CAC4977708ED74A79C5"
+    },
+    {
+      "name": "Mono.Cecil",
+      "file": "Mono.Cecil.c4bb75447ec71ec3728cb2ed5b090dd9b8bbafb3750e1105a465071fac4ae53b.bin",
+      "sha256": "c4bb75447ec71ec3728cb2ed5b090dd9b8bbafb3750e1105a465071fac4ae53b",
+      "references": [
+        "netstandard",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "831DCA77470D85CB6FFBEA3072DAA7A3DF5B7C9FCFD9C3F43674A9BE99D4BFCF"
+    },
+    {
+      "name": "TomsToolbox.ObservableCollections",
+      "file": "TomsToolbox.ObservableCollections.96d0b4028e1892f62d4bf6acf23835fb9bd92ca1b970051a3c45d756b761c184.bin",
+      "sha256": "96d0b4028e1892f62d4bf6acf23835fb9bd92ca1b970051a3c45d756b761c184",
+      "references": [
+        "System.Runtime",
+        "System.ObjectModel",
+        "System.Collections",
+        "System.Linq.Expressions",
+        "System.Linq",
+        "TomsToolbox.Essentials",
+        "System.Threading",
+        "netstandard",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "FF4BF07674FFE6A5808B36049AD54BC6ABBE77998795B5A34F33C13EBA252DB6"
+    },
+    {
+      "name": "McMaster.Extensions.CommandLineUtils",
+      "file": "McMaster.Extensions.CommandLineUtils.504e1a3f467efaeb8b0cfd47d64cc32c894fb5019f3eb1dc4cc428dd5c2211fe.bin",
+      "sha256": "504e1a3f467efaeb8b0cfd47d64cc32c894fb5019f3eb1dc4cc428dd5c2211fe",
+      "references": [
+        "netstandard",
+        "System.ComponentModel.Annotations",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "2128196EBD4FA7FCF6159D2A5548C2B9EFB733EEECC7BFA0023AB0A838859B80"
+    },
+    {
+      "name": "TomsToolbox.Composition.MicrosoftExtensions",
+      "file": "TomsToolbox.Composition.MicrosoftExtensions.1081b3929c622944c047a11000a5f5e1454759e2a536344defb403a8e7ea18b0.bin",
+      "sha256": "1081b3929c622944c047a11000a5f5e1454759e2a536344defb403a8e7ea18b0",
+      "references": [
+        "System.Runtime",
+        "TomsToolbox.Composition",
+        "System.ComponentModel",
+        "Microsoft.Extensions.DependencyInjection.Abstractions",
+        "System.Collections",
+        "System.Threading",
+        "System.Linq",
+        "TomsToolbox.Essentials",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "1B1418EF305F3543B73385202B4B1A7AFE8BB8A219AC8595C44405ABE7BF7B5D"
+    },
+    {
+      "name": "NaturalSort.Extension",
+      "file": "NaturalSort.Extension.ad6816dbb6bcc4b5276fc431288460f3214bf8fa3b43cc6ee1e87a4ce06fa777.bin",
+      "sha256": "ad6816dbb6bcc4b5276fc431288460f3214bf8fa3b43cc6ee1e87a4ce06fa777",
+      "references": [
+        "System.Runtime",
+        "System.Runtime.InteropServices",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "B08A49C0F30BB377E0FF95141455E3EF5D48D67709E3FD78D3E15EBD11EFE761"
+    },
+    {
+      "name": "Mono.Cecil.Pdb",
+      "file": "Mono.Cecil.Pdb.6c8e8290ef7d1c79777018d114f3a14043b242e71ffa99d5d3424282800b184d.bin",
+      "sha256": "6c8e8290ef7d1c79777018d114f3a14043b242e71ffa99d5d3424282800b184d",
+      "references": [
+        "netstandard",
+        "Mono.Cecil",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "A332332633FBCB20E8D50E49B4DB7BD1557721417122CF0C5F4C42F2332391D0"
+    },
+    {
+      "name": "K4os.Compression.LZ4",
+      "file": "K4os.Compression.LZ4.24eac9878054fb8379898b8d03cc7ac0ed45360117324768b040e5451af2371d.bin",
+      "sha256": "24eac9878054fb8379898b8d03cc7ac0ed45360117324768b040e5451af2371d",
+      "references": [
+        "System.Runtime",
+        "System.Memory",
+        "System.Runtime.InteropServices",
+        "System.Runtime.CompilerServices.Unsafe",
+        "System.Threading",
+        "DesktopWasm.Wpf"
+      ],
+      "inputSha256": "E282AADC2353B864FE95CD5FB525A1A093D99A30A5BF2530B7AB831D56179816"
+    }
+  ],
+  "gaps": [
+    {
+      "assembly": "ILSpy",
+      "kind": "missing-dependency",
+      "detail": "ICSharpCode.ILSpy.Controls.CustomDialog is live but its base \u0027System.Windows.Forms.Form\u0027 cannot resolve."
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "System.Xaml:System.Windows.Markup.MarkupExtension"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "WindowsBase:System.Windows.Threading.DispatcherOperation\u00601"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.StreamGeometry"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.StreamGeometryContext"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.DashStyles"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.DashStyle"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.TextFormatting.TextRunProperties"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.Typeface"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.FontStretch"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "WindowsBase:System.Windows.Media.TextFormattingMode"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Input.QueryCursorEventArgs"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Documents.FlowDocument"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Documents.BlockCollection"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Documents.InlineCollection"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Documents.Paragraph"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Documents.TextElementCollection\u00601"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Documents.Inline"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Documents.TextElement"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Documents.Block"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.TextAlignment"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Documents.Bold"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Documents.Italic"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Documents.List"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.TextMarkerStyle"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Documents.ListItem"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Documents.ListItemCollection"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Documents.Section"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.ToolTip"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.Primitives.Popup"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.ProgressBar"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.PropertyPath"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Data.BindingExpressionBase"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.DataObjectSettingDataEventArgs"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.DataObjectSettingDataEventHandler"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.DataObject"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "WindowsBase:System.Windows.DependencyPropertyChangedEventHandler"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Input.InputBinding"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Shapes.Line"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.Primitives.PlacementMode"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.Animation.AnimationTimeline"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Shell.TaskbarItemInfo"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Shell.TaskbarItemProgressState"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.DataFormats"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.IDataObject"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.DataObjectEventArgs"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.FrameworkTemplate"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.FlowDocumentScrollViewer"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Media.TextOptions"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.Decorator"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.SystemFonts"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Documents.Adorner"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.Animation.RectAnimation"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.Animation.Animatable"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Documents.AdornerLayer"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.DataGridCell"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.DataGridColumn"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.DataGridCellInfo"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.DragEventArgs"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.DragDropEffects"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.DragDrop"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Automation.Peers.FrameworkElementAutomationPeer"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "UIAutomationProvider:System.Windows.Automation.Provider.IExpandCollapseProvider"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Automation.Peers.AutomationControlType"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Automation.Peers.PatternInterface"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "UIAutomationTypes:System.Windows.Automation.ExpandCollapseState"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "UIAutomationTypes:System.Windows.Automation.ExpandCollapsePatternIdentifiers"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "UIAutomationTypes:System.Windows.Automation.AutomationProperty"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.FrameworkPropertyMetadataOptions"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.ComponentResourceKey"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.VirtualizingStackPanel"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.VirtualizationMode"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.Primitives.GeneratorStatus"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.GridView"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "WindowsBase:System.Windows.CoerceValueCallback"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.GridViewColumn"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.DynamicResourceExtension"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.GridViewColumnHeader"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.GridViewColumnHeaderRole"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Data.CollectionViewSource"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "WindowsBase:System.ComponentModel.ICollectionView"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "WindowsBase:System.ComponentModel.SortDescriptionCollection"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "WindowsBase:System.ComponentModel.SortDescription"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "System.Xaml:System.Windows.Markup.MarkupExtensionReturnTypeAttribute"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.ToolBar"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.Separator"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Data.BindingOperations"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Input.InputBindingCollection"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.TextTrimming"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.ViewBase"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.GridViewColumnCollection"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "System.Xaml:System.Windows.Markup.IProvideValueTarget"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.UIPropertyMetadata"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.StyleSelector"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.DataTemplateSelector"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.DataGridRowDetailsVisibilityMode"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.DataGridBoundColumn"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.DataGridAutoGeneratingColumnEventArgs"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.HitTestResult"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.DataTemplate"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.DataGridGridLinesVisibility"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.DataGridHeadersVisibility"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.DataGridSelectionMode"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.DataGridSelectionUnit"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.FrameworkElementFactory"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.DataGridCheckBoxColumn"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.DataGridTemplateColumn"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.FrameworkContentElement"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.GlyphTypeface"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.Fonts"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.DataObjectPastingEventArgs"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.DataObjectPastingEventHandler"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Input.TextCompositionEventHandler"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.CompositionTarget"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Interop.WindowInteropHelper"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.Imaging.IconBitmapDecoder"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.MessageBoxOptions"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.ContextMenu"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.Primitives.StatusBar"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.Panel"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.UIElementCollection"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.DrawingImage"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.ImageDrawing"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.DataGridRow"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.ContextMenuEventArgs"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.ContextMenuEventHandler"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Data.RelativeSource"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Data.RelativeSourceMode"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.ExitEventArgs"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.ExitEventHandler"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.StartupEventArgs"
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "missing-dependency",
+      "detail": "Referenced assembly \u0027System.Windows.Forms\u0027 is absent from upstream build output."
+    },
+    {
+      "assembly": "ILSpy",
+      "kind": "missing-dependency",
+      "detail": "Referenced assembly \u0027System.Drawing.Common\u0027 is absent from upstream build output."
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.Panel"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.UIElementCollection"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.HeaderedContentControl"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.Primitives.UniformGrid"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Data.BindingOperations"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Data.BindingExpressionBase"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.Decorator"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.PropertyPath"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "WindowsBase:System.Windows.CoerceValueCallback"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.FrameworkPropertyMetadataOptions"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.FrameworkTemplate"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.SizeChangedInfo"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.ComponentModel.DesignerProperties"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.TextTrimming"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.TextAlignment"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "WindowsBase:System.Windows.DependencyPropertyChangedEventHandler"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Documents.InlineCollection"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Documents.Inline"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Documents.TextElement"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Documents.TextElementCollection\u00601"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Data.ValueConversionAttribute"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Data.IMultiValueConverter"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "WindowsBase:System.Diagnostics.PresentationTraceSources"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "System.Xaml:System.Windows.Markup.MarkupExtension"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.ThicknessConverter"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.BrushConverter"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Data.MultiBindingExpression"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Data.CollectionViewGroup"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.Primitives.Popup"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.PasswordBox"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.Animation.TimelineGroup"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Input.ManipulationDeltaEventArgs"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Input.ManipulationDelta"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.Animation.PointAnimation"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Interop.HwndSource"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Interop.HwndTarget"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.CompositionTarget"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Interop.HwndSourceHook"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.SizeToContent"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.ScrollChangedEventArgs"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.ScrollChangedEventHandler"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.FreezableCollection\u00601"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.Primitives.IScrollInfo"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.VirtualizingPanel"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.ScrollUnit"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.Animation.AnimationTimeline"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.Animation.HandoffBehavior"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.Animation.AnimationClock"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "WindowsBase:System.Windows.ValidateValueCallback"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "WindowsBase:System.ComponentModel.DependencyPropertyDescriptor"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Shapes.Polyline"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Shapes.Shape"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Input.InputManager"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Input.ProcessInputEventArgs"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Input.ProcessInputEventHandler"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Input.InputDevice"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.DataGridColumn"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Input.StylusDevice"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Documents.AdornerDecorator"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Documents.AdornerLayer"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Documents.Adorner"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.TextChange"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.Typeface"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.NumberSubstitution"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "WindowsBase:System.Windows.Media.TextFormattingMode"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.FlowDirection"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.NumberCultureSource"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.NumberSubstitutionMethod"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Media.TextOptions"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Data.DataTransferEventArgs"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.FontStretch"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Input.InputBindingCollection"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Input.InputBinding"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.GroupStyle"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "WindowsBase:System.ComponentModel.GroupDescription"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.Animation.Animatable"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.ColumnDefinitionCollection"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.ColumnDefinition"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.FrameworkContentElement"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.DefinitionBase"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.RowDefinitionCollection"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.RowDefinition"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.UIPropertyMetadata"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.ComponentResourceKey"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "WindowsBase:System.Windows.Threading.DispatcherFrame"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.GeneralTransformGroup"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.GeneralTransformCollection"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.GroupItem"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "WindowsBase:System.ComponentModel.ICollectionView"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.ExceptionRoutedEventArgs"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.LogicalTreeHelper"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.DataFormats"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.DataObject"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.FrameworkTemplate"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.DataTemplateSelector"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.DataTemplate"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.Primitives.IScrollInfo"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.SizeChangedInfo"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.ToolTip"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.SizeToContent"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.Primitives.PlacementMode"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Input.TextCompositionEventHandler"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Input.InputDevice"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.Decorator"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "WindowsBase:System.Windows.IWeakEventListener"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "WindowsBase:System.Windows.WeakEventManager"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Documents.LogicalDirection"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "UIAutomationTypes:System.Windows.Automation.Provider.ITextRangeProvider"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "UIAutomationTypes:System.Windows.Automation.Text.TextPatternRangeEndpoint"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "UIAutomationTypes:System.Windows.Automation.Text.TextUnit"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "UIAutomationTypes:System.Windows.Automation.Provider.IRawElementProviderSimple"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Input.InputBinding"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Input.InputBindingCollection"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Input.KeyBinding"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Automation.Peers.FrameworkElementAutomationPeer"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "UIAutomationProvider:System.Windows.Automation.Provider.IValueProvider"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "UIAutomationProvider:System.Windows.Automation.Provider.ITextProvider"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Automation.Peers.AutomationEvents"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Automation.Peers.AutomationControlType"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "UIAutomationTypes:System.Windows.Automation.SupportedTextSelection"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Automation.Peers.PatternInterface"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Input.KeyboardNavigation"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Input.KeyboardNavigationMode"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Input.InputManager"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Input.TouchEventArgs"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.HitTestResult"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.PointHitTestParameters"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.PointHitTestResult"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Input.QueryCursorEventArgs"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Input.QueryCursorEventHandler"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.GiveFeedbackEventArgs"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.GiveFeedbackEventHandler"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.QueryContinueDragEventArgs"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.QueryContinueDragEventHandler"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.DragEventArgs"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.DragEventHandler"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.DragDropEffects"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.IDataObject"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.DataFormats"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.DragDropKeyStates"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.DataObjectPastingEventArgs"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.DataObjectEventArgs"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.DragAction"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.DataObject"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.DataObjectCopyingEventArgs"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.DragDrop"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.TextFormatting.TextLine"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.Typeface"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.FlowDirection"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "WindowsBase:System.ComponentModel.PropertyChangedEventManager"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Interop.HwndSource"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Input.InputMethod"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Interop.HwndSourceHook"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.TextFormatting.TextBounds"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.DataObjectSettingDataEventArgs"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Shapes.Line"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Shapes.Shape"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.DoubleCollection"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.PenLineCap"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "WindowsBase:System.Windows.DependencyPropertyChangedEventHandler"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.FrameworkPropertyMetadataOptions"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.TextFormatting.TextRunProperties"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.TextFormatting.TextFormatter"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.TextFormatting.TextEmbeddedObject"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.TextFormatting.TextEmbeddedObjectMetrics"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.TextFormatting.TextRun"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.FontStyleConverter"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.LanguageSpecificStringDictionary"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Markup.XmlLanguage"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.ColorConverter"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.FontWeightConverter"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Documents.TextElement"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.FontStretch"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.TextDecorations"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.TextDecorationCollection"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.TextFormatting.TextSource"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.TextFormatting.TextEndOfParagraph"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.TextFormatting.TextSpan\u00601"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.TextFormatting.CultureSpecificCharacterBufferRange"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.TextFormatting.CharacterBufferRange"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.TextFormatting.TextParagraphProperties"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.TextAlignment"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.TextFormatting.TextMarkerProperties"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.TextFormatting.TextCharacters"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.BaselineAlignment"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.TextEffectCollection"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.TextFormatting.TextRunTypographyProperties"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.NumberSubstitution"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.TextDecoration"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.TextFormatting.InvertAxes"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.GeometryHitTestResult"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.GeometryHitTestParameters"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.TextFormatting.CharacterHit"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.UIElementCollection"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.TextFormatting.TextLineBreak"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.ContainerVisual"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Input.StylusDevice"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.LineBreakCondition"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.TextFormatting.CharacterBufferReference"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.FontVariants"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.FontNumeralStyle"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.FontNumeralAlignment"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.FontFraction"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.FontEastAsianWidths"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.FontEastAsianLanguage"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.FontCapitals"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Documents.Adorner"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.Primitives.Popup"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Data.BindingExpressionBase"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Documents.AdornerLayer"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Documents.Inline"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.DashStyles"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.DashStyle"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Documents.Italic"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Documents.InlineCollection"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Documents.TextElementCollection\u00601"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Media.TextOptions"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "WindowsBase:System.Windows.Media.TextFormattingMode"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.DpiScale"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.CompositionTarget"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.FrameworkContentElement"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Documents.Block"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Documents.Paragraph"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Documents.FlowDocument"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "UIAutomationTypes:System.Windows.Automation.ValuePatternIdentifiers"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "UIAutomationTypes:System.Windows.Automation.AutomationProperty"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.LocalizabilityAttribute"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.LocalizationCategory"
+    },
+    {
+      "assembly": "ICSharpCode.AvalonEdit",
+      "kind": "missing-dependency",
+      "detail": "Referenced assembly \u0027System.Windows.Forms\u0027 is absent from upstream build output."
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.FlowDirection"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.CompositionTarget"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.TabControl"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.Panel"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.UIElementCollection"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.Decorator"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.TabItem"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.Primitives.GeneratorStatus"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Data.BindingExpressionBase"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.DataTemplate"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.DataTemplateSelector"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "WindowsBase:System.Windows.DependencyPropertyChangedEventHandler"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.FrameworkTemplate"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "WindowsBase:System.Windows.CoerceValueCallback"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Data.BindingOperations"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.Primitives.Thumb"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.FrameworkPropertyMetadataOptions"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.ColumnDefinitionCollection"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.RowDefinitionCollection"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.ColumnDefinition"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.RowDefinition"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.Primitives.DragStartedEventArgs"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.Primitives.DragStartedEventHandler"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.Primitives.DragDeltaEventArgs"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.Primitives.DragDeltaEventHandler"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.Primitives.DragCompletedEventArgs"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.Primitives.DragCompletedEventHandler"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.SizeToContent"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Interop.HwndSource"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Interop.HwndSourceHook"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Interop.WindowInteropHelper"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Interop.HwndHost"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Interop.HwndSourceParameters"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Documents.AdornerDecorator"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.ContextMenu"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.Primitives.PlacementMode"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Input.KeyboardNavigation"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Input.KeyboardNavigationMode"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.ExitEventArgs"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.ExitEventHandler"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.LogicalTreeHelper"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "System.Xaml:System.Windows.Markup.MarkupExtension"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Data.ValueConversionAttribute"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Data.IMultiValueConverter"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.GridLengthConverter"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.UIPropertyMetadata"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.StyleSelector"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.ComponentModel.DesignerProperties"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.Imaging.IconBitmapDecoder"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "WindowsBase:System.ComponentModel.DependencyPropertyDescriptor"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "WindowsBase:System.Windows.Threading.DispatcherOperationCallback"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Interop.HwndTarget"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.PropertyPath"
+    },
+    {
+      "assembly": "AvalonDock",
+      "kind": "unmapped-type",
+      "detail": "WindowsBase:System.Windows.ValidateValueCallback"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Data.ValueConversionAttribute"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "System.Xaml:System.Windows.Markup.MarkupExtension"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Data.IMultiValueConverter"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "WindowsBase:System.Diagnostics.PresentationTraceSources"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.LogicalTreeHelper"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "WindowsBase:System.ComponentModel.DependencyPropertyDescriptor"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.FrameworkTemplate"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.DataGridColumn"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.DataGridColumnEventArgs"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.DataGridLength"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.ToolTip"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.Primitives.DataGridColumnHeader"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.Primitives.Thumb"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.PropertyPath"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Data.BindingOperations"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Data.BindingExpressionBase"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.ComponentResourceKey"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.DataGridPreparingCellForEditEventArgs"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.DataGridCellEditEndingEventArgs"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "WindowsBase:System.ComponentModel.SortDescriptionCollection"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "WindowsBase:System.ComponentModel.GroupDescription"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "WindowsBase:System.ComponentModel.SortDescription"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.FreezableCollection\u00601"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.DataGridCell"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.Primitives.Popup"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "WindowsBase:System.Windows.DependencyPropertyChangedEventHandler"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.FrameworkPropertyMetadataOptions"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.ComponentModel.DesignerProperties"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.DataGridBoundColumn"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Input.KeyStates"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.DataGridCellInfo"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.DataGridSelectionMode"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.DataGridSelectionUnit"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Input.KeyboardNavigation"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Input.KeyboardNavigationMode"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.Primitives.MultiSelector"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.DataTemplate"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "WindowsBase:System.Windows.CoerceValueCallback"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Data.DataTransferEventArgs"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.DataGridRowEditEndingEventArgs"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Data.MultiBinding"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "WindowsBase:System.ComponentModel.ICollectionView"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.DataGridCheckBoxColumn"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.DataGridTemplateColumn"
+    },
+    {
+      "assembly": "DataGridExtensions",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.DataGridComboBoxColumn"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf.Styles",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.Effects.ShaderEffect"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf.Styles",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.Effects.PixelShader"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf.Styles",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.ComponentResourceKey"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf.Styles",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Markup.XamlTypeMapper"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf.Styles",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Markup.ParserContext"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf.Styles",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Markup.XmlnsDictionary"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf.Styles",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Markup.XamlReader"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf.Styles",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.FrameworkPropertyMetadataOptions"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf.Styles",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Interop.Imaging"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf.Composition",
+      "kind": "unmapped-type",
+      "detail": "WindowsBase:System.Diagnostics.PresentationTraceSources"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf.Composition",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.FreezableCollection\u00601"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf.Composition",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.TabControl"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf.Composition",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.DataTemplateSelector"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf.Composition",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Data.BindingOperations"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf.Composition",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Data.BindingExpressionBase"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf.Composition",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.ComponentModel.DesignerProperties"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf.Composition",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.DataTemplate"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf.Composition",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.TemplateKey"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf.Composition",
+      "kind": "nested-type",
+      "detail": "System.Windows.TemplateKey/TemplateType (nested framework types are not mapped)"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf.Composition",
+      "kind": "unmapped-type",
+      "detail": "System.Xaml:System.Windows.Markup.MarkupExtension"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf.Composition",
+      "kind": "unmapped-type",
+      "detail": "System.Xaml:System.Xaml.IRootObjectProvider"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf.Composition",
+      "kind": "unmapped-type",
+      "detail": "System.Xaml:System.Windows.Markup.IProvideValueTarget"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf.Composition",
+      "kind": "unmapped-type",
+      "detail": "System.Xaml:System.Windows.Markup.MarkupExtensionReturnTypeAttribute"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf.Composition",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.FrameworkPropertyMetadataOptions"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf.Composition",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Markup.ParserContext"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf.Composition",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Markup.XamlTypeMapper"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf.Composition",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Markup.XmlnsDictionary"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf.Composition",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Markup.XamlReader"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf.Composition",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.DataTemplateKey"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf.Composition",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.ContextMenu"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf.Composition",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.PropertyPath"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf.Composition",
+      "kind": "unmapped-type",
+      "detail": "WindowsBase:System.Windows.CoerceValueCallback"
+    },
+    {
+      "assembly": "TomsToolbox.Wpf.Composition",
+      "kind": "unmapped-type",
+      "detail": "WindowsBase:System.Windows.DependencyPropertyChangedEventHandler"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.Panel"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.UIElementCollection"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.Decorator"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.VisualStateManager"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.VisualState"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.Effects.Effect"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.PropertyPath"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.VisualStateGroup"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.VisualTransition"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.Animation.TimelineGroup"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.ImageBrush"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "nested-type",
+      "detail": "System.Windows.Media.Animation.TimelineCollection/Enumerator (nested framework types are not mapped)"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.MediaElement"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.Primitives.LayoutInformation"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.Animation.ObjectAnimationUsingKeyFrames"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.Animation.ObjectKeyFrameCollection"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.Animation.ObjectKeyFrame"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.Animation.DoubleAnimationUsingKeyFrames"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.Animation.DoubleKeyFrameCollection"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.Animation.DoubleKeyFrame"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Media.Animation.ThicknessAnimationUsingKeyFrames"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Media.Animation.ThicknessKeyFrameCollection"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Media.Animation.ThicknessKeyFrame"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Media.Animation.ThicknessAnimation"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.Animation.Int32AnimationUsingKeyFrames"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.Animation.Int32KeyFrameCollection"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.Animation.Int32KeyFrame"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.Animation.Int32Animation"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.Animation.DiscreteObjectKeyFrame"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.Animation.KeyTime"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Data.BindingExpressionBase"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.Animation.EasingFunctionBase"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.FreezableCollection\u00601"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "nested-type",
+      "detail": "System.Windows.FreezableCollection\u00601/Enumerator (nested framework types are not mapped)"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.Animation.PointAnimation"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.Animation.ColorAnimation"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Input.ManipulationModes"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Input.ManipulationStartingEventArgs"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Input.ManipulationInertiaStartingEventArgs"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Input.ManipulationVelocities"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Input.InertiaTranslationBehavior"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Input.InertiaRotationBehavior"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Input.ManipulationDeltaEventArgs"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Input.ManipulationDelta"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "WindowsBase:System.Windows.CoerceValueCallback"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.SkewTransform"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "nested-type",
+      "detail": "System.Windows.Media.TransformCollection/Enumerator (nested framework types are not mapped)"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Documents.Adorner"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Documents.AdornerLayer"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Shapes.Shape"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.Effects.ShaderEffect"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.Effects.SamplingMode"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.Animation.ClockState"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Controls.Primitives.Popup"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.ExceptionRoutedEventArgs"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationCore:System.Windows.Media.Animation.Animatable"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Annotations.Annotation"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Navigation.NavigationService"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.Windows.Data.BindingOperations"
+    },
+    {
+      "assembly": "Microsoft.Xaml.Behaviors",
+      "kind": "unmapped-type",
+      "detail": "PresentationFramework:System.ComponentModel.DesignerProperties"
+    }
+  ],
+  "sourceCommit": "03b7444943e720b3134d296c0c8dd3876f8ea4ce"
+}

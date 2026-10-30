@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Joint WinForms+WPF conversion closure and composed mapping policy.
+         New first-party project owned by the merge-packaging lane: adapters
+         may reference both engines, neither engine references this project. -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Pinned to the workspace Cecil version (same as Convert/Rewrite). -->
+    <PackageReference Include="Mono.Cecil" Version="0.11.6" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DesktopWasm.Core\DesktopWasm.Core.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/DesktopWasm.BrowserHost/DesktopWasm.BrowserHost.csproj" />
+    <Project Path="src/DesktopWasm.Core/DesktopWasm.Core.csproj" />
+    <Project Path="src/DesktopWasm.Graphics/DesktopWasm.Graphics.csproj" />
+    <Project Path="src/DesktopWasm.Wpf/DesktopWasm.Wpf.csproj" />
+    <Project Path="src/DesktopWasm.Convert/DesktopWasm.Convert.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/DesktopWasm.Core.Tests/DesktopWasm.Core.Tests.csproj" />
+    <Project Path="tests/DesktopWasm.Wpf.Tests/DesktopWasm.Wpf.Tests.csproj" />
+    <Project Path="tests/DesktopWasm.Convert.Tests/DesktopWasm.Convert.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,21 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:t="clr-namespace:DesktopWasm.Wpf.Tests">
+  <!-- Implicit theme style for BasedOn {x:Type} tests (mirrors vendor
+       generic.xaml: unkeyed styles resolve by Type through the defining
+       assembly's theme dictionary). -->
+  <Style TargetType="{x:Type t:BasedOnBaseStub}">
+    <Setter Property="Tag" Value="based" />
+  </Style>
+  <!-- Implicit theme style with a theme-internal StaticResource (mirrors
+       DrawerHost OverlayBackground/BlackBackground in one dictionary). -->
+  <SolidColorBrush x:Key="ProbeThemeBrush" Color="Red" />
+  <Style TargetType="{x:Type t:BasedOnThemedStub}">
+    <Setter Property="Background" Value="{StaticResource ProbeThemeBrush}" />
+  </Style>
+  <!-- Named theme style (mirrors vendor generic.xaml keys like
+       MaterialDesignPopupBox that window styles BasedOn). -->
+  <Style x:Key="ProbeBase" TargetType="{x:Type t:BasedOnThemedStub}">
+    <Setter Property="Tag" Value="based" />
+  </Style>
+</ResourceDictionary>

@@ -1,0 +1,171 @@
+{
+  "name": "winforms-scenestate",
+  "source": "<winforms-root>\\src\\WfWasm.CanvasHost\\SceneState.cs",
+  "sourceSha256": "AF45F89D82BFF5C471CC65B0AB4D2590CD577541126E1473338E0B743600869F",
+  "extractedUtc": "2026-10-30T12:03:16Z",
+  "data": {
+    "count": 20,
+    "scenes": [
+      {
+        "scene": "Calculator",
+        "slug": "calculator",
+        "label": "Calculator",
+        "sourceLabel": "albisnesstz/csharp-win-calculator",
+        "sourceUrl": "https://github.com/albisnesstz/csharp-win-calculator",
+        "appFolder": "calculator"
+      },
+      {
+        "scene": "Calendar",
+        "slug": "calendar",
+        "label": "Calendar",
+        "sourceLabel": "justwesi/functional-calendar",
+        "sourceUrl": "https://github.com/justwesi/functional-calendar",
+        "appFolder": "calendar"
+      },
+      {
+        "scene": "Paint",
+        "slug": "paint",
+        "label": "Paint",
+        "sourceLabel": "Paint.NET v5.1.12 (Retargeted to WebAssembly)",
+        "sourceUrl": "https://www.getpaint.net",
+        "appFolder": "paintnet"
+      },
+      {
+        "scene": "Smoke",
+        "slug": "smoke",
+        "label": "Smoke form",
+        "sourceLabel": "dotnet/samples \u00B7 windowsforms/helloworld-sharedsource",
+        "sourceUrl": "https://github.com/dotnet/samples",
+        "appFolder": "smoke"
+      },
+      {
+        "scene": "TelerikBookshelf",
+        "slug": "telerik-bookshelf",
+        "label": "Telerik: BookShelf",
+        "sourceLabel": "Telerik UI for WinForms demos",
+        "sourceUrl": null,
+        "appFolder": "telerik-bookshelf"
+      },
+      {
+        "scene": "TelerikBugtracker",
+        "slug": "telerik-bugtracker",
+        "label": "Telerik: BugTracker",
+        "sourceLabel": "Telerik UI for WinForms demos",
+        "sourceUrl": null,
+        "appFolder": "telerik-bugtracker"
+      },
+      {
+        "scene": "TelerikDemoAppsHub",
+        "slug": "telerik-demoappshub",
+        "label": "Telerik: DemoAppsHub",
+        "sourceLabel": "Telerik UI for WinForms demos",
+        "sourceUrl": null,
+        "appFolder": "telerik-demoappshub"
+      },
+      {
+        "scene": "TelerikDiagram",
+        "slug": "telerik-diagram",
+        "label": "Telerik: Diagram",
+        "sourceLabel": "Telerik UI for WinForms demos",
+        "sourceUrl": null,
+        "appFolder": "telerik-diagram"
+      },
+      {
+        "scene": "TelerikErp",
+        "slug": "telerik-erp",
+        "label": "Telerik: ERP",
+        "sourceLabel": "Telerik UI for WinForms demos",
+        "sourceUrl": null,
+        "appFolder": "telerik-erp"
+      },
+      {
+        "scene": "TelerikExportWithDpl",
+        "slug": "telerik-exportwithdpl",
+        "label": "Telerik: ExportWithDpl",
+        "sourceLabel": "Telerik UI for WinForms demos",
+        "sourceUrl": null,
+        "appFolder": "telerik-exportwithdpl"
+      },
+      {
+        "scene": "TelerikFileExplorer",
+        "slug": "telerik-fileexplorer",
+        "label": "Telerik: FileExplorer",
+        "sourceLabel": "Telerik UI for WinForms demos",
+        "sourceUrl": null,
+        "appFolder": "telerik-fileexplorer"
+      },
+      {
+        "scene": "TelerikHotelApp",
+        "slug": "telerik-hotelapp",
+        "label": "Telerik: HotelApp",
+        "sourceLabel": "Telerik UI for WinForms demos",
+        "sourceUrl": null,
+        "appFolder": "telerik-hotelapp"
+      },
+      {
+        "scene": "TelerikMedicalApp",
+        "slug": "telerik-medicalapp",
+        "label": "Telerik: MedicalApp",
+        "sourceLabel": "Telerik UI for WinForms demos",
+        "sourceUrl": null,
+        "appFolder": "telerik-medicalapp"
+      },
+      {
+        "scene": "TelerikPhoto",
+        "slug": "telerik-photo",
+        "label": "Telerik: Photo Album",
+        "sourceLabel": "Telerik UI for WinForms demos",
+        "sourceUrl": null,
+        "appFolder": "telerik-photo"
+      },
+      {
+        "scene": "TelerikRichTextEditor",
+        "slug": "telerik-richtexteditor",
+        "label": "Telerik: RichTextEditor",
+        "sourceLabel": "Telerik UI for WinForms demos",
+        "sourceUrl": null,
+        "appFolder": "telerik-richtexteditor"
+      },
+      {
+        "scene": "TelerikRssReader",
+        "slug": "telerik-rssreader",
+        "label": "Telerik: RssReader",
+        "sourceLabel": "Telerik UI for WinForms demos",
+        "sourceUrl": null,
+        "appFolder": "telerik-rssreader"
+      },
+      {
+        "scene": "TelerikSpellCheck",
+        "slug": "telerik-spellcheckasyoutype",
+        "label": "Telerik: SpellCheckAsYouType",
+        "sourceLabel": "Telerik UI for WinForms demos",
+        "sourceUrl": null,
+        "appFolder": "telerik-spellcheckasyoutype"
+      },
+      {
+        "scene": "TelerikToast",
+        "slug": "telerik-toastnotificationmanagerexamples",
+        "label": "Telerik: ToastNotificationManager",
+        "sourceLabel": "Telerik UI for WinForms demos",
+        "sourceUrl": null,
+        "appFolder": "telerik-toastnotificationmanagerexamples"
+      },
+      {
+        "scene": "TicTacToe",
+        "slug": "tic-tac-toe",
+        "label": "Tic-tac-toe",
+        "sourceLabel": "zakaria-sahki/tic-tac-toe-game",
+        "sourceUrl": "https://github.com/zakaria-sahki/tic-tac-toe-game",
+        "appFolder": "tictactoe"
+      },
+      {
+        "scene": "Todo",
+        "slug": "todo",
+        "label": "Todo list",
+        "sourceLabel": "kasra10/simple-csharp-todolist",
+        "sourceUrl": "https://github.com/kasra10/simple-csharp-todolist",
+        "appFolder": "todo"
+      }
+    ]
+  }
+}

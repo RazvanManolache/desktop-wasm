@@ -1,0 +1,7 @@
+<Window x:Class="BootProbe.BadMethodMain" Title="WiredBad"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <StackPanel>
+    <Button x:Name="Fire" Click="Nope">Go</Button>
+  </StackPanel>
+</Window>

@@ -1,0 +1,256 @@
+{
+  "name": "wpf-applibrary",
+  "source": "<wpf-root>\\src\\DesktopWasm.BrowserHost\\wwwroot\\app-library.json",
+  "sourceSha256": "16E0EC4C63246C72760F274C2E91E947FD594C4487622D511CF13F58A9C405A6",
+  "extractedUtc": "2026-10-30T12:03:16Z",
+  "data": {
+    "count": 49,
+    "entries": [
+      {
+        "slug": "a11y-events",
+        "status": "ready",
+        "kind": "toolkit"
+      },
+      {
+        "slug": "animation",
+        "status": "ready",
+        "kind": "toolkit"
+      },
+      {
+        "slug": "asset-explorer",
+        "status": "ready",
+        "kind": "toolkit"
+      },
+      {
+        "slug": "avalondock",
+        "status": "not-converted",
+        "kind": "external"
+      },
+      {
+        "slug": "avalonedit",
+        "status": "not-converted",
+        "kind": "external"
+      },
+      {
+        "slug": "binding",
+        "status": "ready",
+        "kind": "toolkit"
+      },
+      {
+        "slug": "calc-keypad",
+        "status": "ready",
+        "kind": "toolkit"
+      },
+      {
+        "slug": "chrome-pack",
+        "status": "ready",
+        "kind": "toolkit"
+      },
+      {
+        "slug": "color-lab",
+        "status": "ready",
+        "kind": "toolkit"
+      },
+      {
+        "slug": "controls",
+        "status": "ready",
+        "kind": "toolkit"
+      },
+      {
+        "slug": "datagrid",
+        "status": "ready",
+        "kind": "toolkit"
+      },
+      {
+        "slug": "dialogs",
+        "status": "ready",
+        "kind": "toolkit"
+      },
+      {
+        "slug": "drag-drop",
+        "status": "ready",
+        "kind": "toolkit"
+      },
+      {
+        "slug": "effects",
+        "status": "ready",
+        "kind": "toolkit"
+      },
+      {
+        "slug": "files-clipboard",
+        "status": "ready",
+        "kind": "toolkit"
+      },
+      {
+        "slug": "geometry",
+        "status": "ready",
+        "kind": "external"
+      },
+      {
+        "slug": "handycontrol",
+        "status": "not-converted",
+        "kind": "external"
+      },
+      {
+        "slug": "hello-real",
+        "status": "ready",
+        "kind": "external"
+      },
+      {
+        "slug": "hello-xaml",
+        "status": "ready",
+        "kind": "toolkit"
+      },
+      {
+        "slug": "hittest",
+        "status": "ready",
+        "kind": "toolkit"
+      },
+      {
+        "slug": "ilspy",
+        "status": "not-converted",
+        "kind": "external"
+      },
+      {
+        "slug": "ink-doc",
+        "status": "ready",
+        "kind": "toolkit"
+      },
+      {
+        "slug": "input",
+        "status": "ready",
+        "kind": "toolkit"
+      },
+      {
+        "slug": "interop",
+        "status": "ready",
+        "kind": "toolkit"
+      },
+      {
+        "slug": "layout",
+        "status": "ready",
+        "kind": "toolkit"
+      },
+      {
+        "slug": "listbox",
+        "status": "ready",
+        "kind": "toolkit"
+      },
+      {
+        "slug": "mahapps",
+        "status": "not-converted",
+        "kind": "external"
+      },
+      {
+        "slug": "material-design",
+        "status": "not-converted",
+        "kind": "external"
+      },
+      {
+        "slug": "menu",
+        "status": "ready",
+        "kind": "toolkit"
+      },
+      {
+        "slug": "oxyplot",
+        "status": "ready",
+        "kind": "external"
+      },
+      {
+        "slug": "pc-space-map",
+        "status": "not-converted",
+        "kind": "external"
+      },
+      {
+        "slug": "pocket-calculator",
+        "status": "ready",
+        "kind": "toolkit"
+      },
+      {
+        "slug": "primitives",
+        "status": "ready",
+        "kind": "toolkit"
+      },
+      {
+        "slug": "project-planner",
+        "status": "ready",
+        "kind": "toolkit"
+      },
+      {
+        "slug": "resources",
+        "status": "ready",
+        "kind": "toolkit"
+      },
+      {
+        "slug": "screen-to-gif",
+        "status": "not-converted",
+        "kind": "external"
+      },
+      {
+        "slug": "scroll",
+        "status": "ready",
+        "kind": "toolkit"
+      },
+      {
+        "slug": "shell",
+        "status": "ready",
+        "kind": "toolkit"
+      },
+      {
+        "slug": "simple-binding",
+        "status": "ready",
+        "kind": "external"
+      },
+      {
+        "slug": "size-ellipse",
+        "status": "ready",
+        "kind": "toolkit"
+      },
+      {
+        "slug": "slider",
+        "status": "ready",
+        "kind": "toolkit"
+      },
+      {
+        "slug": "tabs",
+        "status": "ready",
+        "kind": "toolkit"
+      },
+      {
+        "slug": "templates",
+        "status": "ready",
+        "kind": "toolkit"
+      },
+      {
+        "slug": "text",
+        "status": "ready",
+        "kind": "toolkit"
+      },
+      {
+        "slug": "treeview",
+        "status": "ready",
+        "kind": "toolkit"
+      },
+      {
+        "slug": "typography",
+        "status": "ready",
+        "kind": "toolkit"
+      },
+      {
+        "slug": "validation-links",
+        "status": "ready",
+        "kind": "toolkit"
+      },
+      {
+        "slug": "wpf-calculator",
+        "status": "ready",
+        "kind": "external"
+      },
+      {
+        "slug": "wpf-gallery",
+        "status": "ready",
+        "kind": "external"
+      }
+    ]
+  }
+}

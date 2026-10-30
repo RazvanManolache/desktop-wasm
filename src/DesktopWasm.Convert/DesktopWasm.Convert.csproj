@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>DesktopWasm.Convert</RootNamespace>
+    <AssemblyName>DesktopWasm.Convert</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Mono.Cecil 0.11.6 is in the local NuGet cache (shared with winforms-wasm). -->
+    <PackageReference Include="Mono.Cecil" Version="0.11.6" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DesktopWasm.Wpf\DesktopWasm.Wpf.csproj" />
+  </ItemGroup>
+
+</Project>

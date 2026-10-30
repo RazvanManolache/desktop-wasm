@@ -1,0 +1,33 @@
+@inherits LayoutComponentBase
+@inject DemoState State
+@inject NavigationManager Nav
+@implements IDisposable
+
+<div class="preview-shell @(_menuOpen ? "menu-open" : "")">
+    <aside class="app-sidebar"><NavMenu /></aside>
+    <main class="preview-main">
+        <div class="workspace-toolbar">
+            <span class="toolbar-title"><i class="live-dot" aria-hidden="true"></i><h1>@State.Current.Label</h1></span><span class="source-label">DesktopWasm.Wpf</span>
+        </div>
+        <article class="preview-content">@Body</article>
+        <footer class="workspace-footer">
+            <span>WPF · WebAssembly</span>
+            <div class="foot-metrics" aria-label="Frame status">
+                <span class="foot-metric"><span>FRAME</span><strong>@State.Status</strong></span>
+            </div>
+        </footer>
+    </main>
+    <aside class="app-rail" aria-label="Workspace actions">
+        <a class="rail-brand" href="/" title="WPF Studio home" aria-label="WPF Studio home"><span class="brand-mark">w<span>f</span></span></a>
+        <button class="icon-button rail-button menu-toggle" title="Toggle demo library" aria-label="Toggle demo menu" aria-expanded="@_menuOpen" @onclick="() => _menuOpen = !_menuOpen">☰</button>
+        <button class="icon-button rail-button" title="Reload demo" aria-label="Reload" @onclick="Reload">↻</button>
+    </aside>
+</div>
+
+@code {
+    private bool _menuOpen;
+    protected override void OnInitialized() => State.Changed += OnStateChanged;
+    private void OnStateChanged() { _menuOpen = false; _ = InvokeAsync(StateHasChanged); }
+    private void Reload() => Nav.NavigateTo(Nav.Uri, forceLoad: true);
+    public void Dispose() => State.Changed -= OnStateChanged;
+}

@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://desktopwasm/catalog/apps.schema.json",
+  "title": "DesktopWasm unified app catalog",
+  "description": "Single maintained menu list. See docs/architecture/CATALOG-CONTRACT.md.",
+  "type": "object",
+  "required": ["schemaVersion", "apps"],
+  "properties": {
+    "schemaVersion": { "const": 2 },
+    "apps": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/entry" }
+    }
+  },
+  "$defs": {
+    "idToken": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,79}$"
+    },
+    "alias": {
+      "type": "string",
+      "anyOf": [
+        { "$ref": "#/$defs/idToken" },
+        { "type": "string", "pattern": "^/(demo|app)/[a-z0-9][a-z0-9-]{0,79}$" }
+      ]
+    },
+    "shaHex": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{64}$"
+    },
+    "bareFile": {
+      "type": "string",
+      "pattern": "^[^/\\\\:]{1,200}$"
+    },
+    "entry": {
+      "type": "object",
+      "required": ["id", "aliases", "label", "description", "category", "icon", "provenance", "entry", "capabilities", "transformVersion", "availability", "upstreamStatus", "availabilityNote", "evidence", "gaps"],
+      "properties": {
+        "id": { "$ref": "#/$defs/idToken" },
+        "aliases": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/alias" }
+        },
+        "label": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
+        "category": { "type": "string", "minLength": 1 },
+        "icon": { "type": "string" },
+        "provenance": {
+          "type": "object",
+          "required": ["family", "origin", "hasRecipe"],
+          "properties": {
+            "family": { "type": "string" },
+            "origin": { "type": "string" },
+            "sourceUrl": { "type": ["string", "null"] },
+            "repository": { "type": ["string", "null"] },
+            "commit": { "type": ["string", "null"] },
+            "project": { "type": ["string", "null"] },
+            "license": { "type": ["string", "null"] },
+            "boundary": { "type": ["string", "null"] },
+            "hasRecipe": { "type": "boolean" }
+          }
+        },
+        "entry": {
+          "type": "object",
+          "required": ["kind", "entryAssembly"],
+          "properties": {
+            "kind": { "enum": ["native-demo", "converted-app", "mixed-session"] },
+            "entryAssembly": { "type": "string", "minLength": 1 },
+            "manifestSlug": { "type": ["string", "null"] },
+            "bootNote": { "type": ["string", "null"] },
+            "bridge": {
+              "type": ["object", "null"],
+              "required": ["provider", "contract"],
+              "properties": {
+                "provider": { "type": "string", "minLength": 1 },
+                "contract": { "type": "string", "minLength": 1 }
+              }
+            }
+          }
+        },
+        "capabilities": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["winforms", "wpf"] }
+        },
+        "transformVersion": { "type": "string", "minLength": 1 },
+        "package": {
+          "type": ["object", "null"],
+          "required": ["schemaVersion", "mapVersion", "status", "assemblies", "gaps"],
+          "properties": {
+            "schemaVersion": { "const": 1 },
+            "mapVersion": { "type": "string", "minLength": 1 },
+            "status": { "enum": ["converted", "conversion-failed", "build-failed"] },
+            "assemblies": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["name", "file", "sha256", "references", "artifact"],
+                "properties": {
+                  "name": { "type": "string", "minLength": 1 },
+                  "file": { "$ref": "#/$defs/bareFile" },
+                  "sha256": { "$ref": "#/$defs/shaHex" },
+                  "references": { "type": "array", "items": { "type": "string" } },
+                  "inputSha256": { "$ref": "#/$defs/shaHex" },
+                  "artifact": { "enum": ["wpf-bin", "wf-asm", "mixed"] }
+                }
+              }
+            },
+            "gaps": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["assembly", "kind", "detail"],
+                "properties": {
+                  "assembly": { "type": "string" },
+                  "kind": { "type": "string" },
+                  "detail": { "type": "string" }
+                }
+              }
+            },
+            "sourceCommit": { "type": ["string", "null"] }
+          }
+        },
+        "availability": { "enum": ["unknown", "available", "missingInput", "notConverted", "unavailable"] },
+        "upstreamStatus": { "type": "string" },
+        "availabilityNote": { "type": "string" },
+        "evidence": { "type": "array", "items": { "type": "string" } },
+        "gaps": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

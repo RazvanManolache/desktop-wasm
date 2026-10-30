@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Slice-86: TextCharacters/CharacterBufferRange/CharacterBufferReference
+         carry the WPF public char* constructors, so unsafe blocks are allowed
+         in this project only. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DesktopWasm.Core\DesktopWasm.Core.csproj" />
+    <ProjectReference Include="..\DesktopWasm.Graphics\DesktopWasm.Graphics.csproj" />
+  </ItemGroup>
+
+</Project>

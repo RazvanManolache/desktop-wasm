@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DesktopWasm unified shell</title>
+    <base href="/" />
+    <style>
+        body { font-family: "Segoe UI", system-ui, sans-serif; margin: 2rem; }
+        .filters { display: flex; gap: .5rem; margin: 1rem 0; }
+        .catalog { list-style: none; padding: 0; display: grid; gap: 1rem; }
+        .catalog li { border: 1px solid #ccc; padding: 1rem; border-radius: .5rem; }
+        .status, .frameworks, .mixed, .unavailable { margin-left: .5rem; font-size: .85em; }
+        .unavailable { color: #a00; font-weight: bold; }
+        .gaps { color: #666; font-size: .9em; }
+        .stage-overlay.error { border: 2px solid #a00; padding: 1rem; border-radius: .5rem; }
+    </style>
+</head>
+<body>
+    <div id="app">Loading the unified shell…</div>
+    <script src="_framework/blazor.webassembly.js"></script>
+</body>
+</html>
