@@ -4,13 +4,15 @@ One workspace, one catalog, and one launcher for WinForms and WPF
 applications running on WebAssembly. Real mixed-framework hosting (both UI
 stacks inside one app session) is work in progress.
 
-**Progress:** a Paint effects dialog, rich-text typing, public Word
-typing, and WPF gallery navigation are captured working; chart-type
-commits repaint the chart, calendar grid selection and popup picks
-apply, and skin/calendar themes commit (visible reskins verified only
-on the labeled staged builds that showed them). See
-[progress 2026-11-03](docs/progress/2026-11-03.md) for the
-screenshot gallery and the per-demo status table with honest gaps.
+**Working demos (screenshots of tested builds, staged vs public labeled):**
+
+| | |
+|---|---|
+| <a href="docs/progress/images/word-type-public-gen43.png"><img src="docs/progress/images/word-type-public-gen43.png" width="400" alt="Word 2016 demo with Hello World typed at the document origin"/></a><br/>**Word 2016 (public)** — typed “Hello World” at the doc origin | <a href="docs/progress/images/rte-type-shell63.png"><img src="docs/progress/images/rte-type-shell63.png" width="400" alt="Telerik rich-text editor with inserted text after Overview"/></a><br/>**Telerik RichTextEditor (staged)** — typed text inserted in the document |
+| <a href="docs/progress/images/sf01-popup-shell63.png"><img src="docs/progress/images/sf01-popup-shell63.png" width="400" alt="AutoComplete suggestion popup showing United Kingdom after typing Uni"/></a><br/>**Syncfusion AutoComplete (staged)** — typing “Uni” opened the United Kingdom suggestion | <a href="docs/progress/images/wpf-nav-shell63.png"><img src="docs/progress/images/wpf-nav-shell63.png" width="400" alt="WPF gallery navigating to a sample page after tree selection"/></a><br/>**WPF Gallery (staged)** — tree selection navigated to the sample page |
+| <a href="docs/progress/images/01-chart-stacking-column.png"><img src="docs/progress/images/01-chart-stacking-column.png" width="400" alt="Chart repainted from grouped to stacked columns after a ChartType pick"/></a><br/>**Syncfusion Chart (staged)** — ChartType pick repainted stacked columns | <a href="docs/progress/images/paint-twist-shell63.png"><img src="docs/progress/images/paint-twist-shell63.png" width="400" alt="Paint.NET with a freehand stroke and the Twist settings dialog open"/></a><br/>**Paint.NET 5.1.12 (staged)** — stroke drawn, Twist dialog opened (effect output still unverified) |
+
+Full scope, remaining limitations, and attribution: [progress 2026-11-03](docs/progress/2026-11-03.md).
 
 Origin: this repository is the successor of
 [winforms-wasm](https://github.com/RazvanManolache/winforms-wasm). Standalone
