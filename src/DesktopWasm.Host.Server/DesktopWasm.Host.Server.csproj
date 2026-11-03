@@ -7,4 +7,8 @@
     <RootNamespace>DesktopWasm.Host.Server</RootNamespace>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\DesktopWasm.Catalog\DesktopWasm.Catalog.csproj" />
+  </ItemGroup>
+
 </Project>

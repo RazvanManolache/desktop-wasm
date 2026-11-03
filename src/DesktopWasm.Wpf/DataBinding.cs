@@ -483,6 +483,7 @@ public sealed class BindingExpression : BindingExpressionBase
     public object? Source { get; private set; }
 
     private readonly List<(INotifyPropertyChanged Source, PropertyChangedEventHandler Handler)> _chain = new();
+    private readonly List<(DependencyObject Source, Action<DependencyProperty, object?, object?> Handler)> _dpChain = new();
     private bool _staticHooked;
     private BindingMode EffectiveMode => Binding.Mode == BindingMode.Default
         ? _target is TextBox && TargetProperty == "Text" ? BindingMode.TwoWay
@@ -514,6 +515,9 @@ public sealed class BindingExpression : BindingExpressionBase
         foreach (var (source, handler) in _chain)
             source.PropertyChanged -= handler;
         _chain.Clear();
+        foreach (var (source, handler) in _dpChain)
+            source.PropertyChanged -= handler;
+        _dpChain.Clear();
         if (_staticHooked)
         {
             SystemParameters.StaticPropertyChanged -= OnStaticChanged;
@@ -561,6 +565,9 @@ public sealed class BindingExpression : BindingExpressionBase
         foreach (var (subscribed, handler) in _chain)
             subscribed.PropertyChanged -= handler;
         _chain.Clear();
+        foreach (var (subscribed, handler) in _dpChain)
+            subscribed.PropertyChanged -= handler;
+        _dpChain.Clear();
         var current = Source;
         if (current is null) return;
         if (!_staticHooked && NeedsStaticRefresh(Binding.Path))
@@ -585,6 +592,20 @@ public sealed class BindingExpression : BindingExpressionBase
                 };
                 inpc.PropertyChanged += handler;
                 _chain.Add((inpc, handler));
+            }
+            else if (current is DependencyObject dobj)
+            {
+                var watched = segment;
+                Action<DependencyProperty, object?, object?> handler = (dp, _, _) =>
+                {
+                    if (dp.Name == watched)
+                    {
+                        UpdateTarget();
+                        TrackChain();
+                    }
+                };
+                dobj.PropertyChanged += handler;
+                _dpChain.Add((dobj, handler));
             }
             if (!TryReadSegment(current, segment, out var next)) return;
             current = next;
@@ -825,6 +846,11 @@ public sealed class BindingExpression : BindingExpressionBase
 
     private object? Convert(object? value)
     {
+        if (Binding.Converter is null && Binding.DeferredConverterKey is { } key
+            && Target is FrameworkElement fe && fe.TryFindResource(key, out var res) && res is IValueConverter found)
+        {
+            Binding.Converter = found;
+        }
         if (Binding.Converter is null) return value;
         try
         {
@@ -838,6 +864,11 @@ public sealed class BindingExpression : BindingExpressionBase
 
     private object? ConvertBack(object? value)
     {
+        if (Binding.Converter is null && Binding.DeferredConverterKey is { } key
+            && Target is FrameworkElement fe && fe.TryFindResource(key, out var res) && res is IValueConverter found)
+        {
+            Binding.Converter = found;
+        }
         if (Binding.Converter is null) return value;
         try
         {
@@ -1047,6 +1078,7 @@ public sealed class DependencyObjectBinding : BindingExpressionBase
     private readonly DependencyProperty _dp;
     private readonly Binding _binding;
     private readonly List<(INotifyPropertyChanged Source, PropertyChangedEventHandler Handler)> _chain = new();
+    private readonly List<(DependencyObject Source, Action<DependencyProperty, object?, object?> Handler)> _dpChain = new();
 
     internal DependencyObjectBinding(DependencyObject target, DependencyProperty dp, Binding binding)
         : base(target, binding)
@@ -1140,6 +1172,9 @@ public sealed class DependencyObjectBinding : BindingExpressionBase
         foreach (var (subscribed, handler) in _chain)
             subscribed.PropertyChanged -= handler;
         _chain.Clear();
+        foreach (var (subscribed, handler) in _dpChain)
+            subscribed.PropertyChanged -= handler;
+        _dpChain.Clear();
     }
 
     private void TrackChain()
@@ -1165,6 +1200,20 @@ public sealed class DependencyObjectBinding : BindingExpressionBase
                 };
                 inpc.PropertyChanged += handler;
                 _chain.Add((inpc, handler));
+            }
+            else if (current is DependencyObject dobj)
+            {
+                var watched = segment;
+                Action<DependencyProperty, object?, object?> handler = (dp, _, _) =>
+                {
+                    if (dp.Name == watched)
+                    {
+                        UpdateTarget();
+                        TrackChain();
+                    }
+                };
+                dobj.PropertyChanged += handler;
+                _dpChain.Add((dobj, handler));
             }
             if (!BindingExpression.TryReadSegment(current, segment, out var next)) return;
             current = next;
@@ -1209,6 +1258,11 @@ public sealed class DependencyObjectBinding : BindingExpressionBase
 
     private object? Convert(object? value)
     {
+        if (_binding.Converter is null && _binding.DeferredConverterKey is { } key
+            && Target is FrameworkElement fe && fe.TryFindResource(key, out var res) && res is IValueConverter found)
+        {
+            _binding.Converter = found;
+        }
         if (_binding.Converter is null) return value;
         try
         {
@@ -1222,6 +1276,11 @@ public sealed class DependencyObjectBinding : BindingExpressionBase
 
     private object? ConvertBack(object? value)
     {
+        if (_binding.Converter is null && _binding.DeferredConverterKey is { } key
+            && Target is FrameworkElement fe && fe.TryFindResource(key, out var res) && res is IValueConverter found)
+        {
+            _binding.Converter = found;
+        }
         if (_binding.Converter is null) return value;
         try
         {

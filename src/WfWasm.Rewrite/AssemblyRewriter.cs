@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -305,6 +305,10 @@ public static class AssemblyRewriter
         }
         if (assembly.Name.Name == "paintdotnet")
         {
+            // The menu lives in paintdotnet, not Effects.Core. Registering
+            // this rule against the latter silently skipped every direct apply.
+            if (!string.IsNullOrEmpty(cpuPaintPath) && module.GetType("PaintDotNet.Menus.EffectMenuBase") is not null)
+                EnsureDirectApplyEffectStash(module, cpuPaintPath);
             // Effect rendering is single-threaded headless
             // (Thread.Start is neutered): driver spawn+WaitOne can
             // never complete, so effect preview/apply silently do
@@ -406,6 +410,80 @@ public static class AssemblyRewriter
             }
             // TEMP-DIAG rev216 (REVERT): touch-log generic calls.
             try { EmitTouchLogging(module); }
+            catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException)
+            {
+            }
+        }
+        if (assembly.Name.Name == "PaintDotNet.Effects"
+            || assembly.Name.Name == "PaintDotNet.Effects.Gpu"
+            || assembly.Name.Name == "PaintDotNet.Effects.Legacy")
+        {
+            // Twist/Quantize/Bulge/Clouds invalid-IL (SF1120-TWISTGATE-1032):
+            // first effects-modules pass for the generic value-read
+            // family (see RetargetEffectSettingGetters). Clouds' NRE is
+            // a separate served-bundle staging gap, not this rule.
+            try { RetargetEffectSettingGetters(module, cpuPaintPath); }
+            catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException)
+            {
+            }
+        }
+        // TRIO-METHOD-BRIDGE-R4: allowlisted callee families only (Pair.Create,
+        // Tuple.Create, CreateForEnum, CreateClipper/CreateFormatConverter,
+        // CreateBufferedBitmap, EffectEnvironmentExtensions.GetSourceBitmap).
+        // Blanket bridging regressed proven paths (Levels histogram via
+        // SelectRO went blank on gen25); the dialog paths span Effects.Core/
+        // Framework/PropertySystem, so the 3-assembly scope missed the inner
+        // GetSourceBitmap<ColorBgra32> that Twist/Bulge die on.
+        if (assembly.Name.Name.StartsWith("PaintDotNet."))
+        {
+            try { RetargetClosedGenericMethodCalls(module, cpuPaintPath); }
+            catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException)
+            {
+            }
+            // TRIO-METHOD-BRIDGE-R6: open nested ObjectRef sites (CastOrTransferRef
+            // over the enclosing method's own type parameter, e.g. the interior
+            // call in GetSourceBitmap<TPixel>) close over runtime types via
+            // CastOrTransferRefRuntime; the name-based closed bridge cannot see
+            // them (type arguments are method parameters at transform time).
+            try { RetargetOpenObjectRefSites(module, cpuPaintPath); }
+            catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException)
+            {
+            }
+            // TRIO-METHOD-BRIDGE-R7: the non-generic GetSourceBitmap(env,
+            // PixelFormat&) interface chain (get_Document/get_Layers/
+            // get_SourceLayerIndex/get_Item/GetBitmap) dies with an empty IPE
+            // after ENTER (gen31 oracle: Twist+Bulge); reroute its byref call
+            // sites through the reflection chain helper with per-step traces.
+            try { RetargetSourceBitmapChain(module, cpuPaintPath); }
+            catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException)
+            {
+            }
+            // TRIO-R31: interface dispatch on generic-parameter receivers
+            // (ObjectRef/RefHandle forwarding without constrained.):
+            // castclass to the target interface before the callvirt. The
+            // Quantize wall is Proxies IBitmapEffectRendererProxy.
+            // InitializeRenderInfo (BitmapEffectRenderer.Initialize ENTERs,
+            // empty IPE, no EXIT); the parameter is only constrained to
+            // IObjectRef so constrained. cannot legalize it.
+            // TRIO-R31 runs at end of RewriteToBytes (after fixed-shape rewrites).
+            // TRIO-METHOD-BRIDGE-R6 TEMP-ORACLE (REMOVE after localization):
+            // ENTER/EXIT touches on the four unmarked suspects (non-generic
+            // GetSourceBitmap, GetSourceBitmapBgra32, EnumLocalizer.Create /
+            // GetLocalizedEnumValues) to split setup vs interior death.
+            try { EmitTempOracleR6(module, cpuPaintPath); }
+            catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException)
+            {
+            }
+        }
+        // TRIO-R23: the oracle block above is scoped StartsWith("PaintDotNet.")
+        // (case-sensitive), so the lowercase app assembly paintdotnet.dll â€”
+        // home of EffectDriver::Create and EffectMenuBase.RunEffectImpl â€”
+        // never receives probes (gen48: Create touch absent though the
+        // method is handler-free). Probe ONLY (no bridge passes: their
+        // app-assembly behavior is unpinned and out of scope).
+        if (assembly.Name.Name == "paintdotnet")
+        {
+            try { EmitTempOracleR6(module, cpuPaintPath); }
             catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException)
             {
             }
@@ -559,6 +637,13 @@ public static class AssemblyRewriter
             catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException)
             {
             }
+            // GPU-effect init resolves its default gamma through the same
+            // null-factory wall (GetDefaultGammaMode -> GetInfoNoAddRef):
+            // ported the same way (see method).
+            try { EnsureCpuDefaultGammaMode(module); }
+            catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException)
+            {
+            }
             try { EnsureCpuContextExtensions(module); }
             catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException)
             {
@@ -600,6 +685,12 @@ public static class AssemblyRewriter
             // Effect render-info validation resolves through WIC's
             // per-format info (null factory headless): see
             // EnsureCpuVerifyOutputPixelFormat for the CPU-table port.
+            // Classic bitmap-effect validation hits the same null-factory
+            // wall (BitmapEffect.ValidatePixelFormat): ported the same way.
+            try { EnsureCpuValidatePixelFormat(module); }
+            catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException)
+            {
+            }
             try { EnsureCpuVerifyOutputPixelFormat(module); }
             catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException)
             {
@@ -617,7 +708,8 @@ public static class AssemblyRewriter
             try { EnsureGpuTileCpuRender(module, cpuPaintPath); }
             catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException)
             {
-            } }
+            }
+        }
         if (assembly.Name.Name == "Microsoft.Toolkit.Uwp.Notifications")
         {
             // OS toast-identity bootstrap cannot run headless (COM
@@ -645,6 +737,32 @@ public static class AssemblyRewriter
             // construction; headless the key is missing and int.Parse(null)
             // kills every Syncfusion demo before its form exists.
             try { RedirectSyncfusionWin11Check(module); }
+            catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException)
+            {
+            }
+            // SF09: SerializersManager.GetSerializer dies at GetTypes()
+            // with FileNotFoundException (DesignTools.Server) while the
+            // method only catches ReflectionTypeLoadException; guard the
+            // scan so missing design assemblies fall back to the default
+            // serializer instead of killing Config..cctor (see rule).
+            try { GuardSerializersManagerGetTypes(module); }
+            catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException)
+            {
+            }
+            // SF01/SF05 root: bound the PopupUtils parent walk so no
+            // constant-stub GetParent regression can re-wedge the pump
+            // (see rule).
+            try { BoundPopupParentWalk(module); }
+            catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException)
+            {
+            }
+            // PSTALL: CardLayout.set_SelectedCard switches the visible page
+            // (forward cardNameVsControls hit) yet leaves the reverse
+            // controlsVsCardNames entry missing served, so the very next
+            // get_SelectedCard misses, Wizard.get_SelectedPage answers
+            // null, OnAfterPageSelect skips RaisePageLoad, the page timer
+            // never arms and the flow stalls with Next enabled (see rule).
+            try { RepairCardLayoutReverseLookup(module); }
             catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException)
             {
             }
@@ -678,6 +796,43 @@ public static class AssemblyRewriter
             // P/Invoke wrapper (same boot path); answer get_Text().Length
             // instead (see rule).
             try { RedirectTextBoxTextLengthToManaged(module); }
+            catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException)
+            {
+            }
+        }
+        if (assembly.Name.Name == "VisualStudioDemo")
+        {
+            // SF09 (gen16): Form1..ctor loads demo sources via baked
+            // backslash-relative paths that do not exist headless (see rule).
+            try { NeutralizeDemoSourceViewerLoads(module); }
+            catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException)
+            {
+            }
+        }
+        if (assembly.Name.Name == "Syncfusion.Tools.Windows")
+        {
+            // SF05: ComboBoxBaseDataBound.set_SelectedIndex self-recursion
+            // (calendar ThemeCmb/culture/multiSelection drop-button clicks
+            // StackOverflow the session); bound the setter nesting depth
+            // (see rule).
+            try { EnsureComboBoxSelectedIndexReentrancyGuard(module); }
+            catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException)
+            {
+            }
+            // SF08 wall 2: SuperToolTip installs a Win32 mouse hook via
+            // Process.GetCurrentProcess (PNSE headless), aborting WmCreate
+            // and cascading to the terminal Invalid window handle; keep
+            // the managed AddMessageFilter path and drop only the native
+            // hook install (see rule).
+            try { NeutralizeSuperToolTipMouseHook(module); }
+            catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException)
+            {
+            }
+            // ISWINDOW-RETARGET2 companion: bound the MiniToolBar
+            // top-window walk the truthful IsWindow retarget unblocks
+            // (constant-stub GetWindow + IsWindowVisible-false spins on
+            // mouse-move; see rule).
+            try { CapMiniToolBarTopWindowLoop(module); }
             catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException)
             {
             }
@@ -896,7 +1051,7 @@ public static class AssemblyRewriter
         // Native imports cannot bind headless: stub them with the same
         // defaults as the file pass (targeted Ensure* stubs above already
         // cleared PInvokeImpl, so this only touches the remainder).
-        StubModulePInvokes(module);
+        StubModulePInvokes(module, cpuPaintPath);
 
         // Designer InitializeComponent runs inside the reflection-invoked
         // ctor; WASM interp cannot unwind across that boundary, so any
@@ -1008,6 +1163,7 @@ public static class AssemblyRewriter
         MethodReference? safeGetResourceSet = null;
         MethodReference? safeGetResourceSet1 = null;
         MethodReference? safeGetResourceSet2 = null;
+        MethodReference? asmLocationShim = null;
         MethodReference? envGetFolderPath1 = null;
         MethodReference? envGetFolderPath2 = null;
         MethodReference? safeApplyResources1 = null;
@@ -1345,6 +1501,22 @@ public static class AssemblyRewriter
             {
                 new ParameterDefinition(module.ImportReference(typeof(System.Environment.SpecialFolder))),
                 new ParameterDefinition(module.ImportReference(typeof(System.Environment.SpecialFolderOption)))
+            }
+        };
+
+        // Assembly.Location answers "" for single-file/wasm loads (no file
+        // path); Syncfusion SR LocalizationResourceAccessor feeds it into
+        // Path.GetDirectoryName (null) + Path.Combine and dies with
+        // ArgumentNullException("path1") before its embedded-resource
+        // fallback can run (SF06/SF10 ctor-guard noise). Retarget to the
+        // fork shim's empty-guarded SafeLocation (desktop passthrough).
+        var asmLocationType = new TypeReference("System.Windows.Forms", "WasmAssemblyLocation", module, formsScope);
+        asmLocationShim = new MethodReference("SafeLocation", module.TypeSystem.String, asmLocationType)
+        {
+            HasThis = false,
+            Parameters =
+            {
+                new ParameterDefinition(module.ImportReference(typeof(System.Reflection.Assembly)))
             }
         };
 
@@ -2759,7 +2931,7 @@ public static class AssemblyRewriter
                         // commits in TaskProgressDialog measurement. With no
                         // device there are no rendering parameters, and the
                         // method's own null-params fallback is DirectWrite
-                        // (0) â€” which is also what the body computes against
+                        // (0) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â which is also what the body computes against
                         // our inert stub context (null params), so answering
                         // 0 outright preserves stub behavior and fixes null.
                         method.Body.ExceptionHandlers.Clear();
@@ -2893,7 +3065,7 @@ public static class AssemblyRewriter
                         && method.ReturnType.FullName == "System.Void")
                     {
                         // Progress sync drives the Windows taskbar
-                        // (TaskbarList COM activation â†’ NRE in WASM) and the
+                        // (TaskbarList COM activation ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ NRE in WASM) and the
                         // dialog progress bar. Pure UI feedback for an
                         // already-running task: skipping it cannot affect
                         // the commit itself. This unblocks the task
@@ -2915,8 +3087,8 @@ public static class AssemblyRewriter
                         // The canvas is a single fixed surface: there are no
                         // monitors to track, so refreshing is a no-op. This
                         // unblocks TaskProgressDialog construction during
-                        // brush commits (OnLayout â†’ ClientSize â†’
-                        // OnMonitorChanged â†’ here).
+                        // brush commits (OnLayout ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ ClientSize ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢
+                        // OnMonitorChanged ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ here).
                         method.Body.ExceptionHandlers.Clear();
                         method.Body.Variables.Clear();
                         method.Body.Instructions.Clear();
@@ -3080,6 +3252,44 @@ public static class AssemblyRewriter
                     }
                     if (type.FullName == "PaintDotNet.SystemLayer.FileSystem" && method.Name == "OpenStreamingFile")
                     {
+                        // OpenPDN 3.36 uses (string, FileAccess), unlike the
+                        // modern six-argument API below. Preserve its native
+                        // OPEN_EXISTING / CREATE_NEW / OPEN_ALWAYS semantics.
+                        if (method.Parameters.Count == 2
+                            && method.Parameters[0].ParameterType.FullName == "System.String"
+                            && method.Parameters[1].ParameterType.FullName == "System.IO.FileAccess")
+                        {
+                            var legacyCtor = module.ImportReference(typeof(System.IO.FileStream).GetConstructor(
+                                [typeof(string), typeof(System.IO.FileMode), typeof(System.IO.FileAccess),
+                                    typeof(System.IO.FileShare), typeof(int), typeof(System.IO.FileOptions)])!);
+                            method.Body.ExceptionHandlers.Clear();
+                            method.Body.Variables.Clear();
+                            method.Body.Instructions.Clear();
+                            var readMode = il.Create(OpCodes.Ldc_I4_3); // Open
+                            var writeMode = il.Create(OpCodes.Ldc_I4_1); // CreateNew
+                            var access = il.Create(OpCodes.Ldarg_1);
+                            il.Emit(OpCodes.Ldarg_0);
+                            il.Emit(OpCodes.Ldarg_1);
+                            il.Emit(OpCodes.Ldc_I4_1);
+                            il.Emit(OpCodes.Beq, readMode);
+                            il.Emit(OpCodes.Ldarg_1);
+                            il.Emit(OpCodes.Ldc_I4_2);
+                            il.Emit(OpCodes.Beq, writeMode);
+                            il.Emit(OpCodes.Ldc_I4_4); // ReadWrite: OpenOrCreate
+                            il.Emit(OpCodes.Br, access);
+                            il.Append(readMode);
+                            il.Emit(OpCodes.Br, access);
+                            il.Append(writeMode);
+                            il.Append(access);
+                            il.Emit(OpCodes.Ldc_I4_1); // FileShare.Read
+                            il.Emit(OpCodes.Ldc_I4, 512);
+                            il.Emit(OpCodes.Ldc_I4, (int)System.IO.FileOptions.SequentialScan);
+                            il.Emit(OpCodes.Newobj, legacyCtor);
+                            il.Emit(OpCodes.Ret);
+                            continue;
+                        }
+                        if (method.Parameters.Count != 6 || method.Parameters[5].ParameterType.FullName != "System.Int32")
+                            continue;
                         // The original body pinvokes CreateFileW for a
                         // handle, but every pinvoke is stubbed in WASM and
                         // the stub answers a null handle: the FileStream
@@ -5308,6 +5518,14 @@ public static class AssemblyRewriter
                                     instruction.Operand = safeGetResourceSet;
                                 }
                             }
+                            else if (asmLocationShim != null && mr.Name == "get_Location"
+                                && mr.DeclaringType.FullName == "System.Reflection.Assembly"
+                                && mr.HasThis && mr.Parameters.Count == 0
+                                && !(type.FullName == "System.Windows.Forms.WasmAssemblyLocation" && method.Name == "SafeLocation"))
+                            {
+                                instruction.OpCode = Mono.Cecil.Cil.OpCodes.Call;
+                                instruction.Operand = asmLocationShim;
+                            }
                             else if (safeGetString1 != null && mr.Name == "GetString"
                                 && (mr.DeclaringType.FullName == "System.Resources.ResourceManager" || mr.DeclaringType.FullName == "System.ComponentModel.ComponentResourceManager"))
                             {
@@ -5612,6 +5830,19 @@ public static class AssemblyRewriter
                 }
             }
 
+        if (assembly.Name.Name == "Fiddler")
+        {
+            // Obfuscator module-init calls the machine-key-store CAPI
+            // (RateSetter/ListSetter -> RSACryptoServiceProvider.
+            // set_UseMachineKeyStore), unreachable from the browser
+            // host: the init dies and the real MainForm TypeLoads, so
+            // the app falls back to the wrapper and paints black. Only
+            // the exact supported init shape may be neutralized (see
+            // rule): unknown or mixed shapes must fail loudly with a
+            // precise gap, never silently pass with the init intact or
+            // mutated. No swallowing here.
+            NeutralizeFiddlerModuleInit(module);
+        }
         if (cpuPaintPath is not null)
         {
             // CPU backing for content drawing (brush stamps): binds
@@ -5634,6 +5865,18 @@ public static class AssemblyRewriter
         // return E_NOTIMPL through the callers' own error channels.
         EnsureHeadlessAnimation(module);
 
+        // TRIO-R31: interface dispatch on generic-parameter receivers
+        // (ObjectRef/RefHandle forwarding without constrained.):
+        // castclass to the target interface right after the receiver push.
+        // Runs after all fixed-shape rewrites (e.g. the UITextFactory
+        // measure-shape rule) so their pristine patterns still match.
+        if (assembly.Name.Name.StartsWith("PaintDotNet.", System.StringComparison.Ordinal))
+        {
+            try { CastGenericReceiversToInterface(module); }
+            catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException)
+            {
+            }
+        }
         // Dead-ref sweep, last so strip passes settle first: dropping a
         // scope the writer still emits typerefs against orphans them
         // (Cecil re-emits dangling scopes against the wrong table -
@@ -5665,6 +5908,144 @@ public static class AssemblyRewriter
         NeutralizeUnreachableNullCalls(module);
         assembly.Write(ms);
         return ms.ToArray();
+    }
+
+    // Fiddler ships an obfuscator module-init (rev-rule): <Module>..cctor
+    // calls <Module>::RateSetter + <Module>::ListSetter, whose chain
+    // reaches RSACryptoServiceProvider.set_UseMachineKeyStore (the
+    // machine-key-store CAPI, unreachable from the browser host). The
+    // init dies headless and the real MainForm TypeLoads, so the app
+    // falls back to the wrapper and paints a black stage.
+    //
+    // Shape guard (RVW2100): this rule may ONLY neutralize the exact
+    // demonstrated init shape, verified on the prepared entry binary:
+    // assembly name "Fiddler", <Module> carries zero fields, .cctor has
+    // no exception handlers and no locals, and its body consists solely
+    // of one call to <Module>::RateSetter() plus one call to
+    // <Module>::ListSetter() (in that order), a trailing ret, and the
+    // known obfuscator junk (an unconditional br/br.s over an
+    // unreachable null-operand call, plus optional nops). Anything else
+    // -- extra calls, field/state writes, locals/EH, fields on
+    // <Module>, partial target matches, unknown helpers, or unknown
+    // branch patterns -- throws InvalidOperationException WITHOUT
+    // mutating the initializer, so a new Fiddler binary with additional
+    // required initialization keeps it instead of losing it.
+    // Public so the rewrite tests pin it directly, like the Redirect*
+    // rules. Idempotent: an already-neutral body (single ret, no target
+    // calls) returns 0 instead of throwing. A Fiddler-named .cctor with
+    // no target calls and a non-neutral body is left untouched as a
+    // no-op returning 0; only bodies that DO reference the targets are
+    // shape-checked.
+    public static int NeutralizeFiddlerModuleInit(Mono.Cecil.ModuleDefinition module)
+    {
+        ArgumentNullException.ThrowIfNull(module);
+        Mono.Cecil.TypeDefinition? global = module.GetType("<Module>")
+            ?? throw new InvalidOperationException("Fiddler: <Module> missing");
+        string asmName = module.Assembly?.Name?.Name ?? string.Empty;
+        if (!string.Equals(asmName, "Fiddler", StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                $"Fiddler: unsupported module-init shape: expected assembly 'Fiddler', found '{asmName}'. Refusing to neutralize.");
+        Mono.Cecil.MethodDefinition? cctor = global.Methods.FirstOrDefault(m => m.Name == ".cctor" && m.IsStatic && !m.HasParameters && m.ReturnType.FullName == "System.Void")
+            ?? throw new InvalidOperationException("Fiddler: <Module>..cctor missing");
+        if (!cctor.HasBody || cctor.Body.Instructions is null)
+            throw new InvalidOperationException("Fiddler: <Module>..cctor has no body");
+        var insns = cctor.Body.Instructions;
+        bool hasTarget = false;
+        foreach (var ins in insns)
+        {
+            if (ins.Operand is Mono.Cecil.MethodReference mr
+                && mr.DeclaringType.FullName == "<Module>"
+                && (mr.Name == "RateSetter" || mr.Name == "ListSetter"))
+            {
+                hasTarget = true;
+                break;
+            }
+        }
+        if (!hasTarget)
+        {
+            // Nothing this rule owns: already-neutral single-ret is the
+            // idempotent no-op; any other target-free body is unrelated
+            // initialization this rule must not touch.
+            return 0;
+        }
+        if (global.Fields.Count != 0)
+            throw new InvalidOperationException(
+                $"Fiddler: unsupported module-init shape: <Module> carries {global.Fields.Count} field(s); refusing to erase initializer that may hold required state.");
+        if (cctor.Body.ExceptionHandlers.Count != 0)
+            throw new InvalidOperationException(
+                $"Fiddler: unsupported module-init shape: .cctor carries {cctor.Body.ExceptionHandlers.Count} exception handler(s); refusing to erase guarded initialization.");
+        if (cctor.Body.Variables.Count != 0)
+            throw new InvalidOperationException(
+                $"Fiddler: unsupported module-init shape: .cctor carries {cctor.Body.Variables.Count} local(s); refusing to erase stateful initialization.");
+        if (insns.Count == 0 || insns[insns.Count - 1].OpCode != OpCodes.Ret)
+            throw new InvalidOperationException(
+                "Fiddler: unsupported module-init shape: .cctor does not end with ret.");
+        var targetOrder = new List<string>();
+        for (int k = 0; k < insns.Count; k++)
+        {
+            var ins = insns[k];
+            if (ins.OpCode == OpCodes.Ret || ins.OpCode == OpCodes.Nop)
+                continue;
+            if (ins.OpCode == OpCodes.Br || ins.OpCode == OpCodes.Br_S)
+            {
+                if (ins.Operand is not Mono.Cecil.Cil.Instruction target || !insns.Contains(target))
+                    throw new InvalidOperationException(
+                        $"Fiddler: unsupported module-init shape: branch at IL_{ins.Offset:X4} targets outside .cctor.");
+                continue;
+            }
+            if (ins.OpCode == OpCodes.Call)
+            {
+                if (ins.Operand is null)
+                {
+                    // Known obfuscator junk: an unreachable null-operand
+                    // call skipped over by a branch. A reachable one is
+                    // either a rewrite bug or unloadable input: refuse.
+                    bool unreachable = k > 0
+                        && (insns[k - 1].OpCode == OpCodes.Br || insns[k - 1].OpCode == OpCodes.Br_S
+                            || insns[k - 1].OpCode == OpCodes.Leave || insns[k - 1].OpCode == OpCodes.Leave_S
+                            || insns[k - 1].OpCode == OpCodes.Ret || insns[k - 1].OpCode == OpCodes.Throw
+                            || insns[k - 1].OpCode == OpCodes.Rethrow || insns[k - 1].OpCode == OpCodes.Endfinally);
+                    if (!unreachable)
+                        throw new InvalidOperationException(
+                            $"Fiddler: unsupported module-init shape: reachable null-operand call at IL_{ins.Offset:X4}; refusing to guess.");
+                    continue;
+                }
+                if (ins.Operand is Mono.Cecil.MethodReference mr
+                    && mr.DeclaringType.FullName == "<Module>"
+                    && (mr.Name == "RateSetter" || mr.Name == "ListSetter"))
+                {
+                    targetOrder.Add(mr.Name);
+                    continue;
+                }
+                string callee;
+                try
+                {
+                    callee = ins.Operand?.ToString() ?? "<null>";
+                }
+                catch
+                {
+                    callee = "<unprintable>";
+                }
+                throw new InvalidOperationException(
+                    $"Fiddler: unsupported module-init shape: extra initialization call at IL_{ins.Offset:X4} ({ins.OpCode.Name} {callee}); refusing to erase unknown init work.");
+            }
+            throw new InvalidOperationException(
+                $"Fiddler: unsupported module-init shape: unexpected {ins.OpCode.Name} at IL_{ins.Offset:X4}; refusing to erase stateful initialization.");
+        }
+        if (targetOrder.Count != 2 || targetOrder[0] != "RateSetter" || targetOrder[1] != "ListSetter")
+            throw new InvalidOperationException(
+                $"Fiddler: unsupported module-init shape: expected exactly RateSetter then ListSetter, found [{string.Join(", ", targetOrder)}]; refusing partial/unknown helper match.");
+        Mono.Cecil.MethodDefinition? rate = global.Methods.FirstOrDefault(m => m.Name == "RateSetter" && !m.HasParameters);
+        Mono.Cecil.MethodDefinition? list = global.Methods.FirstOrDefault(m => m.Name == "ListSetter" && !m.HasParameters);
+        if (rate is null || list is null)
+            throw new InvalidOperationException(
+                "Fiddler: unsupported module-init shape: RateSetter/ListSetter helper definition(s) missing on <Module>.");
+        var il = cctor.Body.GetILProcessor();
+        cctor.Body.ExceptionHandlers.Clear();
+        cctor.Body.Variables.Clear();
+        cctor.Body.Instructions.Clear();
+        cctor.Body.Instructions.Add(il.Create(OpCodes.Ret));
+        return 2;
     }
 
     private static void NeutralizeUnreachableNullCalls(ModuleDefinition module)
@@ -5743,8 +6124,8 @@ public static class AssemblyRewriter
     // stloc dpi, ldloca dpi, call get_X, conv.r8, ldc.r8 96, div,
     // stloc scale. Returns the scale local's index and the instruction
     // index just past the scale store (a point where the evaluation stack
-    // is provably empty, hence a legal splice join). Anything else â€”
-    // different shape, unknown locals â€” returns false and the method is
+    // is provably empty, hence a legal splice join). Anything else ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â
+    // different shape, unknown locals ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â returns false and the method is
     // left untouched: guessing a local slot or joining mid-expression
     // produces unverifiable IL (InvalidProgram under the interpreter).
     private static bool TryMatchDpiScalePrologue(MethodDefinition method, out int scaleSlot, out int prologueEnd)
@@ -6720,15 +7101,10 @@ public static class AssemblyRewriter
                 // ref (effects/images hold theirs past our locals).
                 var realFree = body.Create(OpCodes.Nop);
                 body.Emit(OpCodes.Ldarg_0);
-                body.Emit(OpCodes.Dup);
-                body.Emit(OpCodes.Ldfld, refsField);
-                body.Emit(OpCodes.Ldc_I4_1);
-                body.Emit(OpCodes.Sub);
-                body.Emit(OpCodes.Stfld, refsField);
-                body.Emit(OpCodes.Ldarg_0);
-                body.Emit(OpCodes.Ldfld, refsField);
-                body.Emit(OpCodes.Ldc_I4_0);
-                body.Emit(OpCodes.Ble_S, realFree);
+                body.Emit(OpCodes.Ldflda, refsField);
+                body.Emit(OpCodes.Call, module.ImportReference(typeof(System.Threading.Interlocked)
+                    .GetMethod("Decrement", new[] { typeof(int).MakeByRefType() })!));
+                body.Emit(OpCodes.Brfalse_S, realFree);
                 body.Emit(OpCodes.Ret);
                 body.Append(realFree);
                 body.Emit(OpCodes.Ldarg_0);
@@ -6940,11 +7316,10 @@ public static class AssemblyRewriter
         tri.Emit(OpCodes.Ldarg_0);
         tri.Emit(OpCodes.Stind_Ref);
         tri.Emit(OpCodes.Ldarg_0);
-        tri.Emit(OpCodes.Ldarg_0);
-        tri.Emit(OpCodes.Ldfld, refsField);
-        tri.Emit(OpCodes.Ldc_I4_1);
-        tri.Emit(OpCodes.Add);
-        tri.Emit(OpCodes.Stfld, refsField);
+        tri.Emit(OpCodes.Ldflda, refsField);
+        tri.Emit(OpCodes.Call, module.ImportReference(typeof(System.Threading.Interlocked)
+            .GetMethod("Increment", new[] { typeof(int).MakeByRefType() })!));
+        tri.Emit(OpCodes.Pop);
         tri.Emit(OpCodes.Ldc_I4_1);
         tri.Emit(OpCodes.Newobj, nullableCtor);
         tri.Emit(OpCodes.Ret);
@@ -7529,9 +7904,8 @@ public static class AssemblyRewriter
                 // must stay identity-stable). Grants are ours alone:
                 // each pairs with exactly one overwrite-release, so PDN
                 // disposing the original can never double-release.
-                // Dispose stays a no-op: grants held past the effect's
-                // managed death leak one bitmap per effect lifetime
-                // (bounded: effects die on resource invalidation).
+                // Dispose is a borrowed release; the finalizer releases
+                // retained grants once the effect is unreachable.
                 // Input retention: composite ctors call SetInput directly,
                 // bypassing the EffectInputAccessor hook, so note
                 // (this, index) -> image here too; the draw-time walk
@@ -7636,6 +8010,19 @@ public static class AssemblyRewriter
             }
             impl.Body.MaxStackSize = 32;
             type.Methods.Add(impl);
+        }
+        if (!string.IsNullOrEmpty(cpuPaintPath))
+        {
+            var finalizer = new MethodDefinition("Finalize",
+                MethodAttributes.Family | MethodAttributes.Virtual | MethodAttributes.HideBySig,
+                module.TypeSystem.Void);
+            var fil = finalizer.Body.GetILProcessor();
+            fil.Emit(OpCodes.Ldarg_0);
+            fil.Emit(OpCodes.Ldfld, keptField);
+            fil.Emit(OpCodes.Call, ImportCpuPaintMethod(module, cpuPaintPath, "ReleaseCpuRetainedInputs", 1));
+            fil.Emit(OpCodes.Ret);
+            finalizer.Body.MaxStackSize = 1;
+            type.Methods.Add(finalizer);
         }
         AddCpuObjectRef(type, module);
         module.Types.Add(type);
@@ -7887,6 +8274,168 @@ public static class AssemblyRewriter
         if (verify.Body.MaxStackSize < 8)
             verify.Body.MaxStackSize = 8;
     }
+    // Classic bitmap-effect validation resolves its numeric-representation
+    // check through WIC's per-format info (PixelFormatExtensions.
+    // GetInfoNoAddRef -> PixelFormatInfo cache -> ImagingFactory.
+    // CreateComponentInfo, null factory headless -> NRE): every classic
+    // bitmap effect (Quantize, ...) dies in RunEffectImpl before its
+    // config dialog is constructed. Live: NullReferenceException |
+    // PixelFormatInfo.TryCreatePixelFormatInfo on Quantize click via
+    // BitmapEffect.ValidateInput/OutputPixelFormat (console +
+    // HandleEffectException post, no dialog). Same CPU-table port as
+    // VerifyOutputPixelFormat: TryGetPixelInfo + NumericRepresentation
+    // with identical accepts and identical throw messages; IsGray/IsCmyk
+    // stay as-is (pure struct compares in Primitives, no WIC).
+    private static void EnsureCpuValidatePixelFormat(ModuleDefinition module)
+    {
+        TypeDefinition be = module.GetType("PaintDotNet.Effects.BitmapEffect")
+            ?? throw new InvalidOperationException("CpuPaint: BitmapEffect missing");
+        MethodDefinition validate = be.Methods.FirstOrDefault(m => m.Name == "ValidatePixelFormat"
+                && m.IsStatic && m.Parameters.Count == 1
+                && m.Parameters[0].ParameterType.FullName == "PaintDotNet.Imaging.PixelFormat&")
+            ?? throw new InvalidOperationException("CpuPaint: ValidatePixelFormat missing");
+        TypeDefinition pixelFormats = ResolveExternalDef(module, "PaintDotNet.Primitives", "PaintDotNet.Imaging.PixelFormats");
+        MethodDefinition tryInfoDef = pixelFormats.Methods.First(m => m.Name == "TryGetPixelInfo"
+            && m.Parameters.Count == 2
+            && m.Parameters[1].ParameterType.FullName == "PaintDotNet.Imaging.IPixelInfo&");
+        MethodReference tryInfo = module.ImportReference(tryInfoDef);
+        TypeDefinition pixelInfo = ResolveExternalDef(module, "PaintDotNet.Primitives", "PaintDotNet.Imaging.IPixelInfo");
+        MethodReference getNumeric = module.ImportReference(pixelInfo.Methods.First(m => m.Name == "get_NumericRepresentation"));
+        TypeDefinition pfx = ResolveExternalDef(module, "PaintDotNet.Primitives", "PaintDotNet.Imaging.PixelFormatExtensions");
+        MethodReference isGray = module.ImportReference(pfx.Methods.First(m => m.Name == "IsGray"
+            && m.Parameters.Count == 1
+            && m.Parameters[0].ParameterType.FullName == "PaintDotNet.Imaging.PixelFormat&"));
+        MethodReference isCmyk = module.ImportReference(pfx.Methods.First(m => m.Name == "IsCmyk"
+            && m.Parameters.Count == 1
+            && m.Parameters[0].ParameterType.FullName == "PaintDotNet.Imaging.PixelFormat&"));
+        TypeDefinition pixelFormat = ResolveExternalDef(module, "PaintDotNet.Primitives", "PaintDotNet.Imaging.PixelFormat");
+        MethodReference getName = module.ImportReference(pixelFormat.Methods.First(m => m.Name == "GetName" && m.Parameters.Count == 0));
+        TypeDefinition upe = ResolveExternalDef(module, "PaintDotNet.Windows", "PaintDotNet.Imaging.UnsupportedPixelFormatException");
+        MethodReference upeCtor = module.ImportReference(upe.Methods.First(m => m.Name == ".ctor" && m.Parameters.Count == 1
+            && m.Parameters[0].ParameterType.FullName == "System.String"));
+        MethodReference intToString = module.ImportReference(typeof(int).GetMethod("ToString", Type.EmptyTypes)!);
+        MethodReference concat = module.ImportReference(typeof(string).GetMethod("Concat", new[] { typeof(string), typeof(string) })!);
+
+        validate.Body.ExceptionHandlers.Clear();
+        validate.Body.Instructions.Clear();
+        validate.Body.Variables.Clear();
+        validate.Body.Variables.Add(new VariableDefinition(module.ImportReference(pixelInfo)));
+        validate.Body.Variables.Add(new VariableDefinition(module.TypeSystem.Int32));
+        validate.Body.InitLocals = true;
+        var il = validate.Body.GetILProcessor();
+        Instruction done = il.Create(OpCodes.Ret);
+        Instruction miss = il.Create(OpCodes.Ldarg_0);
+        Instruction nrThrow = il.Create(OpCodes.Ldloca_S, validate.Body.Variables[1]);
+        Instruction grayOk = il.Create(OpCodes.Ldarg_0);
+        il.Emit(OpCodes.Ldarg_0);
+        il.Emit(OpCodes.Call, isGray);
+        il.Emit(OpCodes.Brfalse, grayOk);
+        il.Emit(OpCodes.Ldstr, "Grayscale pixel formats are not supported.");
+        il.Emit(OpCodes.Newobj, upeCtor);
+        il.Emit(OpCodes.Throw);
+        il.Append(grayOk);
+        Instruction cmykOk = il.Create(OpCodes.Ldarg_0);
+        il.Emit(OpCodes.Call, isCmyk);
+        il.Emit(OpCodes.Brfalse, cmykOk);
+        il.Emit(OpCodes.Ldstr, "CMYK pixel formats are not supported.");
+        il.Emit(OpCodes.Newobj, upeCtor);
+        il.Emit(OpCodes.Throw);
+        il.Append(cmykOk);
+        il.Emit(OpCodes.Ldloca_S, validate.Body.Variables[0]);
+        il.Emit(OpCodes.Call, tryInfo);
+        il.Emit(OpCodes.Brfalse, miss);
+        il.Emit(OpCodes.Ldloc_0);
+        il.Emit(OpCodes.Callvirt, getNumeric);
+        il.Emit(OpCodes.Stloc_1);
+        il.Emit(OpCodes.Ldloc_1);
+        il.Emit(OpCodes.Ldc_I4_4);
+        il.Emit(OpCodes.Beq, nrThrow);
+        il.Emit(OpCodes.Ldloc_1);
+        il.Emit(OpCodes.Ldc_I4_1);
+        il.Emit(OpCodes.Beq, nrThrow);
+        il.Emit(OpCodes.Ldloc_1);
+        il.Emit(OpCodes.Ldc_I4_3);
+        il.Emit(OpCodes.Bne_Un, done);
+        il.Append(nrThrow);
+        il.Emit(OpCodes.Call, intToString);
+        il.Emit(OpCodes.Ldstr, " pixel formats are not supported.");
+        il.Emit(OpCodes.Call, concat);
+        il.Emit(OpCodes.Newobj, upeCtor);
+        il.Emit(OpCodes.Throw);
+        il.Append(miss);
+        il.Emit(OpCodes.Call, getName);
+        il.Emit(OpCodes.Newobj, upeCtor);
+        il.Emit(OpCodes.Throw);
+        il.Append(done);
+        if (validate.Body.MaxStackSize < 8)
+            validate.Body.MaxStackSize = 8;
+    }
+    // GPU-effect init resolves its default color-space gamma through
+    // WIC's per-format info (PixelFormatExtensions.GetDefaultGammaMode
+    // -> GetInfoNoAddRef -> PixelFormatInfo cache -> ImagingFactory.
+    // CreateComponentInfo, null factory headless -> NRE): Bulge/Clouds
+    // die in RunEffectImpl before their config dialogs construct.
+    // Live: NullReferenceException |
+    // PixelFormatInfo.TryCreatePixelFormatInfo on Bulge click (console +
+    // HandleEffectException post, no dialog; same frame as the Quantize
+    // wall). Same CPU-table port: TryGetPixelInfo + NumericRepresentation
+    // with identical mapping (gamma 0 for Fixed/Float, else 1) and the
+    // same miss throw as GetRef (format name).
+    private static void EnsureCpuDefaultGammaMode(ModuleDefinition module)
+    {
+        TypeDefinition pfx = module.GetType("PaintDotNet.Imaging.PixelFormatExtensions")
+            ?? throw new InvalidOperationException("CpuPaint: PixelFormatExtensions missing");
+        MethodDefinition gamma = pfx.Methods.FirstOrDefault(m => m.Name == "GetDefaultGammaMode"
+                && m.IsStatic && m.Parameters.Count == 1
+                && m.Parameters[0].ParameterType.FullName == "PaintDotNet.Imaging.PixelFormat&")
+            ?? throw new InvalidOperationException("CpuPaint: GetDefaultGammaMode missing");
+        TypeDefinition pixelFormats = ResolveExternalDef(module, "PaintDotNet.Primitives", "PaintDotNet.Imaging.PixelFormats");
+        MethodDefinition tryInfoDef = pixelFormats.Methods.First(m => m.Name == "TryGetPixelInfo"
+            && m.Parameters.Count == 2
+            && m.Parameters[1].ParameterType.FullName == "PaintDotNet.Imaging.IPixelInfo&");
+        MethodReference tryInfo = module.ImportReference(tryInfoDef);
+        TypeDefinition pixelInfo = ResolveExternalDef(module, "PaintDotNet.Primitives", "PaintDotNet.Imaging.IPixelInfo");
+        MethodReference getNumeric = module.ImportReference(pixelInfo.Methods.First(m => m.Name == "get_NumericRepresentation"));
+        TypeDefinition pixelFormat = ResolveExternalDef(module, "PaintDotNet.Primitives", "PaintDotNet.Imaging.PixelFormat");
+        MethodReference getName = module.ImportReference(pixelFormat.Methods.First(m => m.Name == "GetName" && m.Parameters.Count == 0));
+        TypeDefinition upe = ResolveExternalDef(module, "PaintDotNet.Windows", "PaintDotNet.Imaging.UnsupportedPixelFormatException");
+        MethodReference upeCtor = module.ImportReference(upe.Methods.First(m => m.Name == ".ctor" && m.Parameters.Count == 1
+            && m.Parameters[0].ParameterType.FullName == "System.String"));
+
+        gamma.Body.ExceptionHandlers.Clear();
+        gamma.Body.Instructions.Clear();
+        gamma.Body.Variables.Clear();
+        gamma.Body.Variables.Add(new VariableDefinition(module.ImportReference(pixelInfo)));
+        gamma.Body.Variables.Add(new VariableDefinition(module.TypeSystem.Int32));
+        gamma.Body.InitLocals = true;
+        var il = gamma.Body.GetILProcessor();
+        Instruction done = il.Create(OpCodes.Ldc_I4_1);
+        Instruction zero = il.Create(OpCodes.Ldc_I4_0);
+        Instruction miss = il.Create(OpCodes.Ldarg_0);
+        il.Emit(OpCodes.Ldarg_0);
+        il.Emit(OpCodes.Ldloca_S, gamma.Body.Variables[0]);
+        il.Emit(OpCodes.Call, tryInfo);
+        il.Emit(OpCodes.Brfalse, miss);
+        il.Emit(OpCodes.Ldloc_0);
+        il.Emit(OpCodes.Callvirt, getNumeric);
+        il.Emit(OpCodes.Stloc_1);
+        il.Emit(OpCodes.Ldloc_1);
+        il.Emit(OpCodes.Ldc_I4_4);
+        il.Emit(OpCodes.Beq, zero);
+        il.Emit(OpCodes.Ldloc_1);
+        il.Emit(OpCodes.Ldc_I4_5);
+        il.Emit(OpCodes.Beq, zero);
+        il.Append(done);
+        il.Emit(OpCodes.Ret);
+        il.Append(zero);
+        il.Emit(OpCodes.Ret);
+        il.Append(miss);
+        il.Emit(OpCodes.Call, getName);
+        il.Emit(OpCodes.Newobj, upeCtor);
+        il.Emit(OpCodes.Throw);
+        if (gamma.Body.MaxStackSize < 8)
+            gamma.Body.MaxStackSize = 8;
+    }
     // TaskbarList.Instance headless: CreateInstance NREs inside the
     // CoCreateInstance deref (caught -> DummyImpl, but every access
     // spams a first-chance), and GetMainWindowHwnd NREs on the stub
@@ -8029,7 +8578,7 @@ public static class AssemblyRewriter
     // that is null headless (no settings service): every GPU effect
     // dies in get_RenderingGpuChoice. The synthesized setting answers
     // the software choice (Type==3), routing effects down the CPU
-    // branch â€” the same path a device-less desktop takes.
+    // branch ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â the same path a device-less desktop takes.
     private static void EnsureCpuGpuChoiceSetting(ModuleDefinition module)
     {
         TypeDefinition choiceDef = ResolveExternalDef(module, "PaintDotNet.Framework", "PaintDotNet.Gpu.GpuChoice");
@@ -8122,7 +8671,7 @@ public static class AssemblyRewriter
     // GPU-probing lazy default that never resolves without a device):
     // every GPU effect NREs in OnCreatePropertyCollection dereferencing
     // it (live: RotateZoom, Bulge during Ctrl+Z/menu traffic). Answer the
-    // device-less-desktop default (1, range 1..8) — the same value
+    // device-less-desktop default (1, range 1..8) Ã¢â‚¬â€ the same value
     // GetDefaultQualityLevelGpu produces for a non-Good GPU. Public so
     // the rewrite tests pin it directly, like the Redirect* rules.
     public static void EnsureGpuQualitySettingFallback(ModuleDefinition module)
@@ -9721,10 +10270,125 @@ public static class AssemblyRewriter
             target.Body.MaxStackSize = 8;
     }
 
+    // PSTALL (rev332): served CardLayout.set_SelectedCard can complete
+    // the visible switch (forward cardNameVsControls hit) while the
+    // reverse controlsVsCardNames entry for the new page stays missing;
+    // the next get_SelectedCard misses, Wizard.get_SelectedPage answers
+    // null, Wizard.OnAfterPageSelect skips RaisePageLoad (brfalse), the
+    // page timer never arms and the modal-OK flow stalls with Next
+    // enabled and zero pixels. Repair the reverse entry on the success
+    // path (selectedControl V_0 non-null, right before MakeDirty), so
+    // the served read-back and every later lookup agree. No fork,
+    // host, Timer, Control, or collections change. Returns 1 when the
+    // method was patched, 0 when the repair is already present.
+    // Public so the rewrite tests pin it directly, like the Redirect* rules.
+    public static int RepairCardLayoutReverseLookup(Mono.Cecil.ModuleDefinition module)
+    {
+        ArgumentNullException.ThrowIfNull(module);
+        Mono.Cecil.TypeDefinition layout = module.GetType("Syncfusion.Windows.Forms.Tools.CardLayout")
+            ?? throw new InvalidOperationException("PSTALL: CardLayout missing");
+        Mono.Cecil.FieldDefinition? reverse = layout.Fields.FirstOrDefault(
+            f => f.Name == "controlsVsCardNames"
+                && f.FieldType.FullName == "System.Collections.Hashtable");
+        if (reverse is null)
+            throw new InvalidOperationException("PSTALL: controlsVsCardNames missing");
+        Mono.Cecil.MethodDefinition? setter = null;
+        foreach (Mono.Cecil.MethodDefinition m in layout.Methods)
+        {
+            if (m.Name == "set_SelectedCard" && m.HasBody && m.Parameters.Count == 1
+                && m.Parameters[0].ParameterType.FullName == "System.String"
+                && m.ReturnType.FullName == "System.Void")
+                setter = m;
+        }
+        if (setter is null)
+            throw new InvalidOperationException("PSTALL: set_SelectedCard(string) missing");
+        if (setter.Body.ExceptionHandlers.Count > 0)
+            throw new InvalidOperationException("PSTALL: set_SelectedCard already has handlers");
+        if (setter.Body.Variables.Count < 1
+            || setter.Body.Variables[0].VariableType.FullName != "System.Windows.Forms.Control")
+            throw new InvalidOperationException("PSTALL: set_SelectedCard V_0 is not the selected Control");
+        Mono.Cecil.Cil.Instruction? anchor = null;
+        int makeDirtyCalls = 0;
+        foreach (Mono.Cecil.Cil.Instruction i in setter.Body.Instructions)
+        {
+            if (i.OpCode == Mono.Cecil.Cil.OpCodes.Call
+                && i.Operand is Mono.Cecil.MethodReference mr && mr.Name == "MakeDirty")
+            {
+                makeDirtyCalls++;
+                anchor = i;
+            }
+        }
+        if (makeDirtyCalls != 1 || anchor is null)
+            throw new InvalidOperationException("PSTALL: set_SelectedCard has no single MakeDirty tail");
+        Mono.Cecil.Cil.Instruction? anchorLdarg = anchor.Previous;
+        if (anchorLdarg is null || anchorLdarg.OpCode != Mono.Cecil.Cil.OpCodes.Ldarg_0)
+            throw new InvalidOperationException("PSTALL: set_SelectedCard MakeDirty tail shape changed");
+        if (IsReverseRepairPresent(anchorLdarg))
+            return 0; // Already repaired: re-running the transform is a no-op.
+        Mono.Cecil.MethodReference? setItem = null;
+        foreach (Mono.Cecil.MethodDefinition m in layout.Methods)
+        {
+            if (!m.HasBody)
+                continue;
+            foreach (Mono.Cecil.Cil.Instruction i in m.Body.Instructions)
+            {
+                if (i.OpCode == Mono.Cecil.Cil.OpCodes.Callvirt
+                    && i.Operand is Mono.Cecil.MethodReference cand
+                    && cand.Name == "set_Item"
+                    && cand.DeclaringType.FullName == "System.Collections.Hashtable")
+                    setItem = cand;
+            }
+        }
+        setItem ??= module.ImportReference(typeof(System.Collections.Hashtable).GetMethod(
+            "set_Item", new[] { typeof(object), typeof(object) })!);
+        var il = setter.Body.GetILProcessor();
+        il.InsertBefore(anchorLdarg, il.Create(Mono.Cecil.Cil.OpCodes.Ldloc_0));
+        il.InsertBefore(anchorLdarg, il.Create(Mono.Cecil.Cil.OpCodes.Brfalse_S, anchorLdarg));
+        il.InsertBefore(anchorLdarg, il.Create(Mono.Cecil.Cil.OpCodes.Ldarg_0));
+        il.InsertBefore(anchorLdarg, il.Create(Mono.Cecil.Cil.OpCodes.Ldfld, reverse));
+        il.InsertBefore(anchorLdarg, il.Create(Mono.Cecil.Cil.OpCodes.Ldloc_0));
+        il.InsertBefore(anchorLdarg, il.Create(Mono.Cecil.Cil.OpCodes.Ldarg_1));
+        il.InsertBefore(anchorLdarg, il.Create(Mono.Cecil.Cil.OpCodes.Callvirt, setItem));
+        if (setter.Body.MaxStackSize < 8)
+            setter.Body.MaxStackSize = 8;
+        return 1;
+    }
+
+    private static bool IsReverseRepairPresent(Mono.Cecil.Cil.Instruction anchorLdarg)
+    {
+        Mono.Cecil.Cil.Instruction? p = anchorLdarg.Previous;
+        if (p is null || p.OpCode != Mono.Cecil.Cil.OpCodes.Callvirt
+            || p.Operand is not Mono.Cecil.MethodReference setItem
+            || setItem.Name != "set_Item"
+            || setItem.DeclaringType.FullName != "System.Collections.Hashtable")
+            return false;
+        p = p.Previous;
+        if (p is null || p.OpCode != Mono.Cecil.Cil.OpCodes.Ldarg_1)
+            return false;
+        p = p.Previous;
+        if (p is null || p.OpCode != Mono.Cecil.Cil.OpCodes.Ldloc_0)
+            return false;
+        p = p.Previous;
+        if (p is null || p.OpCode != Mono.Cecil.Cil.OpCodes.Ldfld
+            || p.Operand is not Mono.Cecil.FieldReference fr
+            || fr.Name != "controlsVsCardNames")
+            return false;
+        p = p.Previous;
+        if (p is null || p.OpCode != Mono.Cecil.Cil.OpCodes.Ldarg_0)
+            return false;
+        p = p.Previous;
+        if (p is null
+            || (p.OpCode != Mono.Cecil.Cil.OpCodes.Brfalse_S && p.OpCode != Mono.Cecil.Cil.OpCodes.Brfalse)
+            || !ReferenceEquals(p.Operand, anchorLdarg))
+            return false;
+        p = p.Previous;
+        return p is not null && p.OpCode == Mono.Cecil.Cil.OpCodes.Ldloc_0;
+    }
+
     // Syncfusion telemetry asks for the host process name to detect designer
     // mode (Telemetry.DesignMode => Process.GetCurrentProcess().ProcessName).
     // Headless the process query throws PNSE, caught by the vendor's own
-    // try/catch (IsDesignerMode -> false, telemetry inert) — but the
+    // try/catch (IsDesignerMode -> false, telemetry inert) Ã¢â‚¬â€ but the
     // first-chance fires in EVERY Syncfusion app boot and buries real triage.
     // Answer "" instead: no designer token matches, "dotnet"-check misses,
     // outcome is exactly today's caught path (false), with no throw.
@@ -9753,6 +10417,376 @@ public static class AssemblyRewriter
             target.Body.MaxStackSize = 8;
     }
 
+    // SF08 wall 2 (SF1120-CRASHQA-SF0809): Word boot dies in
+    // SuperToolTip.OnToolTipControlHandleCreated at
+    // Process.GetCurrentProcess() (PlatformNotSupportedException in the
+    // browser) while installing a Win32 WH_MOUSE hook for tooltip
+    // tracking. The boot continues past the first-chance, but the
+    // aborted WmCreate leaves the tip control handle-less and a later
+    // handle validation kills the ctor (Invalid window handle). The
+    // managed AddMessageFilter path already delivers tooltips (the
+    // Track popup renders after the PNSE), so only the native hook
+    // install is dropped: keep ldarg.0/call AddMessageFilter, replace
+    // the SetWindowsHookEx argument computation plus call plus store
+    // with nhook = IntPtr.Zero (later UnhookWindowsEx(0) is a stub
+    // no-op). Straight-line method only; any branch or handler shape
+    // change fails loud instead of patching blind. Returns patched
+    // methods (0/1).
+    public static int NeutralizeSuperToolTipMouseHook(Mono.Cecil.ModuleDefinition module)
+    {
+        Mono.Cecil.TypeDefinition? tip = module.GetType("Syncfusion.Windows.Forms.Tools.SuperToolTip")
+            ?? throw new InvalidOperationException("SFHook: SuperToolTip missing");
+        Mono.Cecil.MethodDefinition? target = null;
+        foreach (Mono.Cecil.MethodDefinition m in tip.Methods)
+        {
+            if (m.Name == "OnToolTipControlHandleCreated" && m.HasBody && m.Parameters.Count == 2)
+                target = m;
+        }
+        if (target is null)
+            throw new InvalidOperationException("SFHook: OnToolTipControlHandleCreated missing");
+        var body = target.Body;
+        if (body.HasExceptionHandlers)
+            throw new InvalidOperationException("SFHook: unexpected handlers in hook method");
+        foreach (Mono.Cecil.Cil.Instruction i in body.Instructions)
+        {
+            if (i.OpCode.FlowControl == Mono.Cecil.Cil.FlowControl.Branch
+                || i.OpCode.FlowControl == Mono.Cecil.Cil.FlowControl.Cond_Branch)
+                throw new InvalidOperationException("SFHook: unexpected branch in hook method");
+        }
+        if (body.Instructions.Count < 4)
+            throw new InvalidOperationException("SFHook: hook method too short");
+        if (body.Instructions[1].Operand is not Mono.Cecil.MethodReference addFilter
+            || addFilter.Name != "AddMessageFilter")
+            throw new InvalidOperationException("SFHook: AddMessageFilter prologue changed");
+        Mono.Cecil.Cil.Instruction? store = null;
+        foreach (Mono.Cecil.Cil.Instruction i in body.Instructions)
+        {
+            if ((i.OpCode == Mono.Cecil.Cil.OpCodes.Stfld || i.OpCode == Mono.Cecil.Cil.OpCodes.Stsfld)
+                && i.Operand is Mono.Cecil.FieldReference fr && fr.Name == "nhook")
+                store = i;
+        }
+        if (store is null)
+            throw new InvalidOperationException("SFHook: nhook store missing");
+        bool sawHook = false;
+        bool sawProc = false;
+        foreach (Mono.Cecil.Cil.Instruction i in body.Instructions)
+        {
+            if (i.Operand is Mono.Cecil.MethodReference mr)
+            {
+                if (mr.Name == "SetWindowsHookEx")
+                    sawHook = true;
+                if (mr.DeclaringType.FullName == "System.Diagnostics.Process" && mr.Name == "GetCurrentProcess")
+                    sawProc = true;
+            }
+        }
+        if (!sawHook || !sawProc)
+            throw new InvalidOperationException("SFHook: hook install shape changed");
+        var il = body.GetILProcessor();
+        int storeIndex = body.Instructions.IndexOf(store);
+        for (int k = storeIndex; k >= 2; k--)
+            il.Remove(body.Instructions[k]);
+        Mono.Cecil.Cil.Instruction anchor = body.Instructions[2];
+        il.InsertBefore(anchor, il.Create(Mono.Cecil.Cil.OpCodes.Ldarg_0));
+        il.InsertBefore(anchor, il.Create(Mono.Cecil.Cil.OpCodes.Ldc_I4_0));
+        il.InsertBefore(anchor, il.Create(Mono.Cecil.Cil.OpCodes.Conv_I));
+        il.InsertBefore(anchor, il.Create(Mono.Cecil.Cil.OpCodes.Stfld, (Mono.Cecil.FieldReference)store.Operand));
+        ExpandShortBranches(target);
+        return 1;
+    }
+
+    // SF09 (SF1120-CRASHQA-SF0809): docking boot dies in
+    // SerializersManager.GetSerializer at Assembly.GetTypes() with
+    // FileNotFoundException (Microsoft.DotNet.DesignTools.Server) when
+    // resolving the calling assembly's type closure. The method already
+    // catches ReflectionTypeLoadException and falls back to the default
+    // XmlSerializer; FileNotFoundException escapes and kills
+    // Config..cctor -> InitializeComponent -> Form1..ctor. Add a second
+    // catch on the same try that stores an empty type array: the
+    // downstream scan then finds no pre-generated reader/writer and
+    // takes the identical default-serializer fallback, so behavior for
+    // present assemblies is untouched. Returns patched methods (0/1).
+    public static int GuardSerializersManagerGetTypes(Mono.Cecil.ModuleDefinition module)
+    {
+        Mono.Cecil.TypeDefinition? sm = module.GetType("Syncfusion.XmlSerializersCreator.SerializersManager")
+            ?? throw new InvalidOperationException("SFSer: SerializersManager missing");
+        Mono.Cecil.MethodDefinition? target = null;
+        foreach (Mono.Cecil.MethodDefinition m in sm.Methods)
+        {
+            if (m.Name == "GetSerializer" && m.IsStatic && m.Parameters.Count == 1 && m.HasBody)
+                target = m;
+        }
+        if (target is null)
+            throw new InvalidOperationException("SFSer: GetSerializer missing");
+        var body = target.Body;
+        Mono.Cecil.Cil.ExceptionHandler? rtle = null;
+        foreach (Mono.Cecil.Cil.ExceptionHandler h in body.ExceptionHandlers)
+        {
+            if (h.HandlerType == Mono.Cecil.Cil.ExceptionHandlerType.Catch
+                && h.CatchType is not null
+                && h.CatchType.FullName == "System.Reflection.ReflectionTypeLoadException")
+                rtle = h;
+        }
+        if (rtle is null)
+            throw new InvalidOperationException("SFSer: ReflectionTypeLoadException handler missing");
+        Mono.Cecil.Cil.Instruction? getTypes = null;
+        Mono.Cecil.Cil.VariableDefinition? typesVar = null;
+        bool inTry = false;
+        foreach (Mono.Cecil.Cil.Instruction i in body.Instructions)
+        {
+            if (i == rtle.TryStart)
+                inTry = true;
+            if (inTry && (i.OpCode == Mono.Cecil.Cil.OpCodes.Call || i.OpCode == Mono.Cecil.Cil.OpCodes.Callvirt)
+                && i.Operand is Mono.Cecil.MethodReference mr && mr.Name == "GetTypes" && mr.Parameters.Count == 0)
+                getTypes = i;
+            if (i == rtle.TryEnd)
+                inTry = false;
+        }
+        if (getTypes is null)
+            throw new InvalidOperationException("SFSer: GetTypes call missing in try");
+        int gi = body.Instructions.IndexOf(getTypes);
+        if (gi + 1 >= body.Instructions.Count
+            || body.Instructions[gi + 1].OpCode != Mono.Cecil.Cil.OpCodes.Stloc_S
+            || body.Instructions[gi + 1].Operand is not Mono.Cecil.Cil.VariableDefinition vd
+            || vd.VariableType.FullName != "System.Type[]")
+            throw new InvalidOperationException("SFSer: GetTypes store shape changed");
+        typesVar = vd;
+        Mono.Cecil.Cil.VariableDefinition store = vd;
+        Mono.Cecil.Cil.Instruction? leaveTarget = null;
+        // The leave target is the instruction the existing handler
+        // leaves to (the post-try join): find the leave inside the RTLE
+        // handler range.
+        int hi0 = body.Instructions.IndexOf(rtle.HandlerStart);
+        int hi1 = rtle.HandlerEnd is null ? body.Instructions.Count : body.Instructions.IndexOf(rtle.HandlerEnd);
+        for (int k = hi0; k >= 0 && k < hi1; k++)
+        {
+            Mono.Cecil.Cil.Instruction i = body.Instructions[k];
+            if ((i.OpCode == Mono.Cecil.Cil.OpCodes.Leave || i.OpCode == Mono.Cecil.Cil.OpCodes.Leave_S)
+                && i.Operand is Mono.Cecil.Cil.Instruction t)
+            {
+                leaveTarget = t;
+                break;
+            }
+        }
+        if (leaveTarget is null)
+            throw new InvalidOperationException("SFSer: RTLE handler leave missing");
+        var il = body.GetILProcessor();
+        var start = il.Create(Mono.Cecil.Cil.OpCodes.Pop);
+        il.Append(start);
+        il.Append(il.Create(Mono.Cecil.Cil.OpCodes.Ldc_I4_0));
+        il.Append(il.Create(Mono.Cecil.Cil.OpCodes.Newarr, module.ImportReference(typeof(System.Type))));
+        il.Append(il.Create(Mono.Cecil.Cil.OpCodes.Stloc, store));
+        il.Append(il.Create(Mono.Cecil.Cil.OpCodes.Leave, leaveTarget));
+        var handlerEnd = il.Create(Mono.Cecil.Cil.OpCodes.Nop);
+        il.Append(handlerEnd);
+        var handler = new Mono.Cecil.Cil.ExceptionHandler(Mono.Cecil.Cil.ExceptionHandlerType.Catch)
+        {
+            TryStart = rtle.TryStart,
+            TryEnd = rtle.TryEnd,
+            HandlerStart = start,
+            HandlerEnd = handlerEnd,
+            CatchType = module.ImportReference(typeof(System.IO.FileNotFoundException)),
+        };
+        body.ExceptionHandlers.Add(handler);
+        ExpandShortBranches(target);
+        return 1;
+    }
+    // SF01/SF05 root (SF05-DISMISS-20261102-dw-runtime): Escape or click
+    // around an OPEN vendor popup wedges the main thread in
+    // PopupUtils.GetADotNetParentControl when GetParent is a constant
+    // stub (served 0x1000): while (handle != Zero) { handle =
+    // GetParent(handle); ... } never progresses, no exception, dead CDP.
+    // The rev291+ GetParentWindow retarget terminates the walk with true
+    // parents, but any stub regression re-wedges the pump. Bound the walk
+    // at the vendor seam: a step counter exits after 256 iterations (real
+    // parent chains are an order of magnitude shallower; the bound only
+    // fires on non-progressing stubs). Shape-checked before patching:
+    // exactly one backward branch closing a loop that contains exactly
+    // one GetParent call, with the handle!=Zero re-check immediately
+    // preceding the back-edge; the check slots are reused in place so
+    // existing inbound edges (mid-loop zero-exit) stay valid. Returns
+    // rewritten methods (0/1).
+    public static int BoundPopupParentWalk(Mono.Cecil.ModuleDefinition module)
+    {
+        Mono.Cecil.TypeDefinition? utils = module.GetType("Syncfusion.Windows.Forms.PopupUtils");
+        if (utils is null)
+            return 0;
+        Mono.Cecil.MethodDefinition? target = null;
+        foreach (Mono.Cecil.MethodDefinition m in utils.Methods)
+        {
+            if (m.Name == "GetADotNetParentControl" && m.IsStatic && m.HasBody && m.Parameters.Count == 1)
+                target = m;
+        }
+        if (target is null)
+            return 0;
+        var body = target.Body;
+        if (body.HasExceptionHandlers)
+            throw new InvalidOperationException("SFWalk: unexpected handlers in walk method");
+        Mono.Cecil.Cil.Instruction? back = null;
+        Mono.Cecil.Cil.Instruction? head = null;
+        foreach (Mono.Cecil.Cil.Instruction i in body.Instructions)
+        {
+            if (i.OpCode.FlowControl != Mono.Cecil.Cil.FlowControl.Cond_Branch)
+                continue;
+            if (i.Operand is Mono.Cecil.Cil.Instruction t
+                && body.Instructions.IndexOf(t) < body.Instructions.IndexOf(i))
+            {
+                if (back is not null)
+                    throw new InvalidOperationException("SFWalk: more than one loop in walk method");
+                back = i;
+                head = t;
+            }
+        }
+        if (back is null || head is null)
+            throw new InvalidOperationException("SFWalk: no loop edge in walk method");
+        int bi = body.Instructions.IndexOf(back);
+        if (bi < 2
+            || body.Instructions[bi - 2].OpCode != Mono.Cecil.Cil.OpCodes.Ldarg_0
+            || body.Instructions[bi - 1].OpCode != Mono.Cecil.Cil.OpCodes.Ldsfld)
+            throw new InvalidOperationException("SFWalk: loop condition shape changed");
+        int getParents = 0;
+        int hi = body.Instructions.IndexOf(head);
+        for (int k = hi; k <= bi; k++)
+        {
+            if (body.Instructions[k].Operand is Mono.Cecil.MethodReference mr
+                && mr.Name == "GetParent" && mr.Parameters.Count == 1)
+                getParents++;
+        }
+        if (getParents != 1)
+            throw new InvalidOperationException("SFWalk: expected exactly one GetParent in loop");
+        Mono.Cecil.Cil.Instruction condArg = body.Instructions[bi - 2];
+        Mono.Cecil.Cil.Instruction condField = body.Instructions[bi - 1];
+        foreach (Mono.Cecil.Cil.Instruction i in body.Instructions)
+        {
+            if (i == back)
+                continue;
+            if (i.Operand == (object)head)
+                throw new InvalidOperationException("SFWalk: unexpected edge into loop head");
+            if (i.Operand == (object)condArg || i.Operand == (object)condField || i.Operand == (object)back)
+            {
+                // Only forward re-entries into the condition head are
+                // safe (method entry, mid-loop zero-exit): they flow through
+                // the capped check. Anything backward would skip the step
+                // counter.
+                int si = body.Instructions.IndexOf(i);
+                int ti = body.Instructions.IndexOf((Mono.Cecil.Cil.Instruction)i.Operand);
+                bool forwardReentry = ti == body.Instructions.IndexOf(condArg) && si < ti;
+                if (!forwardReentry)
+                    throw new InvalidOperationException("SFWalk: unexpected edge into loop condition");
+            }
+        }
+        Mono.Cecil.Cil.Instruction ret = body.Instructions[bi + 1];
+        var steps = new Mono.Cecil.Cil.VariableDefinition(module.TypeSystem.Int32);
+        body.Variables.Add(steps);
+        var il = body.GetILProcessor();
+        il.InsertBefore(head, il.Create(Mono.Cecil.Cil.OpCodes.Ldloc, steps));
+        il.InsertBefore(head, il.Create(Mono.Cecil.Cil.OpCodes.Ldc_I4_1));
+        il.InsertBefore(head, il.Create(Mono.Cecil.Cil.OpCodes.Add));
+        il.InsertBefore(head, il.Create(Mono.Cecil.Cil.OpCodes.Stloc, steps));
+        Mono.Cecil.Cil.Instruction firstStep = body.Instructions[body.Instructions.IndexOf(head) - 4];
+        back.OpCode = Mono.Cecil.Cil.OpCodes.Beq_S;
+        back.Operand = ret;
+        il.InsertBefore(ret, il.Create(Mono.Cecil.Cil.OpCodes.Ldloc, steps));
+        il.InsertBefore(ret, il.Create(Mono.Cecil.Cil.OpCodes.Ldc_I4, 256));
+        il.InsertBefore(ret, il.Create(Mono.Cecil.Cil.OpCodes.Bge_S, ret));
+        il.InsertBefore(ret, il.Create(Mono.Cecil.Cil.OpCodes.Br_S, firstStep));
+        ExpandShortBranches(target);
+        return 1;
+    }
+    // ISWINDOW-RETARGET2 companion: MiniToolBar.GetTopWindow walks
+    // `h = GetWindow(h, GW_HWNDNEXT)` while IsWindow(h) (mouse-move
+    // floating-toolbar path). Headless GetWindow answers the constant
+    // 0x1000 sentinel, so the truthful IsWindow retarget unblocks an
+    // infinite loop there (IsWindowVisible stays false by the bool-Is*
+    // policy). Bound the walk at 256 iterations in place: real chains
+    // are a handful deep; the bound only fires on non-progressing
+    // stubs and returns the same sentinel the zero-stub era returned
+    // immediately. Shape-checked: instance method, zero params,
+    // IntPtr return, no EH, exactly two backward conditional edges
+    // landing on one local-load head, exactly one IsWindow call in
+    // the loop, tail is a local-load + ret exit. Returns rewritten
+    // methods (0/1).
+    public static int CapMiniToolBarTopWindowLoop(Mono.Cecil.ModuleDefinition module)
+    {
+        Mono.Cecil.TypeDefinition? bar = module.GetType("Syncfusion.Windows.Forms.Tools.MiniToolBar");
+        if (bar is null)
+            return 0;
+        Mono.Cecil.MethodDefinition? target = null;
+        foreach (Mono.Cecil.MethodDefinition m in bar.Methods)
+        {
+            if (m.Name == "GetTopWindow" && !m.IsStatic && m.HasBody && m.Parameters.Count == 0
+                && m.ReturnType.FullName == "System.IntPtr")
+                target = m;
+        }
+        if (target is null)
+            return 0;
+        var body = target.Body;
+        if (body.HasExceptionHandlers)
+            throw new InvalidOperationException("SFMiniBar: unexpected handlers in walk method");
+        Mono.Cecil.Cil.Instruction? head = null;
+        var backs = new System.Collections.Generic.List<Mono.Cecil.Cil.Instruction>();
+        foreach (Mono.Cecil.Cil.Instruction i in body.Instructions)
+        {
+            if (i.Operand is not Mono.Cecil.Cil.Instruction t)
+                continue;
+            bool backward = body.Instructions.IndexOf(t) < body.Instructions.IndexOf(i);
+            if (!backward)
+                continue;
+            if (i.OpCode.FlowControl == Mono.Cecil.Cil.FlowControl.Cond_Branch)
+            {
+                backs.Add(i);
+                if (head is null)
+                    head = t;
+                else if (head != t)
+                    throw new InvalidOperationException("SFMiniBar: loop heads diverged");
+            }
+            else
+            {
+                throw new InvalidOperationException("SFMiniBar: unexpected backward edge in walk method");
+            }
+        }
+        if (head is null || backs.Count != 2)
+            throw new InvalidOperationException("SFMiniBar: expected two back-edges to one head");
+        if (!head.OpCode.Name.StartsWith("ldloc", System.StringComparison.Ordinal))
+            throw new InvalidOperationException("SFMiniBar: loop head is not a local load");
+        int hi = body.Instructions.IndexOf(head);
+        int lastBack = -1;
+        foreach (Mono.Cecil.Cil.Instruction b in backs)
+            lastBack = System.Math.Max(lastBack, body.Instructions.IndexOf(b));
+        int isWindows = 0;
+        for (int k = hi; k <= lastBack; k++)
+        {
+            if (body.Instructions[k].Operand is Mono.Cecil.MethodReference mr
+                && mr.Name == "IsWindow" && mr.Parameters.Count == 1)
+                isWindows++;
+        }
+        if (isWindows != 1)
+            throw new InvalidOperationException("SFMiniBar: expected exactly one IsWindow in loop");
+        Mono.Cecil.Cil.Instruction tail = body.Instructions[body.Instructions.Count - 1];
+        Mono.Cecil.Cil.Instruction tailLoad = body.Instructions[body.Instructions.Count - 2];
+        if (tail.OpCode != Mono.Cecil.Cil.OpCodes.Ret
+            || !tailLoad.OpCode.Name.StartsWith("ldloc", System.StringComparison.Ordinal))
+            throw new InvalidOperationException("SFMiniBar: expected local-load + ret tail");
+        var steps = new Mono.Cecil.Cil.VariableDefinition(module.TypeSystem.Int32);
+        body.Variables.Add(steps);
+        body.InitLocals = true;
+        body.MaxStackSize = System.Math.Max(body.MaxStackSize, 4);
+        var il = body.GetILProcessor();
+        il.InsertBefore(body.Instructions[0], il.Create(Mono.Cecil.Cil.OpCodes.Ldc_I4_0));
+        il.InsertBefore(body.Instructions[1], il.Create(Mono.Cecil.Cil.OpCodes.Stloc, steps));
+        il.InsertBefore(head, il.Create(Mono.Cecil.Cil.OpCodes.Ldloc, steps));
+        il.InsertBefore(head, il.Create(Mono.Cecil.Cil.OpCodes.Ldc_I4_1));
+        il.InsertBefore(head, il.Create(Mono.Cecil.Cil.OpCodes.Add));
+        il.InsertBefore(head, il.Create(Mono.Cecil.Cil.OpCodes.Stloc, steps));
+        Mono.Cecil.Cil.Instruction checkStart = il.Create(Mono.Cecil.Cil.OpCodes.Ldloc, steps);
+        il.InsertBefore(tailLoad, checkStart);
+        il.InsertBefore(tailLoad, il.Create(Mono.Cecil.Cil.OpCodes.Ldc_I4, 256));
+        il.InsertBefore(tailLoad, il.Create(Mono.Cecil.Cil.OpCodes.Bge_S, tailLoad));
+        il.InsertBefore(tailLoad, il.Create(Mono.Cecil.Cil.OpCodes.Br_S, head));
+        foreach (Mono.Cecil.Cil.Instruction b in backs)
+            b.Operand = checkStart;
+        ExpandShortBranches(target);
+        return 1;
+    }
     // TextBoxBase.SelectAll routes through the live RichEdit selection
     // (EM_SETSEL against the created handle plus UIA automation events);
     // headless the selection path OOB-traps the session. Proven at
@@ -9791,6 +10825,46 @@ public static class AssemblyRewriter
         }
         return count;
     }
+    // SF09 (gen16): VisualStudioDemo.Form1..ctor loads its own demo
+    // sources into two EditControls via baked backslash-relative paths
+    // (GetDirectoryName(ExecutablePath) + "\..\..\..\Form1.cs" /
+    // "\..\..\..\Program.cs" -> EditControl.LoadFile). Headless the
+    // files do not exist and LoadFile throws FileNotFoundException,
+    // stashed at form-create. The sources are demo chrome (a source
+    // viewer), not docking function, so skip the two loads: pop the
+    // instance+path and push false (the existing pop consumes it).
+    // Replacing 1 instruction with 3 shorter ones shrinks the body, so
+    // no branch distance grows. Returns neutralized call sites.
+    public static int NeutralizeDemoSourceViewerLoads(Mono.Cecil.ModuleDefinition module)
+    {
+        ArgumentNullException.ThrowIfNull(module);
+        Mono.Cecil.TypeDefinition? form = module.GetType("VisualStudioDemo.Form1")
+            ?? throw new InvalidOperationException("Sf09Src: VisualStudioDemo.Form1 missing");
+        Mono.Cecil.MethodDefinition? ctor = form.Methods.FirstOrDefault(m =>
+                m.Name == ".ctor" && m.Parameters.Count == 0 && m.HasBody)
+            ?? throw new InvalidOperationException("Sf09Src: Form1..ctor missing");
+        int count = 0;
+        var il = ctor.Body.GetILProcessor();
+        foreach (Mono.Cecil.Cil.Instruction instr in ctor.Body.Instructions.ToArray())
+        {
+            if (instr.OpCode != Mono.Cecil.Cil.OpCodes.Callvirt)
+                continue;
+            if (instr.Operand is not Mono.Cecil.MethodReference target
+                || target.Name != "LoadFile"
+                || target.Parameters.Count != 1
+                || target.ReturnType.FullName != "System.Boolean"
+                || target.DeclaringType.FullName != "Syncfusion.Windows.Forms.Edit.EditControl")
+                continue;
+            var popInstance = il.Create(Mono.Cecil.Cil.OpCodes.Pop);
+            il.Replace(instr, popInstance);
+            var popPath = il.Create(Mono.Cecil.Cil.OpCodes.Pop);
+            il.InsertAfter(popInstance, popPath);
+            il.InsertAfter(popPath, il.Create(Mono.Cecil.Cil.OpCodes.Ldc_I4_0));
+            count++;
+        }
+        return count;
+    }
+
 
     // TextBoxBase.get_TextLength routes through a generic P/Invoke
     // wrapper (GetWindowTextLength<T>) that the WASM interpreter cannot
@@ -9842,6 +10916,114 @@ public static class AssemblyRewriter
             }
         }
         return count;
+    }
+
+    // ComboBoxBaseDataBound.set_SelectedIndex re-enters itself through
+    // the inner ListControl/TextBox event cascade (SelectedValueChanged
+    // -> List_SelectedValueChanged, TextChanged -> OnTextChanged): the
+    // sink re-invokes the setter with the same value before the fork's
+    // text/list sync lets the entry guard (get_SelectedIndex() == value)
+    // observe it, so the setter ping-pongs until StackOverflow. Proven at
+    // the calendar ThemeCmb/culture/multiSelection drop-button clicks
+    // (SF05: set 0x75 -> OnTextChanged 0x13f -> set -> ListBox.set 0x7c ->
+    // OnSelectedIndexChanged -> set 0x8b, managed dead / JS alive). The
+    // write itself is consistent (shim ListControl dedups same-value and
+    // stores before firing), so the fix bounds the nesting, not the
+    // events: a private depth counter trips re-entry at depth 16 (no
+    // legitimate setter nest runs that deep; desktop never nests at all)
+    // while the original guard and event flow stay intact. The prologue
+    // sits outside the try (early return leaves the counter untouched);
+    // every in-try return is routed through leave to a post-handler
+    // ret (a ret directly inside try is unverifiable) so the finally
+    // runs. Prepending shifts the whole
+    // original body equally, so no branch distance changes. Returns
+    // rewritten methods (0/1).
+    public static int EnsureComboBoxSelectedIndexReentrancyGuard(Mono.Cecil.ModuleDefinition module)
+    {
+        ArgumentNullException.ThrowIfNull(module);
+        Mono.Cecil.TypeDefinition combo = module.GetType("Syncfusion.Windows.Forms.Tools.ComboBoxBaseDataBound")
+            ?? throw new InvalidOperationException("SF05: ComboBoxBaseDataBound missing");
+        Mono.Cecil.MethodDefinition setter = combo.Methods.FirstOrDefault(
+                m => m.Name == "set_SelectedIndex" && m.Parameters.Count == 1)
+            ?? throw new InvalidOperationException("SF05: set_SelectedIndex missing");
+        if (!setter.HasBody)
+            throw new InvalidOperationException("SF05: set_SelectedIndex has no body");
+        const string guardField = "__dwSelectedIndexDepth";
+        if (setter.Body.Instructions.Any(i =>
+                i.Operand is Mono.Cecil.FieldReference fr && fr.Name == guardField))
+            return 0; // Already guarded: re-running the transform is a no-op.
+        if (setter.Body.ExceptionHandlers.Count > 0)
+            throw new InvalidOperationException("SF05: set_SelectedIndex already has handlers");
+        Mono.Cecil.FieldDefinition? guard = combo.Fields.FirstOrDefault(f => f.Name == guardField);
+        if (guard is null)
+        {
+            guard = new Mono.Cecil.FieldDefinition(
+                guardField, Mono.Cecil.FieldAttributes.Private, module.TypeSystem.Int32);
+            combo.Fields.Add(guard);
+        }
+        Mono.Cecil.Cil.MethodBody body = setter.Body;
+        var il = body.GetILProcessor();
+        Mono.Cecil.Cil.Instruction origFirst = body.Instructions[0];
+        // if (this.__dwSelectedIndexDepth >= 16) return;
+        Mono.Cecil.Cil.Instruction go = il.Create(Mono.Cecil.Cil.OpCodes.Ldarg_0);
+        il.InsertBefore(origFirst, il.Create(Mono.Cecil.Cil.OpCodes.Ldarg_0));
+        il.InsertBefore(origFirst, il.Create(Mono.Cecil.Cil.OpCodes.Ldfld, guard));
+        il.InsertBefore(origFirst, il.Create(Mono.Cecil.Cil.OpCodes.Ldc_I4, 16));
+        il.InsertBefore(origFirst, il.Create(Mono.Cecil.Cil.OpCodes.Blt, go));
+        il.InsertBefore(origFirst, il.Create(Mono.Cecil.Cil.OpCodes.Ret));
+        // this.__dwSelectedIndexDepth++;
+        il.InsertBefore(origFirst, go);
+        il.InsertBefore(origFirst, il.Create(Mono.Cecil.Cil.OpCodes.Ldarg_0));
+        il.InsertBefore(origFirst, il.Create(Mono.Cecil.Cil.OpCodes.Ldfld, guard));
+        il.InsertBefore(origFirst, il.Create(Mono.Cecil.Cil.OpCodes.Ldc_I4_1));
+        il.InsertBefore(origFirst, il.Create(Mono.Cecil.Cil.OpCodes.Add));
+        il.InsertBefore(origFirst, il.Create(Mono.Cecil.Cil.OpCodes.Stfld, guard));
+        // finally { this.__dwSelectedIndexDepth--; }
+        Mono.Cecil.Cil.Instruction finStart = il.Create(Mono.Cecil.Cil.OpCodes.Ldarg_0);
+        il.Append(finStart);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldarg_0);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldfld, guard);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldc_I4_1);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Sub);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Stfld, guard);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Endfinally);
+        Mono.Cecil.Cil.Instruction end = il.Create(Mono.Cecil.Cil.OpCodes.Ret);
+        il.Append(end);
+        // A ret directly inside a try region is unverifiable (the CLR
+        // only leaves protected regions via leave/throw, the way C#
+        // exits try/return through leave): the original body returns
+        // from inside the new try, so route every in-try ret through
+        // leave to the post-handler ret. Every converted site is
+        // stack-empty (a verifiable void ret always is).
+        int finIndex = body.Instructions.IndexOf(finStart);
+        var inTryRets = new System.Collections.Generic.List<Mono.Cecil.Cil.Instruction>();
+        for (int i = body.Instructions.IndexOf(origFirst); i < finIndex; i++)
+        {
+            if (body.Instructions[i].OpCode == Mono.Cecil.Cil.OpCodes.Ret)
+                inTryRets.Add(body.Instructions[i]);
+        }
+        foreach (Mono.Cecil.Cil.Instruction r in inTryRets)
+        {
+            // Mutate in place: branches (including the entry same-value
+            // guard) target these rets, and Replace would detach them.
+            r.OpCode = Mono.Cecil.Cil.OpCodes.Leave;
+            r.Operand = end;
+        }
+        body.ExceptionHandlers.Add(new Mono.Cecil.Cil.ExceptionHandler(
+            Mono.Cecil.Cil.ExceptionHandlerType.Finally)
+        {
+            TryStart = origFirst,
+            TryEnd = finStart,
+            HandlerStart = finStart,
+            // Exclusive: the handler covers the finally up to (not
+            // including) the post-handler ret. Leaving it null extends
+            // the handler through that ret, which is unverifiable (a ret
+            // may not sit inside a finally region).
+            HandlerEnd = end,
+        });
+        if (body.MaxStackSize < 8)
+            body.MaxStackSize = 8;
+        return 1;
     }
 
     private static System.Collections.Generic.IEnumerable<Mono.Cecil.TypeDefinition> AllTypes(
@@ -10086,6 +11268,52 @@ public static class AssemblyRewriter
         sil.InsertBefore(anchor, sil.Create(OpCodes.Ret));
         if (copy.Body.MaxStackSize < 4)
             copy.Body.MaxStackSize = 4;
+    }
+
+    // Direct-apply effects (AutoLevel et al, no dialog) run straight into
+    // EffectMenuBase.DoEffect with no ResumeEffectApply snapshot, so the CPU
+    // tile renderer has no pre-effect source and the product D2D path NREs
+    // headless (worker "Effect threw an exception"). Stash the active layer
+    // surface at DoEffect entry via CpuPaint.NoteDirectApplySource; the
+    // dialog path re-snapshots the same pre-effect content harmlessly.
+    // Fail closed on any shape change (registration swallows like audits).
+    private static void EnsureDirectApplyEffectStash(ModuleDefinition module, string? cpuPaintPath)
+    {
+        TypeDefinition? scope = module.GetType("PaintDotNet.Menus.EffectMenuBase")
+            ?? throw new InvalidOperationException("CpuFx: EffectMenuBase missing for direct-apply stash");
+        MethodDefinition? doEffect = null;
+        for (TypeDefinition? t = scope; t is not null; t = t.BaseType?.Resolve())
+        {
+            var cands = t.Methods.Where(m => m.Name == "DoEffect" && m.Parameters.Count == 6 && m.HasBody).ToList();
+            if (cands.Count > 1)
+                throw new InvalidOperationException("CpuFx: EffectMenuBase.DoEffect ambiguous for direct-apply stash");
+            if (cands.Count == 1)
+            {
+                doEffect = cands[0];
+                break;
+            }
+        }
+        if (doEffect is null)
+            throw new InvalidOperationException("CpuFx: EffectMenuBase.DoEffect missing for direct-apply stash");
+        MethodReference stash = ImportCpuPaintMethod(module, cpuPaintPath, "NoteDirectApplySource", 2);
+        var dil = doEffect.Body.GetILProcessor();
+        Instruction head = doEffect.Body.Instructions[0];
+        dil.InsertBefore(head, dil.Create(OpCodes.Ldarg_0));
+        dil.InsertBefore(head, dil.Create(OpCodes.Ldarg_1));
+        dil.InsertBefore(head, dil.Create(OpCodes.Call, stash));
+        if (doEffect.Body.MaxStackSize < 4)
+            doEffect.Body.MaxStackSize = 4;
+        // The save must finish before rendering/commit. The desktop worker
+        // dispatcher does not pump here, leaving bitmapMemento null and
+        // silently skipping the product's undo-history push.
+        var saves = doEffect.Body.Instructions.Where(i =>
+            i.Operand is MethodReference m && m.DeclaringType.FullName == "PaintDotNet.Threading.Work"
+            && m.Name == "QueueWorkItem" && m.Parameters.Count == 2
+            && m.Parameters[1].ParameterType.FullName == "System.Action"
+            && m.ReturnType.FullName == "System.Void").ToList();
+        if (saves.Count != 1) throw new InvalidOperationException("CpuFx: DoEffect history save shape changed");
+        saves[0].OpCode = OpCodes.Call;
+        saves[0].Operand = ImportCpuPaintMethod(module, cpuPaintPath, "SaveEffectHistoryInline", 2);
     }
 
     private static void EnsureEffectDriverInline(ModuleDefinition module)
@@ -10546,7 +11774,7 @@ public static class AssemblyRewriter
                 count++;
             }
             // Inserted ldobj/box/follow-up bytes can push a short
-            // branch (br.s ±127) out of range; the operand wraps and
+            // branch (br.s Ã‚Â±127) out of range; the operand wraps and
             // the verifier reports an invalid target. Expand short
             // branches to long form in place (opcode swap only: no
             // list surgery, all references stay valid). Fixpoint: one
@@ -11060,7 +12288,7 @@ private static int RetargetShadowCacheTryAdd(ModuleDefinition module, string? cp
     // Setting<TValue>.OnValidateValueT headless: virtual dispatch on a
     // value-type generic instantiation (Setting<FormWindowState>,
     // ScalarSetting<double>, ...) throws InvalidProgramException in the
-    // browser interpreter — the callee body is trivial (ldc.i4.1, ret)
+    // browser interpreter Ã¢â‚¬â€ the callee body is trivial (ldc.i4.1, ret)
     // and never starts, the type instantiates and unbox.any TValue
     // executes fine, so only the callvirt itself is broken
     // (touch-attributed: Setting`1::OnValidateValue@0007 is the last
@@ -11232,6 +12460,1247 @@ private static int RetargetShadowCacheTryAdd(ModuleDefinition module, string? cp
         return count;
     }
 
+    private static Mono.Cecil.TypeReference? SubstituteInterfaceReturn(
+        Mono.Cecil.MethodReference site, Mono.Cecil.GenericInstanceType instance)
+    {
+        // The bridge passes the closed declaring interface via ldtoken;
+        // the member's return type may reference the declarer's type
+        // parameters (!0..): substitute them with the closed instance
+        // arguments so the post-call unbox/cast loads a closed type the
+        // interpreter can verify. Anything else open (method parameters,
+        // nested opens, arrays of open) stays pristine via null.
+        Mono.Cecil.TypeReference ret = site.ReturnType;
+        if (!ret.ContainsGenericParameter)
+            return ret;
+        if (ret is Mono.Cecil.GenericParameter gp
+            && gp.Type == Mono.Cecil.GenericParameterType.Type
+            && gp.Position < instance.GenericArguments.Count
+            && !instance.GenericArguments[gp.Position].ContainsGenericParameter)
+            return instance.GenericArguments[gp.Position];
+        if (ret is Mono.Cecil.GenericInstanceType retGi)
+        {
+            var sub = new Mono.Cecil.GenericInstanceType(retGi.ElementType);
+            foreach (Mono.Cecil.TypeReference a in retGi.GenericArguments)
+            {
+                if (a is Mono.Cecil.GenericParameter ap
+                    && ap.Type == Mono.Cecil.GenericParameterType.Type
+                    && ap.Position < instance.GenericArguments.Count
+                    && !instance.GenericArguments[ap.Position].ContainsGenericParameter)
+                    sub.GenericArguments.Add(instance.GenericArguments[ap.Position]);
+                else if (!a.ContainsGenericParameter)
+                    sub.GenericArguments.Add(a);
+                else
+                    return null;
+            }
+            return sub;
+        }
+        return null;
+    }
+    private static bool IsGenericInterfaceDeclarer(Mono.Cecil.GenericInstanceType gi)
+    {
+        // The browser interpreter rejects callvirt whose declaring type
+        // is a generic interface instantiation; resolve the element
+        // (unresolvable or non-interface stays pristine via false).
+        try
+        {
+            Mono.Cecil.TypeDefinition? ed = gi.ElementType.Resolve();
+            return ed is not null && ed.IsInterface;
+        }
+        catch (System.Exception ex) when (ex is Mono.Cecil.ResolutionException || ex is System.InvalidOperationException || ex is System.ArgumentException)
+        {
+            return false;
+        }
+    }
+    private static bool TryEffectGetterSelector(string element, string name, out int which)
+    {
+        which = -1;
+        switch (element)
+        {
+            case "PaintDotNet.PropertySystem.Property`1":
+            case "PaintDotNet.AppModel.IScalarAppSetting`1":
+                if (name == "get_Value") which = 0;
+                else if (name == "get_MinValue") which = 1;
+                else if (name == "get_MaxValue") which = 2;
+                else return false;
+                return true;
+            case "PaintDotNet.AppModel.ISetting`1":
+                if (name == "get_Value") which = 0;
+                else return false;
+                return true;
+            case "PaintDotNet.PropertySystem.VectorProperty`1":
+                if (name == "get_ValueX") which = 5;
+                else if (name == "get_ValueY") which = 6;
+                else return false;
+                return true;
+            case "PaintDotNet.Functional.Result`1":
+                if (name == "get_Value") which = 0;
+                else if (name == "get_IsValue") which = 3;
+                else return false;
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static int RetargetEffectSettingGetters(ModuleDefinition module, string? cpuPaintPath)
+    {
+        if (BisectSkipSettingsReroutes)
+            return 0;
+        MethodReference getValue = ImportCpuPaintMethod(module, cpuPaintPath, "GetEffectSettingValue", 3);
+        MethodReference getIfaceMember = ImportCpuPaintMethod(module, cpuPaintPath, "GetInterfaceMemberValue", 3);
+        MethodReference getProp = ImportCpuPaintMethod(module, cpuPaintPath, "GetEffectTokenProperty", 2);
+        MethodReference newLazy = ImportCpuPaintMethod(module, cpuPaintPath, "NewEffectLazyResult", 2);
+        MethodReference getBitmap = ImportCpuPaintMethod(module, cpuPaintPath, "GetEffectSourceBitmap", 2);
+        MethodReference getValues = ImportCpuPaintMethod(module, cpuPaintPath, "GetEnumerableValues", 3);
+        MethodReference unwrapOpen = ImportCpuPaintMethod(module, cpuPaintPath, "Unwrap", 1);
+        MethodReference typeFromHandle = module.ImportReference(
+            typeof(Type).GetMethod("GetTypeFromHandle", new[] { typeof(RuntimeTypeHandle) })!);
+        int count = 0;
+        foreach (TypeDefinition type in module.Types)
+            count += RetargetEffectSettingGettersIn(module, type, getValue, getProp, newLazy, getBitmap, getValues, getIfaceMember, typeFromHandle, unwrapOpen);
+        if (count > 0)
+            Console.WriteLine($"CpuFx: effect-setting getters rerouted {count} sites in {module.Name}");
+        return count;
+    }
+
+    // QUANTIZE-RESIDUAL-SLICE2: uniform bridge post-op. The helper returns
+    // object; the consumer needs the closed target type. Value types keep
+    // Unbox_Any and plain reference types keep Castclass (both execute in
+    // vivo); object needs nothing. Closed generic instantiations go through
+    // CpuPaint.Unwrap<T> instead: the browser interpreter rejects
+    // castclass/unbox directly on those targets with an empty
+    // InvalidProgramException (Quantize OnSetToken wall).
+    private static void EmitBridgePostOp(
+        Mono.Cecil.Cil.ILProcessor il,
+        Mono.Cecil.Cil.Instruction anchor,
+        Mono.Cecil.TypeReference target,
+        Mono.Cecil.ModuleDefinition module,
+        Mono.Cecil.MethodReference unwrapOpen)
+    {
+        if (target is Mono.Cecil.GenericInstanceType && !target.IsValueType)
+        {
+            MethodReference open = unwrapOpen;
+            var gi = new Mono.Cecil.GenericInstanceMethod(open);
+            gi.GenericArguments.Add(target);
+            il.InsertAfter(anchor, il.Create(OpCodes.Call, module.ImportReference(gi)));
+            return;
+        }
+        if (target.FullName == "System.Object")
+            return;
+        if (target.IsValueType)
+            il.InsertAfter(anchor, il.Create(OpCodes.Unbox_Any, target));
+        else
+            il.InsertAfter(anchor, il.Create(OpCodes.Castclass, target));
+    }
+    private static Mono.Cecil.TypeReference? SubstituteMethodReturn(
+        MethodReference site, Mono.Cecil.GenericInstanceMethod gim)
+    {
+        // Values<TKey,TValue> returns IEnumerable<!!1>: the single
+        // return argument is the SECOND method argument.
+        if (gim.GenericArguments.Count == 2)
+        {
+            if (site.ReturnType is Mono.Cecil.GenericInstanceType gv
+                && gv.GenericArguments.Count == 1
+                && gv.GenericArguments[0] is Mono.Cecil.GenericParameter gvp
+                && gvp.Position == 1 && gvp.Type == Mono.Cecil.GenericParameterType.Method
+                && gim.GenericArguments[0] is not Mono.Cecil.GenericParameter
+                && gim.GenericArguments[1] is not Mono.Cecil.GenericParameter)
+            {
+                var single = new Mono.Cecil.GenericInstanceType(gv.ElementType);
+                single.GenericArguments.Add(gim.GenericArguments[1]);
+                return single;
+            }
+            return null;
+        }
+        if (site.ReturnType is not Mono.Cecil.GenericInstanceType gr
+            || gr.GenericArguments.Count != gim.GenericArguments.Count)
+            return null;
+        for (int i = 0; i < gr.GenericArguments.Count; i++)
+        {
+            if (gr.GenericArguments[i] is not Mono.Cecil.GenericParameter gp
+                || gp.Position != i || gp.Type != Mono.Cecil.GenericParameterType.Method)
+                return null;
+        }
+        var sub = new Mono.Cecil.GenericInstanceType(gr.ElementType);
+        foreach (var a in gim.GenericArguments)
+        {
+            if (a is Mono.Cecil.GenericParameter)
+                return null;
+            sub.GenericArguments.Add(a);
+        }
+        return sub;
+    }
+
+    private static int RetargetEffectSettingGettersIn(
+        ModuleDefinition module, TypeDefinition type,
+        MethodReference getValue, MethodReference getProp, MethodReference newLazy,
+        MethodReference getBitmap, MethodReference getValues, MethodReference getIfaceMember,
+        MethodReference typeFromHandle, MethodReference unwrapOpen)
+    {
+        int count = 0;
+        foreach (MethodDefinition method in type.Methods)
+        {
+            if (!method.HasBody) continue;
+            var il = method.Body.GetILProcessor();
+            bool touched = false;
+            foreach (Instruction ins in method.Body.Instructions.ToArray())
+            {
+                if (ins.OpCode != OpCodes.Call && ins.OpCode != OpCodes.Callvirt)
+                    continue;
+                if (ins.Operand is not MethodReference mr)
+                    continue;
+                bool isCallvirt = ins.OpCode == OpCodes.Callvirt;
+                if (isCallvirt && mr.DeclaringType is Mono.Cecil.GenericInstanceType gi
+                    && gi.GenericArguments.Count == 1
+                    && TryEffectGetterSelector(gi.ElementType.FullName, mr.Name, out int which))
+                {
+                    if (gi.GenericArguments[0] is Mono.Cecil.GenericParameter
+                        || gi.ContainsGenericParameter
+                        || IsControlTarget(method, ins))
+                    {
+                        Console.WriteLine(
+                            $"CpuFx: effect-getter reroute skipped open/anchored site {type.FullName}::{method.Name} {mr.Name}");
+                        continue;
+                    }
+                    il.InsertBefore(ins, il.Create(OpCodes.Ldc_I4, which));
+                    il.InsertBefore(ins, il.Create(OpCodes.Ldtoken, gi));
+                    il.InsertBefore(ins, il.Create(OpCodes.Call, typeFromHandle));
+                    ins.OpCode = OpCodes.Call;
+                    ins.Operand = getValue;
+                    // QUANTIZE-RESIDUAL: the helper returns object. Unwrap
+                    // value types, cast reference types, emit nothing for
+                    // object itself. Unconditional Unbox_Any poisoned
+                    // reference-typed settings (StaticListChoice Value:
+                    // object; ImageColorsAnalysis/ColorHistogram/PaletteTable)
+                    // with unbox.any on a reference type, which the browser
+                    // interpreter rejects with an empty InvalidProgramException
+                    // (Quantize OnSetToken wall: dialog never opens). Same
+                    // kind-check convention as the interface-bridge post-op.
+                    Mono.Cecil.TypeReference settingType = gi.GenericArguments[0];
+                    EmitBridgePostOp(il, ins, settingType, module, unwrapOpen);
+                    touched = true;
+                    count++;
+                    continue;
+                }
+                if (isCallvirt && mr.Name == "GetProperty"
+                    && mr.DeclaringType.FullName == "PaintDotNet.Effects.PropertyBasedEffectConfigToken"
+                    && mr is Mono.Cecil.GenericInstanceMethod gprop
+                    && gprop.GenericArguments.Count == 1)
+                {
+                    if (gprop.GenericArguments[0] is Mono.Cecil.GenericParameter
+                        || IsControlTarget(method, ins))
+                    {
+                        Console.WriteLine(
+                            $"CpuFx: effect-getter reroute skipped open/anchored site {type.FullName}::{method.Name} {mr.Name}");
+                        continue;
+                    }
+                    ins.OpCode = OpCodes.Call;
+                    ins.Operand = getProp;
+                    il.InsertAfter(ins, il.Create(OpCodes.Castclass, gprop.GenericArguments[0]));
+                    touched = true;
+                    count++;
+                    continue;
+                }
+                if (isCallvirt && mr.DeclaringType is Mono.Cecil.GenericInstanceType egi
+                    && mr.Parameters.Count == 0
+                    && mr is not Mono.Cecil.GenericInstanceMethod
+                    && !egi.ContainsGenericParameter
+                    && IsGenericInterfaceDeclarer(egi))
+                {
+                    // Uniform bridge for 0-parameter callvirt on
+                    // generic-instantiated interfaces (Quantize OnSetToken
+                    // foreach over GetEnumerableValues: GetEnumerator and
+                    // get_Current kill the method with empty
+                    // InvalidProgramException in the browser interpreter;
+                    // b__4's IReadOnlyCollection<T>.get_Count is the same
+                    // family on the render path). The interpreter rejects
+                    // this dispatch family while the reflection Invoke
+                    // path executes in vivo (Clouds token/setting reads):
+                    // pass the declaring interface + member name and let
+                    // the helper resolve via the interface map exactly.
+                    // The member return may reference the declarer's type
+                    // parameters: substitute them with the closed instance
+                    // arguments so the post-call unbox/cast loads a closed
+                    // type. Open constructions, generic methods, methods
+                    // with parameters (get_Item, Compare) and anchored
+                    // sites stay pristine (named residuals).
+                    Mono.Cecil.TypeReference? postType = null;
+                    if (mr.ReturnType.FullName != "System.Void")
+                    {
+                        postType = SubstituteInterfaceReturn(mr, egi);
+                        if (postType is null)
+                        {
+                            Console.WriteLine(
+                                $"CpuFx: effect-iface reroute skipped open-return site {type.FullName}::{method.Name} {mr.Name}");
+                            continue;
+                        }
+                    }
+                    if (IsControlTarget(method, ins))
+                    {
+                        Console.WriteLine(
+                            $"CpuFx: effect-iface reroute skipped anchored site {type.FullName}::{method.Name} {mr.Name}");
+                        continue;
+                    }
+                    il.InsertBefore(ins, il.Create(OpCodes.Ldtoken, egi));
+                    il.InsertBefore(ins, il.Create(OpCodes.Call, typeFromHandle));
+                    il.InsertBefore(ins, il.Create(OpCodes.Ldstr, mr.Name));
+                    ins.OpCode = OpCodes.Call;
+                    ins.Operand = getIfaceMember;
+                    if (postType is not null)
+                    {
+                        EmitBridgePostOp(il, ins, postType, module, unwrapOpen);
+                    }
+                    touched = true;
+                    count++;
+                    continue;
+                }
+                if (ins.OpCode == OpCodes.Call && mr is Mono.Cecil.GenericInstanceMethod gim)
+                {
+                    MethodReference? helper = null;
+                    if (mr.Name == "New"
+                        && mr.DeclaringType.FullName == "PaintDotNet.Functional.LazyResult"
+                        && gim.GenericArguments.Count == 1)
+                        helper = newLazy;
+                    else if (mr.Name == "GetSourceBitmap"
+                        && mr.DeclaringType.FullName == "PaintDotNet.Effects.EffectEnvironmentExtensions"
+                        && gim.GenericArguments.Count == 1)
+                        helper = getBitmap;
+                    else if (mr.Name == "Values"
+                        && mr.DeclaringType.FullName == "PaintDotNet.Collections.EnumerableExtensions"
+                        && gim.GenericArguments.Count == 2)
+                        helper = getValues;
+                    if (helper is null)
+                        continue;
+                    if (IsControlTarget(method, ins))
+                    {
+                        Console.WriteLine(
+                            $"CpuFx: effect-getter reroute skipped anchored factory site {type.FullName}::{method.Name} {mr.Name}");
+                        continue;
+                    }
+                    var sub = SubstituteMethodReturn(mr, gim);
+                    if (sub is null)
+                    {
+                        Console.WriteLine(
+                            $"CpuFx: effect-getter reroute skipped unshaped factory site {type.FullName}::{method.Name} {mr.FullName}");
+                        continue;
+                    }
+                    if (helper == getValues)
+                    {
+                        il.InsertBefore(ins, il.Create(OpCodes.Ldtoken, gim.GenericArguments[0]));
+                        il.InsertBefore(ins, il.Create(OpCodes.Call, typeFromHandle));
+                    }
+                    il.InsertBefore(ins, il.Create(OpCodes.Ldtoken, sub));
+                    il.InsertBefore(ins, il.Create(OpCodes.Call, typeFromHandle));
+                    ins.OpCode = OpCodes.Call;
+                    ins.Operand = helper;
+                    EmitBridgePostOp(il, ins, sub, module, unwrapOpen);
+                    touched = true;
+                    count++;
+                }
+            }
+            if (touched)
+            {
+                method.Body.MaxStackSize += 2;
+                ExpandShortBranches(method);
+            }
+        }
+        foreach (TypeDefinition nested in type.NestedTypes)
+            count += RetargetEffectSettingGettersIn(module, nested, getValue, getProp, newLazy, getBitmap, getValues, getIfaceMember, typeFromHandle, unwrapOpen);
+        return count;
+    }
+
+    // TRIO-METHOD-BRIDGE: reroute closed static generic-method-instantiation
+    // calls with value-type type arguments through the non-generic
+    // CpuPaint.InvokeClosedGenericStatic reflection helper. The browser
+    // interpreter rejects that call shape with an empty
+    // InvalidProgramException (Twist OnCreatePropertyCollection
+    // Pair.Create<double,double>, Twist/Bulge OnCreateConfigUI
+    // CreateClipper<ColorBgra32>, Quantize OnCreatePropertyCollection
+    // CreateForEnum<PropertyNames>); all three dialogs never open while
+    // the value-read bridges (rev293+) execute in vivo (Invert 28800px).
+    // Only boxable by-value shapes are bridged: byref/pointer/span/ref-struct
+    // params or returns stay direct (reflection cannot carry them), as do
+    // runtime-intrinsic families (Unsafe/MemoryMarshal/RuntimeHelpers/
+    // Interlocked/Volatile/BitConverter/Intrinsics/MemoryExtensions/Text/Linq),
+    // compiler-generated callees, CpuPaint/fork targets, and instance calls.
+    // Proven-executing paths need no exclusion list: the census shows
+    // InvertColorsGpuEffect and the Levels creation/configUI methods contain
+    // no bridgeable valuetype-arg generic-method calls (the rule cannot
+    // touch them); the pin re-verifies this every run.
+    private static int RetargetSourceBitmapChain(ModuleDefinition module, string? cpuPaintPath)
+    {
+        MethodReference helper = ImportCpuPaintMethod(module, cpuPaintPath, "GetEffectSourceBitmapChain", 3);
+        MethodReference typeFromHandle = module.ImportReference(
+            typeof(System.Type).GetMethod("GetTypeFromHandle", new[] { typeof(System.RuntimeTypeHandle) })!);
+        int count = 0;
+        var skipped = new System.Collections.Generic.Dictionary<string, int>(System.StringComparer.Ordinal);
+        var stack = new System.Collections.Generic.Stack<TypeDefinition>(module.Types);
+        while (stack.Count > 0)
+        {
+            TypeDefinition type = stack.Pop();
+            foreach (TypeDefinition n in type.NestedTypes)
+                stack.Push(n);
+            foreach (MethodDefinition method in type.Methods)
+            {
+                if (!method.HasBody)
+                    continue;
+                var il = method.Body.GetILProcessor();
+                bool touched = false;
+                foreach (Instruction ins in method.Body.Instructions.ToArray())
+                {
+                    if (ins.OpCode != OpCodes.Call)
+                        continue;
+                    if (ins.Operand is not MethodReference mr || ins.Operand is GenericInstanceMethod)
+                        continue;
+                    if (mr.DeclaringType.FullName != "PaintDotNet.Effects.EffectEnvironmentExtensions"
+                        || mr.Name != "GetSourceBitmap" || mr.Parameters.Count != 2)
+                        continue;
+                    if (mr.Parameters[1].ParameterType is not ByReferenceType bref)
+                    { SkipBridgeCount(skipped, "chain-non-byref"); continue; }
+                    TypeReference elemType = module.ImportReference(bref.ElementType);
+                    TypeReference refType = mr.Parameters[0].ParameterType;
+                    TypeReference ptrType = mr.Parameters[1].ParameterType;
+                    TypeReference retType = module.ImportReference(mr.ReturnType);
+                    var tmpEnv = new VariableDefinition(refType);
+                    var tmpPtr = new VariableDefinition(ptrType);
+                    method.Body.Variables.Add(tmpEnv);
+                    method.Body.Variables.Add(tmpPtr);
+                    il.InsertBefore(ins, il.Create(OpCodes.Stloc, tmpPtr));
+                    il.InsertBefore(ins, il.Create(OpCodes.Stloc, tmpEnv));
+                    il.InsertBefore(ins, il.Create(OpCodes.Ldloc, tmpEnv));
+                    il.InsertBefore(ins, il.Create(OpCodes.Ldloc, tmpPtr));
+                    il.InsertBefore(ins, il.Create(OpCodes.Ldobj, elemType));
+                    il.InsertBefore(ins, il.Create(OpCodes.Box, elemType));
+                    if (method.HasGenericParameters)
+                    {
+                        il.InsertBefore(ins, il.Create(OpCodes.Ldtoken, method.GenericParameters[0]));
+                        il.InsertBefore(ins, il.Create(OpCodes.Call, typeFromHandle));
+                    }
+                    else
+                        il.InsertBefore(ins, il.Create(OpCodes.Ldnull));
+                    il.InsertBefore(ins, il.Create(OpCodes.Call, helper));
+                    il.InsertBefore(ins, il.Create(OpCodes.Castclass, retType));
+                    ins.OpCode = OpCodes.Nop;
+                    ins.Operand = null;
+                    touched = true;
+                    count++;
+                }
+                if (touched)
+                {
+                    method.Body.InitLocals = true;
+                    method.Body.MaxStackSize += 8;
+                    ExpandShortBranches(method);
+                }
+            }
+        }
+        if (count > 0)
+            System.Console.WriteLine($"CpuFx: source-bitmap chain bridge {count} sites in {module.Name}");
+        foreach (var kv in skipped)
+            System.Console.WriteLine($"CpuFx: source-bitmap chain skipped {kv.Value}x {kv.Key}");
+        return count;
+    }
+
+    private static int RetargetOpenObjectRefSites(ModuleDefinition module, string? cpuPaintPath)
+    {
+        MethodReference helper = ImportCpuPaintMethod(module, cpuPaintPath, "CastOrTransferRefRuntime", 2);
+        MethodReference getTypeFromHandle = module.ImportReference(
+            typeof(System.Type).GetMethod("GetTypeFromHandle", new[] { typeof(System.RuntimeTypeHandle) })!);
+        MethodReference makeGenericType = module.ImportReference(
+            typeof(System.Type).GetMethod("MakeGenericType", new[] { typeof(System.Type[]) })!);
+        // (ref object type comes from the call-site operand; no synthesis needed)
+        int count = 0;
+        var skipped = new System.Collections.Generic.Dictionary<string, int>(System.StringComparer.Ordinal);
+        var stack = new System.Collections.Generic.Stack<TypeDefinition>(module.Types);
+        while (stack.Count > 0)
+        {
+            TypeDefinition type = stack.Pop();
+            foreach (TypeDefinition n in type.NestedTypes)
+                stack.Push(n);
+            foreach (MethodDefinition method in type.Methods)
+            {
+                if (!method.HasBody || !method.HasGenericParameters)
+                    continue;
+                var il = method.Body.GetILProcessor();
+                bool touched = false;
+                foreach (Instruction ins in method.Body.Instructions.ToArray())
+                {
+                    if (ins.OpCode != OpCodes.Call)
+                        continue;
+                    if (ins.Operand is not GenericInstanceMethod gim)
+                        continue;
+                    if (gim.DeclaringType.FullName != "PaintDotNet.ComponentModel.ObjectRefExtensions")
+                        continue;
+                    if (gim.Name != "CastOrTransferRef" && gim.Name != "TryCastOrTransferRef")
+                        continue;
+                    if (gim.GenericArguments.Count != 1)
+                    { SkipBridgeCount(skipped, "open-arity"); continue; }
+                    if (gim.GenericArguments[0] is not GenericInstanceType nest || nest.GenericArguments.Count != 1)
+                    { SkipBridgeCount(skipped, "open-nested-shape"); continue; }
+                    if (nest.GenericArguments[0] is not GenericParameter gp || gp.Type != GenericParameterType.Method
+                        || gp.Position >= method.GenericParameters.Count)
+                    { SkipBridgeCount(skipped, "open-nested-shape"); continue; }
+                    if (gim.Parameters.Count != 1
+                        || gim.Parameters[0].ParameterType.FullName != "PaintDotNet.ComponentModel.IObjectRef")
+                    { SkipBridgeCount(skipped, "open-param-shape"); continue; }
+                    TypeReference refType = gim.Parameters[0].ParameterType;
+                    TypeReference openDef = nest.ElementType;
+                    TypeReference openRet = gim.GenericArguments[0];
+                    var tmpRef = new VariableDefinition(refType);
+                    var tmpType = new VariableDefinition(module.ImportReference(typeof(System.Type)));
+                    method.Body.Variables.Add(tmpRef);
+                    method.Body.Variables.Add(tmpType);
+                    il.InsertBefore(ins, il.Create(OpCodes.Stloc, tmpRef));
+                    il.InsertBefore(ins, il.Create(OpCodes.Ldtoken, module.ImportReference(openDef)));
+                    il.InsertBefore(ins, il.Create(OpCodes.Call, getTypeFromHandle));
+                    il.InsertBefore(ins, il.Create(OpCodes.Ldc_I4_1));
+                    il.InsertBefore(ins, il.Create(OpCodes.Newarr, module.ImportReference(typeof(System.Type))));
+                    il.InsertBefore(ins, il.Create(OpCodes.Dup));
+                    il.InsertBefore(ins, il.Create(OpCodes.Ldc_I4_0));
+                    il.InsertBefore(ins, il.Create(OpCodes.Ldtoken, method.GenericParameters[gp.Position]));
+                    il.InsertBefore(ins, il.Create(OpCodes.Call, getTypeFromHandle));
+                    il.InsertBefore(ins, il.Create(OpCodes.Stelem_Ref));
+                    il.InsertBefore(ins, il.Create(OpCodes.Callvirt, makeGenericType));
+                    il.InsertBefore(ins, il.Create(OpCodes.Stloc, tmpType));
+                    il.InsertBefore(ins, il.Create(OpCodes.Ldloc, tmpRef));
+                    il.InsertBefore(ins, il.Create(OpCodes.Ldloc, tmpType));
+                    il.InsertBefore(ins, il.Create(OpCodes.Call, helper));
+                    il.InsertBefore(ins, il.Create(OpCodes.Castclass, module.ImportReference(openRet)));
+                    ins.OpCode = OpCodes.Nop;
+                    ins.Operand = null;
+                    touched = true;
+                    count++;
+                }
+                if (touched)
+                {
+                    method.Body.InitLocals = true;
+                    method.Body.MaxStackSize += 8;
+                    ExpandShortBranches(method);
+                }
+            }
+        }
+        if (count > 0)
+            System.Console.WriteLine($"CpuFx: open ObjectRef bridge {count} sites in {module.Name}");
+        foreach (var kv in skipped)
+            System.Console.WriteLine($"CpuFx: open ObjectRef skipped {kv.Value}x {kv.Key}");
+        return count;
+    }
+
+    private static int EmitTempOracleR6(ModuleDefinition module, string? cpuPaintPath)
+    {
+        MethodReference site = ImportCpuPaintMethod(module, cpuPaintPath, "TraceBridgeSite", 1);
+        var targets = new (string Type, string Method, int Params, bool NonGenericOnly)[]
+        {
+            ("PaintDotNet.Effects.EffectEnvironmentExtensions", "GetSourceBitmap", 2, true),
+            ("PaintDotNet.Effects.EffectEnvironmentExtensions", "GetSourceBitmapBgra32", 1, false),
+            ("PaintDotNet.Resources.EnumLocalizer", "Create", 1, false),
+            ("PaintDotNet.Resources.EnumLocalizer", "GetLocalizedEnumValues", 0, false),
+            // Validate.IsNotNull REMOVED (R8): hot oracle exhausted the shared 20000 site-trace cap during boot and blinded the Quantize tail probes on gen32; the chain bypasses Validate by construction.
+            ("PaintDotNet.IndirectUI.ControlInfo", "FindControlForPropertyName", 1, false),
+            ("PaintDotNet.IndirectUI.PropertyControlInfo", "SetValueDisplayName", 2, false),
+            ("PaintDotNet.Effects.PropertyBasedEffectHandler`2", "RelayCreateConfigUI", 1, false),
+            ("PaintDotNet.Effects.PropertyBasedEffectConfigForm`1", "Create", 3, false),
+            ("PaintDotNet.Effects.PropertyBasedEffectConfigForm`1", ".ctor", 3, false),
+            ("PaintDotNet.Effects.PropertyBasedEffectConfigForm`1", "OnLoading", 0, false),
+            ("PaintDotNet.Effects.PropertyBasedEffectHandler`2", "RelayCreateConfigForm", 0, false),
+            ("PaintDotNet.Effects.PropertyBasedEffectConfigForm`1", "OnUpdateDialogFromToken", 1, false),
+            ("PaintDotNet.Effects.PropertyBasedEffectConfigForm`1", "OnShown", 1, false),
+            // R19b Quantize-BCL: PropertyBasedEffectConfigForm`1 does NOT
+            // override OnLoad (gen44: probe never attached), so target the
+            // base EffectConfigForm::OnLoad (1 param, handler-free) which runs
+            // once per form inside ShowDialog after CreateHandle, before
+            // OnShown â€” plus EffectConfigFormWrapper::ShowDialog (the rev104
+            // modal-loop entry). Per-control OnHandleCreated deliberately NOT
+            // probed (hot: would flood the shared 20000 site-trace cap).
+            ("PaintDotNet.Effects.EffectConfigForm", "OnLoad", 1, false),
+            ("PaintDotNet.Effects.EffectConfigFormWrapper", "ShowDialog", 1, false),
+            // R20 Quantize-BCL: gen45 proves RelayCreateConfigForm RETURNS
+            // then an empty IPE fires before Wrapper::ShowDialog ENTER, so
+            // the wall is wrapper construction or the immediate call.
+            ("PaintDotNet.Effects.EffectConfigFormWrapper", ".ctor", 1, false),
+            // R21 Quantize-BCL: gen46 proves the wrapper constructs fine;
+            // the IPE fires in RunEffectImpl between .ctor EXIT and
+            // ShowDialog ENTER (SetEffect / set_Token / add_TokenChanged /
+            // add_Shown on the wrapper+base). Probe every handler-free
+            // 1-param impl; all fire at most once per dialog (cap-safe).
+            ("PaintDotNet.Effects.EffectConfigForm", "SetEffect", 1, false),
+            ("PaintDotNet.Effects.EffectConfigForm", "set_Token", 1, false),
+            ("PaintDotNet.Effects.EffectConfigForm", "add_TokenChanged", 1, false),
+            ("PaintDotNet.Effects.EffectConfigFormWrapper", "SetEffect", 1, false),
+            ("PaintDotNet.Effects.EffectConfigFormWrapper", "set_Token", 1, false),
+            ("PaintDotNet.Effects.EffectConfigFormWrapper", "add_TokenChanged", 1, false),
+            ("PaintDotNet.Effects.EffectConfigForm`2", "set_Token", 1, false),
+            // R22 Quantize-BCL: gen47 proves SetEffect/set_Token/
+            // add_TokenChanged all EXIT; the IPE fires in the tail span
+            // (get_Surface -> CreateRef -> EffectDriver.Create -> add_Shown
+            // -> ShowDialog). Probe the span ends; both fire at most once
+            // per dialog (cap-safe). EffectDriver.Create diverges by effect
+            // kind (Quantize is a CPU effect; Twist/Bulge are GPU).
+            ("PaintDotNet.BitmapLayer", "get_Surface", 0, false),
+            ("PaintDotNet.Effects.EffectDriver", "Create", 6, false),
+            // R24 Quantize-BCL: gen49 proves Create ENTERs and dies inside
+            // (Twist takes the Bitmap branch and exits). The Quantize CPU
+            // path constructs ClassicEffectDriver (both 6-param .ctors are
+            // handler-free; one entry touches both, once per dialog max).
+            ("PaintDotNet.Effects.ClassicEffectDriver", ".ctor", 6, false),
+            // R26 Quantize-BCL: gen51 proves the Classic .ctor probe is
+            // attached yet never fires (cap healthy at ~1k/20k): the .ctor
+            // fails verification at entry. Prime suspect is the base call
+            // EffectDriver`1<IClassicEffectRenderer>..ctor; probe it to
+            // separate base-body death from base-instantiation failure.
+            ("PaintDotNet.Effects.EffectDriver`1", ".ctor", 6, false),
+            // R27 Quantize-BCL: gen52 proves the base .ctor ENTERs and dies
+            // inside with no Classic .ctor and no further markers. The only
+            // TEffectRenderer-dependent construction before the CreateRef/
+            // CreateRenderer region is the nested display class; probe its
+            // parameterless .ctor to separate generic-instantiation failure
+            // from a later in-body wall.
+            ("PaintDotNet.Effects.EffectDriver`1/<>c__DisplayClass17_0", ".ctor", 0, false),
+            // R28 Quantize-BCL: gen53 proves the display class constructs
+            // fine; the wall follows in the CreateRef/CreateRenderer region.
+            // The base .ctor calls callvirt IEffect::CreateRenderer as a
+            // generic-method instantiation; the Quantize chain resolves an
+            // explicit impl (dotted name â€” exact-name censuses missed these).
+            // Both base impls are handler-free and fire at most once here.
+            ("PaintDotNet.Effects.ClassicEffectBase", "PaintDotNet.Effects.IEffect.CreateRenderer", 1, false),
+            ("PaintDotNet.Effects.EffectBase", "PaintDotNet.Effects.IEffect.CreateRenderer", 1, false),
+            // R29 Quantize-BCL: gen54 proves the explicit CreateRenderer
+            // ENTERs+EXITs for Quantize; the IPE fires with no base-.ctor
+            // EXIT and no Classic .ctor. Next in the base .ctor is
+            // callvirt OnRendererInitialize, dispatched per driver kind
+            // (Classic for Quantize, Bitmap for Twist/Bulge). Probe both;
+            // Twist's Bitmap EXIT is the control.
+            ("PaintDotNet.Effects.ClassicEffectDriver", "OnRendererInitialize", 1, false),
+            ("PaintDotNet.Effects.BitmapEffectDriver", "OnRendererInitialize", 1, false),
+            // R30 Quantize-BCL: gen55 proves BitmapEffectDriver.
+            // OnRendererInitialize ENTERs for Quantize and dies inside
+            // (Twist/Bulge EXIT). Its body news BitmapEffectInitializeInfo
+            // then callvirts IBitmapEffectRenderer.Initialize; probe the
+            // handler-free BitmapEffectRenderer.Initialize impl. One fire
+            // per dialog (cap-safe).
+            ("PaintDotNet.Effects.BitmapEffectRenderer", "Initialize", 1, false),
+            // R25 Quantize-BCL: gen50 proves EffectDriver.Create ENTERs and
+            // dies inside before any .ctor. Per the served Create IL the only
+            // calls before newobj are IEffect::IsRendererAvailable; the
+            // Quantize (CPU) chain resolves BitmapEffect.OnIsRendererAvailable
+            // (Twist resolves GpuEffect's). EffectBase/ClassicEffectBase
+            // overrides have handlers so the oracle skips them anyway.
+            ("PaintDotNet.Effects.BitmapEffect", "OnIsRendererAvailable", 1, false),
+            ("PaintDotNet.Effects.PropertyBasedEffectConfigForm`1", "OnLayout", 1, false),
+            ("PaintDotNet.Effects.PropertyBasedEffectConfigForm`1", "OnLayoutImpl", 0, false),
+            ("PaintDotNet.Effects.PropertyBasedEffectConfigForm`1", "CreateWindowProperties", 0, false),
+            ("PaintDotNet.Effects.PropertyBasedEffectConfigForm`1", "get_UseSystemMenuFontInInitializeComponent", 0, false),
+        };
+        int count = 0;
+        var stack = new System.Collections.Generic.Stack<TypeDefinition>(module.Types);
+        while (stack.Count > 0)
+        {
+            TypeDefinition type = stack.Pop();
+            foreach (TypeDefinition n in type.NestedTypes)
+                stack.Push(n);
+            foreach (MethodDefinition method in type.Methods)
+            {
+                if (!method.HasBody || method.Body.HasExceptionHandlers)
+                    continue;
+                bool hit = false;
+                foreach (var t in targets)
+                {
+                    if (type.FullName == t.Type && method.Name == t.Method
+                        && method.Parameters.Count == t.Params
+                        && (!t.NonGenericOnly || !method.HasGenericParameters))
+                    { hit = true; break; }
+                }
+                if (!hit)
+                    continue;
+                var il = method.Body.GetILProcessor();
+                string tag = "ORACLE-R6 " + type.FullName + "::" + method.Name;
+                Instruction first = method.Body.Instructions[0];
+                il.InsertBefore(first, il.Create(OpCodes.Ldstr, "ENTER " + tag));
+                il.InsertBefore(first, il.Create(OpCodes.Call, site));
+                foreach (Instruction ins in method.Body.Instructions.ToArray())
+                {
+                    if (ins.OpCode != OpCodes.Ret)
+                        continue;
+                    il.InsertBefore(ins, il.Create(OpCodes.Ldstr, "EXIT " + tag));
+                    il.InsertBefore(ins, il.Create(OpCodes.Call, site));
+                }
+                method.Body.MaxStackSize += 2;
+                count++;
+                System.Console.WriteLine($"CpuFx: TEMP-ORACLE-R6 touch {tag}");
+            }
+        }
+        return count;
+    }
+
+    private static int RetargetClosedGenericMethodCalls(ModuleDefinition module, string? cpuPaintPath)
+    {
+        if (BisectSkipSettingsReroutes)
+            return 0;
+        MethodReference invoke = ImportCpuPaintMethod(module, cpuPaintPath, "InvokeClosedGenericStatic", 6);
+        MethodReference unwrapOpen = ImportCpuPaintMethod(module, cpuPaintPath, "Unwrap", 1);
+        MethodReference typeFromHandle = module.ImportReference(
+            typeof(System.Type).GetMethod("GetTypeFromHandle", new[] { typeof(System.RuntimeTypeHandle) })!);
+        int count = 0;
+        var skipped = new System.Collections.Generic.Dictionary<string, int>(System.StringComparer.Ordinal);
+        foreach (TypeDefinition type in module.Types)
+            count += RetargetClosedGenericMethodCallsIn(module, type, invoke, unwrapOpen, skipped);
+        if (count > 0)
+            System.Console.WriteLine($"CpuFx: closed generic-method calls bridged {count} sites in {module.Name}");
+        foreach (var kv in skipped)
+            System.Console.WriteLine($"CpuFx: generic-method bridge skipped {kv.Value}x {kv.Key}");
+        return count;
+    }
+
+    private static void SkipBridgeCount(System.Collections.Generic.Dictionary<string, int> skipped, string reason)
+    {
+        skipped.TryGetValue(reason, out int n);
+        skipped[reason] = n + 1;
+    }
+
+    // TRIO-METHOD-BRIDGE-R4 allowlist: the only generic-method shapes
+    // bridged. Everything else (SelectRO/Max/Array.Empty/intrinsics,
+    // proven-executing and hot paths) stays direct: blanket bridging
+    // regressed the Levels histogram on gen25.
+    private static bool IsBridgeAllowedCallee(string declName, string methodName)
+    {
+        if (declName.Contains('<'))
+            return false;
+        if (declName == "WfWasm.PdnCpu.CpuPaint" || declName.StartsWith("WfWasm."))
+            return false;
+        return (declName == "PaintDotNet.Pair" && methodName == "Create")
+            || (declName == "System.Tuple" && methodName == "Create")
+            || (declName == "PaintDotNet.PropertySystem.StaticListChoiceProperty" && methodName == "CreateForEnum")
+            || (declName == "PaintDotNet.Imaging.BitmapSourceExtensions" && (methodName == "CreateClipper" || methodName == "CreateFormatConverter"))
+            || (declName == "PaintDotNet.Imaging.ImagingFactoryExtensions" && methodName == "CreateBufferedBitmap")
+            || (declName == "PaintDotNet.Effects.EffectEnvironmentExtensions" && methodName == "GetSourceBitmap")
+            || (declName == "PaintDotNet.ComponentModel.ObjectRefExtensions" && (methodName == "CastOrTransferRef" || methodName == "TryCastOrTransferRef"));
+    }
+
+    private static bool IsBridgeableShape(TypeReference t)
+    {
+        // False for anything reflection cannot carry by value: managed
+        // pointers, raw pointers, function pointers, pinned, and byref-like
+        // (Span/ReadOnlySpan/Memory/ReadOnlyMemory/RegionPtr families).
+        if (t is ByReferenceType || t is PointerType || t is FunctionPointerType || t is PinnedType
+            || t is RequiredModifierType || t is OptionalModifierType)
+            return false;
+        if (t is GenericInstanceType gi)
+        {
+            foreach (TypeReference a in gi.GenericArguments)
+                if (!IsBridgeableShape(a))
+                    return false;
+        }
+        if (t is TypeSpecification spec)
+            return IsBridgeableShape(spec.ElementType);
+        if (t is GenericParameter)
+            return false;
+        // Byref-like detection by name (this Cecil carries no IsByRefLike):
+        // anything else exotic fails loud inside the bridge at runtime.
+        string fn = t.FullName;
+        if (fn.StartsWith("System.Span`1", System.StringComparison.Ordinal)
+            || fn.StartsWith("System.ReadOnlySpan`1", System.StringComparison.Ordinal)
+            || fn.StartsWith("System.Memory`1", System.StringComparison.Ordinal)
+            || fn.StartsWith("System.ReadOnlyMemory`1", System.StringComparison.Ordinal)
+            || fn.StartsWith("System.Buffers.", System.StringComparison.Ordinal)
+            || fn.StartsWith("PaintDotNet.RegionPtr`1", System.StringComparison.Ordinal))
+            return false;
+        return true;
+    }
+
+    private static TypeReference SubstituteBridgeArgs(TypeReference t,
+        System.Collections.Generic.IList<TypeReference> methodArgs,
+        System.Collections.Generic.IList<TypeReference> typeArgs)
+    {
+        if (t is GenericParameter gp)
+        {
+            if (gp.Type == GenericParameterType.Method)
+                return methodArgs[gp.Position];
+            return typeArgs[gp.Position];
+        }
+        if (t is GenericInstanceType gi)
+        {
+            var sub = new GenericInstanceType(gi.ElementType);
+            foreach (TypeReference a in gi.GenericArguments)
+                sub.GenericArguments.Add(SubstituteBridgeArgs(a, methodArgs, typeArgs));
+            return sub;
+        }
+        if (t is ArrayType at)
+            return new ArrayType(SubstituteBridgeArgs(at.ElementType, methodArgs, typeArgs), at.Rank);
+        return t;
+    }
+
+    private static bool IsConcreteBridgeType(TypeReference t)
+    {
+        if (t is GenericParameter)
+            return false;
+        if (t is GenericInstanceType gi)
+        {
+            foreach (TypeReference a in gi.GenericArguments)
+                if (!IsConcreteBridgeType(a))
+                    return false;
+            return true;
+        }
+        if (t is TypeSpecification spec)
+            return IsConcreteBridgeType(spec.ElementType);
+        return true;
+    }
+
+    private static bool HasBridgeValueTypeArg(System.Collections.Generic.IList<TypeReference> args)
+    {
+        foreach (TypeReference a in args)
+        {
+            TypeReference r = a;
+            while (r is TypeSpecification spec)
+                r = spec.ElementType;
+            if (r.IsValueType)
+                return true;
+        }
+        return false;
+    }
+
+    private static bool HasDeepValueTypeContent(TypeReference t)
+    {
+        TypeReference r = t;
+        while (r is TypeSpecification spec)
+            r = spec.ElementType;
+        if (r.IsValueType)
+            return true;
+        if (r is GenericInstanceType gi)
+        {
+            foreach (TypeReference a in gi.GenericArguments)
+                if (HasDeepValueTypeContent(a))
+                    return true;
+        }
+        return false;
+    }
+
+    private static bool IsNestedObjectRefBridge(GenericInstanceMethod gim, string declName)
+    {
+        if (declName != "PaintDotNet.ComponentModel.ObjectRefExtensions")
+            return false;
+        if (gim.Name != "CastOrTransferRef" && gim.Name != "TryCastOrTransferRef")
+            return false;
+        foreach (TypeReference ta in gim.GenericArguments)
+        {
+            if (ta is GenericInstanceType
+                && HasDeepValueTypeContent(ta)
+                && IsConcreteBridgeType(ta)
+                && IsBridgeableShape(ta))
+                return true;
+        }
+        return false;
+    }
+
+    private static string BridgeRuntimeScope(string scope)
+    {
+        // Compile-time facade -> runtime assembly (trimmed facades do
+        // not resolve via Type.GetType in the browser closure).
+        if (scope == "System.Runtime" || scope == "netstandard")
+            return "System.Private.CoreLib";
+        return scope;
+    }
+
+    private static string BridgeRuntimeName(TypeReference t, ModuleDefinition module)
+    {
+        // Assembly-qualified runtime name for Type.GetType(name, true).
+        if (t is GenericInstanceType gi)
+        {
+            var parts = new System.Collections.Generic.List<string>();
+            foreach (TypeReference a in gi.GenericArguments)
+                parts.Add("[" + BridgeRuntimeName(a, module) + "]");
+            // Assembly-qualified generic-instance names carry the scope
+            // AFTER the argument brackets (Type.GetType grammar); the
+            // pre-R18 shape (scope between the backtick arity and the
+            // brackets) never resolves at runtime.
+            string giScope = BridgeRuntimeScope((gi.ElementType.Scope as AssemblyNameReference)?.Name ?? module.Assembly.Name.Name);
+            return gi.ElementType.FullName.Replace('/', '+') + "[" + string.Join(",", parts) + "], " + giScope;
+        }
+        if (t is ArrayType at)
+            return BridgeRuntimeName(at.ElementType, module) + "[]";
+        string scope = BridgeRuntimeScope((t.Scope as AssemblyNameReference)?.Name ?? module.Assembly.Name.Name);
+        return t.FullName.Replace('/', '+') + ", " + scope;
+    }
+
+    private static string RuntimeTypeScopeName(TypeReference t, ModuleDefinition module)
+    {
+        string scope = BridgeRuntimeScope((t.Scope as AssemblyNameReference)?.Name ?? module.Assembly.Name.Name);
+        return t.FullName.Replace('/', '+') + ", " + scope;
+    }
+
+    private static int RetargetClosedGenericMethodCallsIn(
+        ModuleDefinition module, TypeDefinition type,
+        MethodReference invoke, MethodReference unwrapOpen,
+        System.Collections.Generic.Dictionary<string, int> skipped)
+    {
+        int count = 0;
+        foreach (MethodDefinition method in type.Methods)
+        {
+            if (!method.HasBody) continue;
+            var il = method.Body.GetILProcessor();
+            bool touched = false;
+            foreach (Instruction ins in method.Body.Instructions.ToArray())
+            {
+                if (ins.OpCode != OpCodes.Call)
+                    continue;
+                if (ins.Operand is not GenericInstanceMethod gim)
+                    continue;
+                // NOTE: no gim.ContainsGenericParameter gate here: an
+                // unsubstituted generic-method signature always mentions
+                // its own !!params. Openness is decided per type argument
+                // (and per declaring-type argument) below.
+                string declName = gim.DeclaringType.FullName;
+                if (!IsBridgeAllowedCallee(declName, gim.Name))
+                    continue;
+                bool argBad = false;
+                foreach (TypeReference ta in gim.GenericArguments)
+                {
+                    if (!IsConcreteBridgeType(ta))
+                    { SkipBridgeCount(skipped, "open-typearg"); argBad = true; break; }
+                    if (ta.FullName.Contains('<'))
+                    { if (!IsNestedObjectRefBridge(gim, declName)) { SkipBridgeCount(skipped, "synthetic-typearg"); argBad = true; break; } }
+                }
+                if (argBad)
+                    continue;
+                if (!HasBridgeValueTypeArg(gim.GenericArguments) && !IsNestedObjectRefBridge(gim, declName))
+                    continue;
+                MethodDefinition? def = null;
+                try { def = gim.Resolve(); }
+                catch { }
+                if (def is null || !def.IsStatic || def.HasThis)
+                { SkipBridgeCount(skipped, "unresolved-or-instance"); continue; }
+                if (def.CallingConvention.HasFlag(MethodCallingConvention.VarArg))
+                { SkipBridgeCount(skipped, "vararg"); continue; }
+                System.Collections.Generic.IList<TypeReference> typeArgsInst =
+                    gim.DeclaringType is GenericInstanceType gdt
+                        ? (System.Collections.Generic.IList<TypeReference>)gdt.GenericArguments
+                        : (System.Collections.Generic.IList<TypeReference>)new System.Collections.Generic.List<TypeReference>();
+                bool declBad = false;
+                foreach (TypeReference ta in typeArgsInst)
+                {
+                    if (!IsConcreteBridgeType(ta))
+                    { SkipBridgeCount(skipped, "open-declaring"); declBad = true; break; }
+                }
+                if (declBad)
+                    continue;
+                var subParams = new System.Collections.Generic.List<TypeReference>();
+                bool badShape = false;
+                foreach (ParameterDefinition p in def.Parameters)
+                {
+                    TypeReference sub = SubstituteBridgeArgs(p.ParameterType, gim.GenericArguments, typeArgsInst);
+                    if (!IsConcreteBridgeType(sub) || !IsBridgeableShape(sub))
+                    { badShape = true; break; }
+                    subParams.Add(sub);
+                }
+                if (badShape)
+                { SkipBridgeCount(skipped, "unbridgeable-param"); continue; }
+                TypeReference subRet = SubstituteBridgeArgs(def.ReturnType, gim.GenericArguments, typeArgsInst);
+                bool voidRet = subRet.FullName == "System.Void";
+                if (!voidRet)
+                    subRet = module.ImportReference(subRet);
+                if (!voidRet && (!IsConcreteBridgeType(subRet) || !IsBridgeableShape(subRet)))
+                { SkipBridgeCount(skipped, "unbridgeable-return"); continue; }
+                string hostName = def.DeclaringType.FullName.Replace('/', '+');
+                string hostAsm = def.Module.Assembly.Name.Name;
+                var typeArgNames = new System.Collections.Generic.List<string>();
+                foreach (TypeReference ta in gim.GenericArguments)
+                    typeArgNames.Add(BridgeRuntimeName(ta, module));
+                var paramTypeNames = new System.Collections.Generic.List<string>();
+                foreach (TypeReference sp in subParams)
+                    paramTypeNames.Add(BridgeRuntimeName(sp, module));
+                int n = subParams.Count;
+                var temps = new VariableDefinition[n];
+                for (int i = 0; i < n; i++)
+                {
+                    temps[i] = new VariableDefinition(module.ImportReference(subParams[i]));
+                    method.Body.Variables.Add(temps[i]);
+                }
+                method.Body.InitLocals = true;
+                for (int i = n - 1; i >= 0; i--)
+                    il.InsertBefore(ins, il.Create(OpCodes.Stloc, temps[i]));
+                il.InsertBefore(ins, il.Create(OpCodes.Ldstr, hostName));
+                il.InsertBefore(ins, il.Create(OpCodes.Ldstr, hostAsm));
+                il.InsertBefore(ins, il.Create(OpCodes.Ldstr, def.Name));
+                EmitBridgeStringArray(il, ins, typeArgNames, module.TypeSystem.String);
+                EmitBridgeStringArray(il, ins, paramTypeNames, module.TypeSystem.String);
+                il.InsertBefore(ins, il.Create(OpCodes.Ldc_I4, n));
+                il.InsertBefore(ins, il.Create(OpCodes.Newarr, module.TypeSystem.Object));
+                for (int i = 0; i < n; i++)
+                {
+                    il.InsertBefore(ins, il.Create(OpCodes.Dup));
+                    il.InsertBefore(ins, il.Create(OpCodes.Ldc_I4, i));
+                    il.InsertBefore(ins, il.Create(OpCodes.Ldloc, temps[i]));
+                    if (subParams[i].IsValueType)
+                        il.InsertBefore(ins, il.Create(OpCodes.Box, module.ImportReference(subParams[i])));
+                    il.InsertBefore(ins, il.Create(OpCodes.Stelem_Ref));
+                }
+                il.InsertBefore(ins, il.Create(OpCodes.Call, invoke));
+                if (voidRet)
+                    il.InsertBefore(ins, il.Create(OpCodes.Pop));
+                else
+                    EmitBridgePostOp(il, ins, subRet, module, unwrapOpen);
+                ins.OpCode = OpCodes.Nop;
+                ins.Operand = null;
+                touched = true;
+                count++;
+            }
+            if (touched)
+            {
+                method.Body.MaxStackSize += 12;
+                ExpandShortBranches(method);
+            }
+        }
+        foreach (TypeDefinition nested in type.NestedTypes)
+            count += RetargetClosedGenericMethodCallsIn(module, nested, invoke, unwrapOpen, skipped);
+        return count;
+    }
+
+    // TRIO-R31: interface dispatch on generic-parameter receivers.
+    // Paint.NET's ObjectRef/RefHandle idiom forwards through get_InnerRef/
+    // get_Ref (return type !0) and immediately callvirts an interface method
+    // on that value with no constrained. prefix (e.g. Proxies
+    // IBitmapEffectRendererProxy.InitializeRenderInfo, the Quantize wall:
+    // BitmapEffectRenderer.Initialize ENTERs, then the empty IPE, no EXIT).
+    // Desktop full-trust JIT resolves the dispatch without verification, but
+    // the browser interpreter rejects the unverifiable this-pointer at method
+    // entry. A constrained. prefix cannot legalize it either (the parameter
+    // is only constrained to IObjectRef, which does not carry the target
+    // method). Inserting castclass to the target interface is verifiable on
+    // every runtime and behavior-identical: the value genuinely implements
+    // the interface wherever today's dispatch succeeds (desktop proof), so
+    // the cast cannot fail where the callvirt does not. Only interface
+    // targets qualify; class targets, byref receivers and already-
+    // constrained sites are left pristine and counted.
+    private static int CastGenericReceiversToInterface(ModuleDefinition module)
+    {
+        var skipped = new System.Collections.Generic.Dictionary<string, int>(System.StringComparer.Ordinal);
+        int count = 0;
+        foreach (TypeDefinition type in module.Types)
+            count += CastGenericReceiversToInterfaceIn(module, type, skipped);
+        if (count > 0)
+            System.Console.WriteLine($"CpuFx: generic-receiver interface casts {count} sites in {module.Name}");
+        foreach (var kv in skipped)
+            System.Console.WriteLine($"CpuFx: generic-receiver cast skipped {kv.Value}x {kv.Key}");
+        return count;
+    }
+
+    private static void SkipCastCount(System.Collections.Generic.Dictionary<string, int> skipped, string reason)
+    {
+        skipped.TryGetValue(reason, out int n);
+        skipped[reason] = n + 1;
+    }
+
+    private static int CastGenericReceiversToInterfaceIn(
+        ModuleDefinition module, TypeDefinition type,
+        System.Collections.Generic.Dictionary<string, int> skipped)
+    {
+        int count = 0;
+        foreach (MethodDefinition method in type.Methods)
+        {
+            if (!method.HasBody) continue;
+            Instruction[] ins = method.Body.Instructions.ToArray();
+            // Linear abstract stack: known static types only; null = unknown.
+            // pushers parallels stack with the instruction that pushed each
+            // slot, so the cast lands right after the receiver push (before
+            // any argument pushes): casting immediately before the callvirt
+            // would cast the last argument instead of the receiver.
+            var stack = new System.Collections.Generic.List<TypeReference?>();
+            var pushers = new System.Collections.Generic.List<Instruction?>();
+            var hits = new System.Collections.Generic.List<(Instruction After, TypeReference Iface)>();
+            void PushSim(TypeReference? t, Instruction? pusher) { stack.Add(t); pushers.Add(pusher); }
+            void PopSim() { if (stack.Count > 0) { stack.RemoveAt(stack.Count - 1); pushers.RemoveAt(pushers.Count - 1); } }
+            void ClearSim() { stack.Clear(); pushers.Clear(); }
+            for (int k = 0; k < ins.Length; k++)
+            {
+                Instruction i = ins[k];
+                OpCode op = i.OpCode;
+                if (op == OpCodes.Call || op == OpCodes.Callvirt || op == OpCodes.Newobj)
+                {
+                    if (i.Operand is not MethodReference mr)
+                    { ClearSim(); continue; }
+                    int npars;
+                    try { npars = mr.Parameters.Count; }
+                    catch { ClearSim(); continue; }
+                    for (int p = 0; p < npars && stack.Count > 0; p++)
+                        PopSim();
+                    TypeReference? recv = null;
+                    Instruction? recvPusher = null;
+                    if (op != OpCodes.Newobj && mr.HasThis)
+                    {
+                        if (stack.Count > 0) { recv = stack[stack.Count - 1]; recvPusher = pushers[pushers.Count - 1]; }
+                        if (stack.Count > 0) PopSim();
+                    }
+                    if (op == OpCodes.Callvirt && recv is not null && recvPusher is not null)
+                    {
+                        TypeReference rt = recv;
+                        if (rt is ByReferenceType)
+                        {
+                            if (k == 0 || ins[k - 1].OpCode != OpCodes.Constrained)
+                                SkipCastCount(skipped, "byref-receiver");
+                        }
+                        else if (rt is GenericParameter)
+                        {
+                            if (k > 0 && ins[k - 1].OpCode == OpCodes.Constrained)
+                            {
+                                // already legalized; nothing to do.
+                            }
+                            else if (mr.DeclaringType.FullName.StartsWith("WfWasm.", System.StringComparison.Ordinal))
+                            {
+                                SkipCastCount(skipped, "own-helper");
+                            }
+                            else
+                            {
+                                TypeReference decl = mr.DeclaringType;
+                                TypeReference elem = decl is GenericInstanceType gi ? gi.ElementType : decl;
+                                TypeDefinition? declDef = null;
+                                try { declDef = elem.Resolve(); } catch { }
+                                if (declDef is not null && declDef.IsInterface)
+                                {
+                                    TypeReference iface;
+                                    try { iface = module.ImportReference(decl); }
+                                    catch { iface = decl; }
+                                    hits.Add((recvPusher, iface));
+                                }
+                                else
+                                {
+                                    SkipCastCount(skipped, "class-target");
+                                }
+                            }
+                        }
+                    }
+                    if (op == OpCodes.Newobj)
+                        PushSim(mr.DeclaringType, i);
+                    else if (mr.ReturnType.FullName != "System.Void")
+                        PushSim(mr.ReturnType, i);
+                    continue;
+                }
+                if (op == OpCodes.Ldarg_0 || op == OpCodes.Ldarg_1 || op == OpCodes.Ldarg_2 || op == OpCodes.Ldarg_3)
+                { PushSim(CastSimArgType(method, op.Value - OpCodes.Ldarg_0.Value), i); continue; }
+                if (op == OpCodes.Ldarg || op == OpCodes.Ldarg_S)
+                { PushSim((i.Operand as ParameterDefinition)?.ParameterType, i); continue; }
+                if (op == OpCodes.Ldarga || op == OpCodes.Ldarga_S)
+                {
+                    var pt = (i.Operand as ParameterDefinition)?.ParameterType;
+                    PushSim(pt is null ? null : new ByReferenceType(pt), i);
+                    continue;
+                }
+                if (op == OpCodes.Ldloc_0 || op == OpCodes.Ldloc_1 || op == OpCodes.Ldloc_2 || op == OpCodes.Ldloc_3)
+                {
+                    int idx = op.Value - OpCodes.Ldloc_0.Value;
+                    PushSim(idx < method.Body.Variables.Count ? method.Body.Variables[idx].VariableType : null, i);
+                    continue;
+                }
+                if (op == OpCodes.Ldloc || op == OpCodes.Ldloc_S)
+                { PushSim((i.Operand as VariableDefinition)?.VariableType, i); continue; }
+                if (op == OpCodes.Ldloca || op == OpCodes.Ldloca_S)
+                {
+                    var vt = (i.Operand as VariableDefinition)?.VariableType;
+                    PushSim(vt is null ? null : new ByReferenceType(vt), i);
+                    continue;
+                }
+                if (op == OpCodes.Ldfld)
+                { if (stack.Count > 0) PopSim(); PushSim((i.Operand as FieldReference)?.FieldType, i); continue; }
+                if (op == OpCodes.Ldsfld)
+                { PushSim((i.Operand as FieldReference)?.FieldType, i); continue; }
+                if (op == OpCodes.Ldflda)
+                { if (stack.Count > 0) PopSim(); PushSim(null, i); continue; }
+                if (op == OpCodes.Stfld)
+                { for (int p = 0; p < 2 && stack.Count > 0; p++) PopSim(); continue; }
+                if (op == OpCodes.Stsfld)
+                { if (stack.Count > 0) PopSim(); continue; }
+                if (op == OpCodes.Stloc_0 || op == OpCodes.Stloc_1 || op == OpCodes.Stloc_2 || op == OpCodes.Stloc_3
+                    || op == OpCodes.Stloc || op == OpCodes.Stloc_S || op == OpCodes.Starg || op == OpCodes.Starg_S)
+                { if (stack.Count > 0) PopSim(); continue; }
+                if (op == OpCodes.Dup)
+                { PushSim(stack.Count > 0 ? stack[stack.Count - 1] : null, i); continue; }
+                if (op == OpCodes.Pop)
+                { if (stack.Count > 0) PopSim(); continue; }
+                if (op == OpCodes.Ret)
+                { ClearSim(); continue; }
+                if (op == OpCodes.Constrained || op == OpCodes.Readonly || op == OpCodes.Volatile || op == OpCodes.Unaligned || op == OpCodes.Tail)
+                    continue;
+                if (op == OpCodes.Castclass)
+                { if (stack.Count > 0) PopSim(); PushSim(i.Operand as TypeReference, i); continue; }
+                if (op == OpCodes.Box)
+                { if (stack.Count > 0) PopSim(); PushSim(module.TypeSystem.Object, i); continue; }
+                // Generic metadata accounting for everything else.
+                int pops = op.StackBehaviourPop switch
+                {
+                    StackBehaviour.Pop0 => 0,
+                    StackBehaviour.Pop1 or StackBehaviour.Popi or StackBehaviour.Popref => 1,
+                    StackBehaviour.Pop1_pop1 or StackBehaviour.Popi_pop1 or StackBehaviour.Popi_popi
+                        or StackBehaviour.Popi_popi8 or StackBehaviour.Popi_popr4 or StackBehaviour.Popi_popr8
+                        or StackBehaviour.Popref_pop1 or StackBehaviour.Popref_popi => 2,
+                    _ => -1,
+                };
+                int pushes = op.StackBehaviourPush switch
+                {
+                    StackBehaviour.Push0 => 0,
+                    StackBehaviour.Push1 or StackBehaviour.Pushi or StackBehaviour.Pushi8
+                        or StackBehaviour.Pushr4 or StackBehaviour.Pushr8 or StackBehaviour.Pushref => 1,
+                    StackBehaviour.Push1_push1 => 2,
+                    _ => -1,
+                };
+                if (pops < 0 || pushes < 0)
+                    ClearSim();
+                else
+                {
+                    for (int p = 0; p < pops && stack.Count > 0; p++)
+                        PopSim();
+                    for (int p = 0; p < pushes; p++)
+                        PushSim(null, i);
+                }
+            }
+            if (hits.Count > 0)
+            {
+                var il = method.Body.GetILProcessor();
+                // Insert in reverse scan order so earlier anchors stay valid;
+                // each cast lands right after its receiver push (recorded
+                // during simulation), never between the arguments and the
+                // callvirt.
+                for (int h = hits.Count - 1; h >= 0; h--)
+                {
+                    il.InsertAfter(hits[h].After, il.Create(OpCodes.Castclass, hits[h].Iface));
+                    count++;
+                    if (System.Environment.GetEnvironmentVariable("CPUFX_LOG_CASTS") == "1")
+                        System.Console.WriteLine($"CpuFx: R31site {type.FullName}::{method.Name} after-IL_{hits[h].After.Offset:x4} <- {hits[h].Iface.FullName} body={method.Body.Instructions.Count}");
+                }
+                ExpandShortBranches(method);
+            }
+        }
+        foreach (TypeDefinition nested in type.NestedTypes)
+            count += CastGenericReceiversToInterfaceIn(module, nested, skipped);
+        return count;
+    }
+
+    private static TypeReference? CastSimArgType(MethodDefinition method, int idx)
+    {
+        try
+        {
+            var pars = method.Parameters;
+            if (method.HasThis)
+            {
+                if (idx == 0) return method.DeclaringType;
+                if (idx - 1 < pars.Count) return pars[idx - 1].ParameterType;
+                return null;
+            }
+            if (idx < pars.Count) return pars[idx].ParameterType;
+            return null;
+        }
+        catch { return null; }
+    }
+
+    private static void EmitBridgeStringArray(ILProcessor il, Instruction anchor,
+        System.Collections.Generic.List<string> values, TypeReference stringType)
+    {
+        il.InsertBefore(anchor, il.Create(OpCodes.Ldc_I4, values.Count));
+        il.InsertBefore(anchor, il.Create(OpCodes.Newarr, stringType));
+        for (int i = 0; i < values.Count; i++)
+        {
+            il.InsertBefore(anchor, il.Create(OpCodes.Dup));
+            il.InsertBefore(anchor, il.Create(OpCodes.Ldc_I4, i));
+            il.InsertBefore(anchor, il.Create(OpCodes.Ldstr, values[i]));
+            il.InsertBefore(anchor, il.Create(OpCodes.Stelem_Ref));
+        }
+    }
     private static bool IsControlTarget(MethodDefinition method, Instruction ins)
     {
         foreach (Instruction other in method.Body.Instructions)
@@ -11931,8 +14400,8 @@ private static int RetargetShadowCacheTryAdd(ModuleDefinition module, string? cp
         il.InsertBefore(tail, il.Create(OpCodes.Br_S, top));
         // Handler-range repair: InsertBefore anchors on the tail `ret`, so
         // any handler ending there (here: the updateLock finally) grows over
-        // the appended drain. A handler covering the drain — with the
-        // retargeted `leave` landing inside its own handler — is invalid IL;
+        // the appended drain. A handler covering the drain Ã¢â‚¬â€ with the
+        // retargeted `leave` landing inside its own handler Ã¢â‚¬â€ is invalid IL;
         // the interpreter dies unwinding through it (observed live: boot
         // FailFast at interp.c:3998 after a first-chance ANE under the
         // drain). Pin such ends back to the first appended instruction; the
@@ -12000,7 +14469,7 @@ private static int RetargetShadowCacheTryAdd(ModuleDefinition module, string? cp
     // readonly./tail. prefix must stay glued to its call. Inserting
     // ldstr+call between the prefix and the call re-pairs the prefix
     // with our Console call (InvalidOperationException "constrained
-    // call: System.Console is not assignable from ..." — a pure probe
+    // call: System.Console is not assignable from ..." Ã¢â‚¬â€ a pure probe
     // artifact that killed AppSettings..ctor in rev217).
     private static bool IsPrefix(Instruction? prev)
     {
@@ -15440,7 +17909,7 @@ private static int RetargetShadowCacheTryAdd(ModuleDefinition module, string? cp
             il.Emit(OpCodes.Ldfld, resCacheField);
             il.Emit(OpCodes.Ldarg_1);
             il.Emit(OpCodes.Ldloc, arrLoc);
-            il.Emit(OpCodes.Callvirt, htSet);
+            il.Emit(OpCodes.Call, Cpu("SetCpuCacheEntry", 3));
             il.Emit(OpCodes.Ldloc, resLoc);
             il.Emit(OpCodes.Castclass, resCache.ReturnType);
             il.Emit(OpCodes.Ret);
@@ -16898,6 +19367,12 @@ private static int RetargetShadowCacheTryAdd(ModuleDefinition module, string? cp
             EmitRedirectDetach(ilDispB, dispB, targetField, redirField, cpuCmdList);
             ilDispB.Emit(OpCodes.Ldarg_0);
             ilDispB.Emit(OpCodes.Call, writeback);
+            ilDispB.Emit(OpCodes.Ldarg_0);
+            ilDispB.Emit(OpCodes.Ldfld, resCacheField);
+            ilDispB.Emit(OpCodes.Call, Cpu("ReleaseCpuCache", 1));
+            ilDispB.Emit(OpCodes.Ldarg_0);
+            ilDispB.Emit(OpCodes.Ldnull);
+            ilDispB.Emit(OpCodes.Stfld, resCacheField);
             ilDispB.Emit(OpCodes.Ldarg_0);
             ilDispB.Emit(OpCodes.Ldfld, targetField);
             ilDispB.Emit(OpCodes.Call, freeContext);
@@ -18545,6 +21020,11 @@ private static int RetargetShadowCacheTryAdd(ModuleDefinition module, string? cp
 
     public static void StubModulePInvokes(Mono.Cecil.ModuleDefinition module)
     {
+        StubModulePInvokes(module, null);
+    }
+
+    public static void StubModulePInvokes(Mono.Cecil.ModuleDefinition module, string? cpuPaintPath)
+    {
             MethodReference? allocZeroedRef = null;
             MethodReference? freeRef = null;
             MethodReference? reallocRef = null;
@@ -18558,6 +21038,14 @@ private static int RetargetShadowCacheTryAdd(ModuleDefinition module, string? cp
                 if (reallocM != null) reallocRef = module.ImportReference(reallocM);
             }
             catch { }
+
+            // MEMBERREF-CONSTRAIN lazy: ImportCpuPaintMethod adds the
+            // PdnCpu assembly-ref at import time, so resolve the
+            // IsWindowIntPtr forwarder only on the first shape-matching
+            // IsWindow PInvoke (keeps IsWindow-free modules ref-free per
+            // Rewrite_CpuDrawing_Skips_NonPdn_Modules).
+            MethodReference? isWindowFwd = null;
+            bool isWindowFwdAttempted = false;
 
             // Rev61: fork GDI text surface for app-private extent
             // imports (helper refs are built per method from that
@@ -19171,6 +21659,47 @@ private static int RetargetShadowCacheTryAdd(ModuleDefinition module, string? cp
                         il.Emit(Mono.Cecil.Cil.OpCodes.Conv_U);
                         il.Emit(Mono.Cecil.Cil.OpCodes.Ret);
                     }
+                    else if (method.Name == "InvertRect" && method.Parameters.Count == 2
+                        && method.Parameters[0].ParameterType.FullName == "System.IntPtr"
+                        && method.Parameters[1].ParameterType is Mono.Cecil.ByReferenceType invertRectRef
+                        && method.ReturnType.FullName is "System.Boolean" or "System.Int32")
+                    {
+                        // Telerik's black caret uses user32.InvertRect. A
+                        // success-only stub hides it; invert the leased bitmap.
+                        var rect = invertRectRef.ElementType.Resolve();
+                        var fields = new[] { "left", "top", "right", "bottom" }
+                            .Select(n => rect?.Fields.FirstOrDefault(f =>
+                                f.Name.Equals(n, StringComparison.OrdinalIgnoreCase)
+                                && f.FieldType.FullName == "System.Int32")).ToArray();
+                        // Also used by the stub-only pass: its original Drawing
+                        // facade is not remapped. Bind this new helper explicitly.
+                        var drawingScope = module.AssemblyReferences.FirstOrDefault(r => r.Name == "WfWasm.Drawing");
+                        if (drawingScope is null)
+                        {
+                            drawingScope = new AssemblyNameReference("WfWasm.Drawing", new Version(1, 0, 0, 0));
+                            module.AssemblyReferences.Add(drawingScope);
+                        }
+                        if (fields.Any(f => f is null))
+                        {
+                            il.Emit(Mono.Cecil.Cil.OpCodes.Ldc_I4_0);
+                            il.Emit(Mono.Cecil.Cil.OpCodes.Ret);
+                        }
+                        else
+                        {
+                            var graphics = new TypeReference("System.Drawing", "Graphics", module, drawingScope);
+                            var invert = new MethodReference("InvertHdcRect", module.TypeSystem.Boolean, graphics) { HasThis = false };
+                            invert.Parameters.Add(new ParameterDefinition(module.TypeSystem.IntPtr));
+                            for (int i = 0; i < 4; i++) invert.Parameters.Add(new ParameterDefinition(module.TypeSystem.Int32));
+                            il.Emit(Mono.Cecil.Cil.OpCodes.Ldarg_0);
+                            foreach (var field in fields)
+                            {
+                                il.Emit(Mono.Cecil.Cil.OpCodes.Ldarg_1);
+                                il.Emit(Mono.Cecil.Cil.OpCodes.Ldfld, module.ImportReference(field!));
+                            }
+                            il.Emit(Mono.Cecil.Cil.OpCodes.Call, invert);
+                            il.Emit(Mono.Cecil.Cil.OpCodes.Ret);
+                        }
+                    }
                     else if (method.Name == "CreateBitmap" && method.Parameters.Count == 5
                         && (method.ReturnType.FullName == "System.IntPtr" || method.ReturnType.FullName == "System.UIntPtr"))
                     {
@@ -19318,6 +21847,110 @@ private static int RetargetShadowCacheTryAdd(ModuleDefinition module, string? cp
                             il.Emit(Mono.Cecil.Cil.OpCodes.Call, module.ImportReference(swRef));
                             il.Emit(Mono.Cecil.Cil.OpCodes.Ret);
                             method.Body.MaxStackSize = System.Math.Max(method.Body.MaxStackSize, 14);
+                        }
+                    }
+                    else if (method.Name == "IsWindow"
+                        && (method.ReturnType.FullName == "System.Int32" || method.ReturnType.FullName == "System.UInt32"))
+                    {
+                        // Narrow IsWindow retarget (TOOLSTRIP-TRIAGE2 /
+                        // ISWINDOW-RETARGET2, constrained per
+                        // MEMBERREF-CONSTRAIN/ISWINDOW-1735): Syncfusion
+                        // NativeWindowBase.AssignHandle validates ts.Handle
+                        // with the extern WindowsAPI.IsWindow; the generic
+                        // Int32 zero stub made every ToolStrip fail handle
+                        // validation headless ("Invalid window handle").
+                        // The retarget now emits ONE call to the resolved
+                        // CpuPaint.IsWindowIntPtr(IntPtr)->Int32 forwarder
+                        // (same !IsNull-over-minted-handles semantics as the
+                        // fork shim, primitives-only signature). The
+                        // previous direct chain (HWND::op_Explicit /
+                        // PInvoke::IsWindow / BOOL::op_Explicit with
+                        // hand-built custom-valuetype member refs) threw
+                        // TypeLoadException kind-17 ("Expected reference
+                        // type but got type kind 17") at
+                        // NativeMessageHandler.Assign on first execution:
+                        // cross-assembly refs must stay on runtime-known
+                        // types (the proven CpuPaint helper family), never
+                        // on custom valuetypes. Nonstandard arities, open
+                        // shapes, anchored sites, and a missing forwarder
+                        // keep the fail-closed zero (same as today).
+                        // Companion: CapMiniToolBarTopWindowLoop bounds the
+                        // one IsWindow-guarded stub walk this truthfulness
+                        // unblocks (MiniToolBar.GetTopWindow mouse-move).
+                        bool isWindowIsHandleQuery = method.Parameters.Count == 1
+                            && (method.Parameters[0].ParameterType.FullName == "System.IntPtr"
+                                || method.Parameters[0].ParameterType.FullName == "System.UIntPtr");
+                        if (isWindowIsHandleQuery && !isWindowFwdAttempted)
+                        {
+                            isWindowFwdAttempted = true;
+                            try
+                            {
+                                if (!string.IsNullOrEmpty(cpuPaintPath))
+                                    isWindowFwd = ImportCpuPaintMethod(module, cpuPaintPath, "IsWindowIntPtr", 1);
+                            }
+                            catch { }
+                        }
+                        if (!isWindowIsHandleQuery || isWindowFwd is null)
+                        {
+                            il.Emit(Mono.Cecil.Cil.OpCodes.Ldc_I4_0);
+                            il.Emit(Mono.Cecil.Cil.OpCodes.Ret);
+                        }
+                        else
+                        {
+                            il.Emit(Mono.Cecil.Cil.OpCodes.Ldarg_0);
+                            if (method.Parameters[0].ParameterType.FullName == "System.UIntPtr")
+                                il.Emit(Mono.Cecil.Cil.OpCodes.Conv_I);
+                            il.Emit(Mono.Cecil.Cil.OpCodes.Call, isWindowFwd);
+                            if (method.ReturnType.FullName == "System.UInt32")
+                                il.Emit(Mono.Cecil.Cil.OpCodes.Conv_U4);
+                            il.Emit(Mono.Cecil.Cil.OpCodes.Ret);
+                        }
+                    }
+                    else if (method.Name == "GetParent"
+                        && (method.ReturnType.FullName == "System.IntPtr" || method.ReturnType.FullName == "System.UIntPtr"))
+                    {
+                        // Narrow real-parent retarget (verify-41 regression
+                        // fix): vendor GetParent(handle) calls the fork's
+                        // public WasmEnvironment.GetParentWindow(nint)->nint,
+                        // so parent walks resolve TRUE managed parents
+                        // (nested-control bounds correct) while the
+                        // top-level NULL still terminates
+                        // PopupUtils.GetADotNetParentControl at once (no
+                        // WM_KEYUP wedge). The zero stub misclassified every
+                        // control as top-level (uniform -306px Y shift,
+                        // invisible Syncfusion textbox on gen5); the generic
+                        // 0x1000 sentinel wedged the keyup loop instead.
+                        // Nonstandard arities keep the fail-closed zero.
+                        // Regression: gen5 nested bounds <- Syncfusion
+                        // AutoComplete popup (verify-41 gate FAIL).
+                        bool getParentIsHandleQuery = method.Parameters.Count == 1
+                            && (method.Parameters[0].ParameterType.FullName == "System.IntPtr"
+                                || method.Parameters[0].ParameterType.FullName == "System.UIntPtr");
+                        if (!getParentIsHandleQuery)
+                        {
+                            il.Emit(Mono.Cecil.Cil.OpCodes.Ldc_I4_0);
+                            il.Emit(Mono.Cecil.Cil.OpCodes.Conv_I);
+                            il.Emit(Mono.Cecil.Cil.OpCodes.Ret);
+                        }
+                        else
+                        {
+                            Mono.Cecil.AssemblyNameReference? gpScope = module.AssemblyReferences.FirstOrDefault(r => r.Name == "WfWasm.WinForms");
+                            if (gpScope is null)
+                            {
+                                gpScope = new Mono.Cecil.AssemblyNameReference("WfWasm.WinForms", new Version(1, 0, 0, 0));
+                                module.AssemblyReferences.Add(gpScope);
+                            }
+                            var gpType = new Mono.Cecil.TypeReference("System.Windows.Forms", "WasmEnvironment", module, gpScope);
+                            var gpRef = new Mono.Cecil.MethodReference("GetParentWindow", module.TypeSystem.IntPtr, gpType);
+                            gpRef.HasThis = false;
+                            gpRef.Parameters.Add(new Mono.Cecil.ParameterDefinition(module.TypeSystem.IntPtr));
+                            il.Emit(Mono.Cecil.Cil.OpCodes.Ldarg_0);
+                            il.Emit(Mono.Cecil.Cil.OpCodes.Call, module.ImportReference(gpRef));
+                            if (method.ReturnType.FullName == "System.UIntPtr")
+                                il.Emit(Mono.Cecil.Cil.OpCodes.Conv_U);
+                            else
+                                il.Emit(Mono.Cecil.Cil.OpCodes.Conv_I);
+                            il.Emit(Mono.Cecil.Cil.OpCodes.Ret);
                         }
                     }
                     else if (method.ReturnType.IsPointer || method.ReturnType.IsByReference)

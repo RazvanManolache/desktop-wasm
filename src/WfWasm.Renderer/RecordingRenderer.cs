@@ -18,7 +18,8 @@ public sealed record FillRoundedRectCommand(float X, float Y, float Width, float
 public sealed record DrawTextCommand(
     string Text, float X, float Y, string FontCss, uint Rgba,
     TextHAlign HAlign = TextHAlign.Left, TextVAlign VAlign = TextVAlign.Baseline,
-    int MnemonicIndex = -1) : DrawCommand;
+    int MnemonicIndex = -1,
+    float ClipX = 0, float ClipY = 0, float ClipWidth = 0, float ClipHeight = 0) : DrawCommand;
 
 /// <summary>Vertical gradient fill (themed headers, buttons, captions).</summary>
 public sealed record FillGradientCommand(
@@ -123,8 +124,10 @@ public sealed class RecordingRenderer : ICanvasRenderer
 
     public void DrawTextAligned(
         string text, float x, float y, string fontCss, uint rgba,
-        TextHAlign hAlign, TextVAlign vAlign, int mnemonicIndex = -1) =>
-        _commands.Add(new DrawTextCommand(text, x, y, fontCss, rgba, hAlign, vAlign, mnemonicIndex));
+        TextHAlign hAlign, TextVAlign vAlign, int mnemonicIndex = -1,
+        float clipX = 0, float clipY = 0, float clipWidth = 0, float clipHeight = 0) =>
+        _commands.Add(new DrawTextCommand(text, x, y, fontCss, rgba, hAlign, vAlign, mnemonicIndex,
+            clipX, clipY, clipWidth, clipHeight));
 
     public void EndFrame() => _commands.Add(EndFrameCommand.Instance);
 }

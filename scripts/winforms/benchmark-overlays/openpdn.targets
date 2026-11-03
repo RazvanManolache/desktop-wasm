@@ -1,0 +1,15 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!-- The upstream source deliberately contains invalid branding placeholders.
+       Compile a generated copy; keep the upstream checkout pristine. -->
+  <Target Name="DesktopWasmOpenPdnBranding" BeforeTargets="CoreCompile"
+          Condition="'$(MSBuildProjectName)' == 'Resources'">
+    <PropertyGroup>
+      <DesktopWasmBrandingFile>$(MSBuildProjectDirectory)\$(IntermediateOutputPath)DesktopWasm.InvariantStrings.cs</DesktopWasmBrandingFile>
+    </PropertyGroup>
+    <Exec Command="python &quot;$(MSBuildThisFileDirectory)openpdn-branding.py&quot; --source &quot;$(MSBuildProjectDirectory)\InvariantStrings.cs&quot; --output &quot;$(DesktopWasmBrandingFile)&quot;" />
+    <ItemGroup>
+      <Compile Remove="InvariantStrings.cs" />
+      <Compile Include="$(DesktopWasmBrandingFile)" />
+    </ItemGroup>
+  </Target>
+</Project>

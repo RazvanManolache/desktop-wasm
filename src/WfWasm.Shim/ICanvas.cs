@@ -57,5 +57,6 @@ public interface ICanvas
     /// </summary>
     void DrawTextAligned(
         string text, float x, float y, string fontCss, uint rgba,
-        TextHAlign hAlign, TextVAlign vAlign, int mnemonicIndex = -1);
+        TextHAlign hAlign, TextVAlign vAlign, int mnemonicIndex = -1,
+        float clipX = 0, float clipY = 0, float clipWidth = 0, float clipHeight = 0);
 }

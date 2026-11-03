@@ -50,4 +50,17 @@ public static class WasmEnvironment
         System.Environment.SpecialFolder.Desktop => "/vfs/desktop",
         _ => "/vfs/" + folder.ToString().ToLowerInvariant(),
     };
+
+    // Real-parent window lookup for rewritten vendor P/Invokes (the
+    // rewriter retargets NativeMethods.GetParent here): answers the true
+    // managed parent handle, or zero when there is none (desktop NULL
+    // shape for top-level/unknown). A blanket zero misclassified every
+    // nested control as top-level (verify-41: uniform -306px Y shift on
+    // Syncfusion/Paint.NET nested controls, invisible textbox); the
+    // generic 0x1000 sentinel instead wedged
+    // PopupUtils.GetADotNetParentControl on WM_KEYUP. True parents fix
+    // both: walks resolve correctly and terminate at the real top.
+    // Regression: gen5 nested bounds <- Syncfusion AutoComplete.
+    public static nint GetParentWindow(nint hWnd) =>
+        (nint)global::Windows.Win32.PInvokeCore.GetParent(new global::Windows.Win32.Foundation.HWND(hWnd)).Value;
 }

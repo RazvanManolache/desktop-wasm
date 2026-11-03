@@ -87,6 +87,15 @@ public static class LegacyAdapters
                  (string[])[$"package for '{manifest.Slug}' not copied to this root"]),
             ("ready", _) =>
                 (AppAvailability.MissingInput, "Engine-native demo; runs only after WPF host import (import lane).", (string[])[]),
+            (_, not null) when IsPreparationEligible(lib, manifest) =>
+                // Decision RVW-20261030-2100-4467 §15.1: a VALID converted
+                // manifest outranks stale upstream not-converted metadata for
+                // PREPARATION eligibility only. UpstreamStatus keeps the stale
+                // library claim; availability stays MissingInput until staged
+                // receipts verify the bytes (never Available here).
+                (AppAvailability.MissingInput,
+                 $"Converted manifest apps/{manifest.Slug} ({manifest.Assemblies.Length} assemblies, 0 gaps) outranks stale upstream status '{lib.Status}' for preparation eligibility only; package copy to this root pending (import lane).",
+                 (string[])[$"package copy for '{manifest.Slug}' hash-pinned from manifest"]),
             _ =>
                 (AppAvailability.NotConverted, lib.Boundary ?? "No converted package yet.", new[] { lib.Boundary ?? "not-converted" }),
         };
@@ -98,6 +107,29 @@ public static class LegacyAdapters
             entry, capabilities, "wpf-convert-v1", package,
             availability, lib.Status, note, manifest is not null ? [$"frozen-root manifest apps/{manifest.Slug}"] : [],
             gaps);
+    }
+
+    /// <summary>Preparation eligibility (decision RVW-20261030-2100-4467 §15.1):
+    /// a manifest outranks stale upstream not-converted metadata ONLY when it
+    /// is coherent and fully converted: same slug as the library entry,
+    /// schema 1, matching map version, status converted, a non-empty closure
+    /// whose 64-hex pins include the entry assembly, and zero gaps.
+    /// Contradictory (slug/entry mismatch), invalid, gapped, or non-converted
+    /// manifests are never promoted by this rule.</summary>
+    public static bool IsPreparationEligible(WpfLibraryEntry lib, WpfManifestEntry manifest)
+    {
+        if (!string.Equals(manifest.Slug, lib.Slug, StringComparison.OrdinalIgnoreCase)) return false;
+        if (manifest.SchemaVersion != 1 || manifest.MapVersion != "wpf-convert-v1") return false;
+        if (manifest.Status != "converted" || manifest.Gaps.Length != 0) return false;
+        if (manifest.Assemblies.Length == 0 || string.IsNullOrWhiteSpace(manifest.EntryAssembly)) return false;
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var a in manifest.Assemblies)
+        {
+            if (a is null || string.IsNullOrWhiteSpace(a.Name) || string.IsNullOrWhiteSpace(a.File)) return false;
+            if (a.Sha256 is null || a.Sha256.Length != 64 || !a.Sha256.All(Uri.IsHexDigit)) return false;
+            names.Add(a.Name);
+        }
+        return names.Contains(manifest.EntryAssembly);
     }
 
     /// <summary>Legacy manifests percent-encode spaces in artifact file names

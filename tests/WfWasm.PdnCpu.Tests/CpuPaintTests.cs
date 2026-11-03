@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 using WfWasm.PdnCpu;
 
 namespace WfWasm.PdnCpu.Tests;
@@ -1836,6 +1836,7 @@ public sealed unsafe class CpuPaintTests
     private sealed class FakeHistoryStack
     {
         public readonly System.Collections.Generic.List<object> Pushed = new();
+        public IReadOnlyList<object> UndoStack => Pushed;
         public void PushNewMemento(object memento) => Pushed.Add(memento);
     }
 
@@ -1849,13 +1850,35 @@ public sealed unsafe class CpuPaintTests
         public FakeAppWorkspace AppWorkspace { get; } = new FakeAppWorkspace();
         public readonly System.Collections.Generic.List<object?[]> DoEffectCalls = new();
         public bool LastResult = true;
+        public bool ProductPush;
 
         private bool DoEffect(object effect, object token, object? a, object? b, object snapshot, out object? error)
         {
             error = null;
             DoEffectCalls.Add(new object?[] { effect, token, a, b, snapshot });
+            if (ProductPush) AppWorkspace.ActiveDocumentWorkspace.History.PushNewMemento(new object());
             return LastResult;
         }
+    }
+
+    [Fact]
+    public void Resume_Does_Not_Duplicate_A_Product_History_Push()
+    {
+        var menu = new FakeEffectMenu { ProductPush = true };
+        var dialog = new FakeEffectDialog { DialogResult = 1 };
+        CpuPaint.NoteEffectMenu(dialog, menu);
+        Assert.True(CpuPaint.ResumeEffectApply(dialog));
+        Assert.Single(menu.AppWorkspace.ActiveDocumentWorkspace.History.Pushed);
+    }
+
+    [Fact]
+    public void Effect_History_Save_Completes_Inline_And_Propagates_Failure()
+    {
+        int saved = 0;
+        CpuPaint.SaveEffectHistoryInline(0, () => saved++);
+        Assert.Equal(1, saved);
+        Assert.Throws<InvalidOperationException>(() => CpuPaint.SaveEffectHistoryInline(0,
+            () => throw new InvalidOperationException("save failed")));
     }
 
     private sealed class FakeEffectDialog
@@ -1913,6 +1936,19 @@ public sealed unsafe class CpuPaintTests
         Assert.Equal(200, rects.Height);
         // The stash is consumed: a second settle is a silent no-op.
         Assert.False(CpuPaint.ResumeEffectApply(dialog));
+        Assert.Single(menu.DoEffectCalls);
+    }
+
+    [Fact]
+    public void ResumeEffectApply_wrapper_and_inner_aliases_apply_only_once()
+    {
+        var menu = new FakeEffectMenu();
+        var inner = new FakeEffectDialogInner { DialogResult = 1 };
+        var wrapper = new FakeEffectDialogWrapper(inner);
+        CpuPaint.NoteEffectMenu(wrapper, menu);
+        Assert.True(CpuPaint.ResumeEffectApplyIfNoted(inner));
+        Assert.False(CpuPaint.ResumeEffectApplyIfNoted(inner));
+        Assert.False(CpuPaint.ResumeEffectApplyIfNoted(wrapper));
         Assert.Single(menu.DoEffectCalls);
     }
 
@@ -2134,6 +2170,742 @@ public sealed unsafe class CpuPaintTests
         var blurOwner = new FakeEffectDialog();
         var blurRenderer = new FakeGpuEffect.Renderer(blurOwner);
         Assert.False(CpuPaint.TryRenderGpuTileCpu(blurRenderer, new FakeTile(), new FakePoint()));
+    }
+
+    private sealed class FakeAutoLevelGpuEffect : FakeEffectBase
+    {
+    }
+
+    [Fact]
+    public void TryRenderGpuTileCpu_Renders_AutoLevel_Stretch_Tile()
+    {
+        var effect = new FakeAutoLevelGpuEffect();
+        // 2x1 BGRA: dark gray + light gray, opaque. min=64 max=192.
+        byte[] src = new byte[] { 64, 64, 64, 255, 192, 192, 192, 255 };
+        CpuPaint.NoteTileSourceBytes(effect, src, 2, 1, 8);
+        byte[] dstBytes = new byte[8];
+        var pin = System.Runtime.InteropServices.GCHandle.Alloc(dstBytes, System.Runtime.InteropServices.GCHandleType.Pinned);
+        try
+        {
+            var tile = new FakeTile { Ptr = pin.AddrOfPinnedObject(), Width = 2, Height = 1, Stride = 8 };
+            Assert.True(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(effect), tile, new FakePoint()));
+            // 64->0, 192->255 on every channel; alpha preserved.
+            Assert.Equal(0, (int)dstBytes[0]);
+            Assert.Equal(0, (int)dstBytes[1]);
+            Assert.Equal(0, (int)dstBytes[2]);
+            Assert.Equal(255, (int)dstBytes[4]);
+            Assert.Equal(255, (int)dstBytes[5]);
+            Assert.Equal(255, (int)dstBytes[6]);
+            Assert.Equal(255, (int)dstBytes[3]);
+            Assert.Equal(255, (int)dstBytes[7]);
+        }
+        finally
+        {
+            pin.Free();
+        }
+    }
+
+    [Fact]
+    public void TryRenderGpuTileCpu_AutoLevel_ReNote_Invalidates_Range()
+    {
+        var effect = new FakeAutoLevelGpuEffect();
+        byte[] srcA = new byte[] { 64, 64, 64, 255, 192, 192, 192, 255 };
+        CpuPaint.NoteTileSourceBytes(effect, srcA, 2, 1, 8);
+        byte[] dstBytes = new byte[8];
+        var pin = System.Runtime.InteropServices.GCHandle.Alloc(dstBytes, System.Runtime.InteropServices.GCHandleType.Pinned);
+        try
+        {
+            var tile = new FakeTile { Ptr = pin.AddrOfPinnedObject(), Width = 2, Height = 1, Stride = 8 };
+            Assert.True(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(effect), tile, new FakePoint()));
+            Assert.Equal(0, (int)dstBytes[0]);
+            // Fresh source per operation: re-note narrower range, ranges recomputed.
+            byte[] srcB = new byte[] { 10, 10, 10, 255, 20, 20, 20, 255 };
+            CpuPaint.NoteTileSourceBytes(effect, srcB, 2, 1, 8);
+            Assert.True(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(effect), tile, new FakePoint()));
+            Assert.Equal(0, (int)dstBytes[0]);
+            Assert.Equal(255, (int)dstBytes[4]);
+        }
+        finally
+        {
+            pin.Free();
+        }
+    }
+
+    [Fact]
+    public void TryRenderGpuTileCpu_AutoLevel_Stride_And_Clipped_Tile()
+    {
+        var effect = new FakeAutoLevelGpuEffect();
+        // 4x2 stash, stride 20 (4 bytes padding per row). Opaque pixels:
+        // row0: 50,60,70,80 ; row1: 90,100,110,120 (gray).
+        byte[] src = new byte[40];
+        byte[] vals = new byte[] { 50, 60, 70, 80, 90, 100, 110, 120 };
+        for (int i = 0; i < 8; i++)
+        {
+            int o = (i / 4) * 20 + (i % 4) * 4;
+            src[o] = src[o + 1] = src[o + 2] = vals[i];
+            src[o + 3] = 255;
+        }
+        CpuPaint.NoteTileSourceBytes(effect, src, 4, 2, 20);
+        // Clipped 2x1 tile at offset (1,1): source 100,110 -> min=50 max=120.
+        byte[] dstBytes = new byte[8];
+        var pin = System.Runtime.InteropServices.GCHandle.Alloc(dstBytes, System.Runtime.InteropServices.GCHandleType.Pinned);
+        try
+        {
+            var tile = new FakeTile { Ptr = pin.AddrOfPinnedObject(), Width = 2, Height = 1, Stride = 8 };
+            var at = new FakePoint { X = 1, Y = 1 };
+            Assert.True(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(effect), tile, at));
+            // (100-50)*255/70 = 182 (rounded), (110-50)*255/70 = 219 (rounded).
+            Assert.Equal(182, (int)dstBytes[0]);
+            Assert.Equal(219, (int)dstBytes[4]);
+            Assert.Equal(255, (int)dstBytes[3]);
+            Assert.Equal(255, (int)dstBytes[7]);
+        }
+        finally
+        {
+            pin.Free();
+        }
+    }
+
+    private sealed class FakeInvertColorsGpuEffect : FakeEffectBase
+    {
+    }
+
+    private sealed class FakeDesaturateGpuEffect : FakeEffectBase
+    {
+    }
+
+    [Fact]
+    public void TryRenderGpuTileCpu_InvertColors_Flips_RGB_Preserves_Alpha()
+    {
+        var effect = new FakeInvertColorsGpuEffect();
+        // 2x1 BGRA:
+        // Pixel 0: B=0, G=50, R=100, A=255 -> Inverted: B=255, G=205, R=155, A=255
+        // Pixel 1: B=255, G=200, R=0, A=128 -> Inverted: B=0, G=55, R=255, A=128
+        byte[] src = new byte[] { 0, 50, 100, 255, 255, 200, 0, 128 };
+        CpuPaint.NoteTileSourceBytes(effect, src, 2, 1, 8);
+        byte[] dstBytes = new byte[8];
+        var pin = System.Runtime.InteropServices.GCHandle.Alloc(dstBytes, System.Runtime.InteropServices.GCHandleType.Pinned);
+        try
+        {
+            var tile = new FakeTile { Ptr = pin.AddrOfPinnedObject(), Width = 2, Height = 1, Stride = 8 };
+            Assert.True(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(effect), tile, new FakePoint()));
+            // Pixel 0
+            Assert.Equal(255, (int)dstBytes[0]);
+            Assert.Equal(205, (int)dstBytes[1]);
+            Assert.Equal(155, (int)dstBytes[2]);
+            Assert.Equal(255, (int)dstBytes[3]);
+            // Pixel 1
+            Assert.Equal(0, (int)dstBytes[4]);
+            Assert.Equal(55, (int)dstBytes[5]);
+            Assert.Equal(255, (int)dstBytes[6]);
+            Assert.Equal(128, (int)dstBytes[7]);
+        }
+        finally
+        {
+            pin.Free();
+        }
+    }
+
+    [Fact]
+    public void TryRenderGpuTileCpu_Desaturate_Computes_Grayscale_Preserves_Alpha()
+    {
+        var effect = new FakeDesaturateGpuEffect();
+        // 4x1 BGRA:
+        // Pixel 0: Mixed (B=200, G=150, R=100, A=200) -> gray = (100*2126 + 150*7152 + 200*722 + 5000) / 10000 = 143
+        // Pixel 1: Pure Red (B=0, G=0, R=255, A=255) -> gray = (255*2126 + 5000) / 10000 = 54
+        // Pixel 2: Pure Green (B=0, G=255, R=0, A=255) -> gray = (255*7152 + 5000) / 10000 = 182
+        // Pixel 3: Pure Blue (B=255, G=0, R=0, A=128) -> gray = (255*722 + 5000) / 10000 = 18
+        byte[] src = new byte[]
+        {
+            200, 150, 100, 200,
+            0, 0, 255, 255,
+            0, 255, 0, 255,
+            255, 0, 0, 128
+        };
+        CpuPaint.NoteTileSourceBytes(effect, src, 4, 1, 16);
+        byte[] dstBytes = new byte[16];
+        var pin = System.Runtime.InteropServices.GCHandle.Alloc(dstBytes, System.Runtime.InteropServices.GCHandleType.Pinned);
+        try
+        {
+            var tile = new FakeTile { Ptr = pin.AddrOfPinnedObject(), Width = 4, Height = 1, Stride = 16 };
+            Assert.True(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(effect), tile, new FakePoint()));
+            // Pixel 0 (Mixed)
+            Assert.Equal(143, (int)dstBytes[0]);
+            Assert.Equal(143, (int)dstBytes[1]);
+            Assert.Equal(143, (int)dstBytes[2]);
+            Assert.Equal(200, (int)dstBytes[3]);
+            // Pixel 1 (Pure Red)
+            Assert.Equal(54, (int)dstBytes[4]);
+            Assert.Equal(54, (int)dstBytes[5]);
+            Assert.Equal(54, (int)dstBytes[6]);
+            Assert.Equal(255, (int)dstBytes[7]);
+            // Pixel 2 (Pure Green)
+            Assert.Equal(182, (int)dstBytes[8]);
+            Assert.Equal(182, (int)dstBytes[9]);
+            Assert.Equal(182, (int)dstBytes[10]);
+            Assert.Equal(255, (int)dstBytes[11]);
+            // Pixel 3 (Pure Blue)
+            Assert.Equal(18, (int)dstBytes[12]);
+            Assert.Equal(18, (int)dstBytes[13]);
+            Assert.Equal(18, (int)dstBytes[14]);
+            Assert.Equal(128, (int)dstBytes[15]);
+        }
+        finally
+        {
+            pin.Free();
+        }
+    }
+
+    [Fact]
+    public void TryRenderGpuTileCpu_Invert_And_Desaturate_Bounds_And_Missing_TileSource_Fail_Cleanly()
+    {
+        var invertEffect = new FakeInvertColorsGpuEffect();
+        var desatEffect = new FakeDesaturateGpuEffect();
+        byte[] dstBytes = new byte[8];
+        var pin = System.Runtime.InteropServices.GCHandle.Alloc(dstBytes, System.Runtime.InteropServices.GCHandleType.Pinned);
+        try
+        {
+            var tile = new FakeTile { Ptr = pin.AddrOfPinnedObject(), Width = 2, Height = 1, Stride = 8 };
+
+            // 1. Missing tile source fails cleanly without throwing
+            Assert.False(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(invertEffect), tile, new FakePoint()));
+            Assert.False(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(desatEffect), tile, new FakePoint()));
+
+            // Now note a 2x1 source
+            byte[] src = new byte[] { 10, 20, 30, 255, 40, 50, 60, 255 };
+            CpuPaint.NoteTileSourceBytes(invertEffect, src, 2, 1, 8);
+            CpuPaint.NoteTileSourceBytes(desatEffect, src, 2, 1, 8);
+
+            // 2. Out-of-bounds offset fails cleanly
+            var outOfBoundsPoint = new FakePoint { X = 1, Y = 1 };
+            Assert.False(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(invertEffect), tile, outOfBoundsPoint));
+            Assert.False(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(desatEffect), tile, outOfBoundsPoint));
+
+            // 3. Tile exceeding source width fails cleanly
+            var oversizeTile = new FakeTile { Ptr = pin.AddrOfPinnedObject(), Width = 3, Height = 1, Stride = 12 };
+            Assert.False(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(invertEffect), oversizeTile, new FakePoint()));
+            Assert.False(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(desatEffect), oversizeTile, new FakePoint()));
+
+            // 4. Invalid pointer or dimensions fail cleanly
+            var nullPtrTile = new FakeTile { Ptr = IntPtr.Zero, Width = 2, Height = 1, Stride = 8 };
+            Assert.False(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(invertEffect), nullPtrTile, new FakePoint()));
+            Assert.False(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(desatEffect), nullPtrTile, new FakePoint()));
+
+            var zeroDimTile = new FakeTile { Ptr = pin.AddrOfPinnedObject(), Width = 0, Height = 1, Stride = 8 };
+            Assert.False(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(invertEffect), zeroDimTile, new FakePoint()));
+            Assert.False(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(desatEffect), zeroDimTile, new FakePoint()));
+        }
+        finally
+        {
+            pin.Free();
+        }
+    }
+
+    private sealed class FakeBrightnessContrastToken
+    {
+        public int Brightness { get; set; }
+        public int Contrast { get; set; }
+    }
+
+    private sealed class FakeBrightnessContrastGpuEffect : FakeEffectBase
+    {
+        public new FakeBrightnessContrastToken Token { get; set; } = new();
+    }
+
+    private sealed class FakeHueSaturationToken
+    {
+        public int Hue { get; set; }
+        public int Saturation { get; set; } = 100;
+        public int Lightness { get; set; }
+    }
+
+    private sealed class FakeHueSaturationGpuEffect : FakeEffectBase
+    {
+        public new FakeHueSaturationToken Token { get; set; } = new();
+    }
+
+    [Fact]
+    public void TryRenderGpuTileCpu_BrightnessContrast_Identity_Leaves_Pixels_Unchanged()
+    {
+        var effect = new FakeBrightnessContrastGpuEffect();
+        effect.Token.Brightness = 0;
+        effect.Token.Contrast = 0;
+        byte[] src = new byte[] { 50, 128, 200, 255, 0, 255, 100, 128 };
+        CpuPaint.NoteTileSourceBytes(effect, src, 2, 1, 8);
+        byte[] dstBytes = new byte[8];
+        var pin = System.Runtime.InteropServices.GCHandle.Alloc(dstBytes, System.Runtime.InteropServices.GCHandleType.Pinned);
+        try
+        {
+            var tile = new FakeTile { Ptr = pin.AddrOfPinnedObject(), Width = 2, Height = 1, Stride = 8 };
+            Assert.True(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(effect), tile, new FakePoint()));
+            for (int i = 0; i < 8; i++)
+            {
+                Assert.Equal((int)src[i], (int)dstBytes[i]);
+            }
+        }
+        finally
+        {
+            pin.Free();
+        }
+    }
+
+    [Fact]
+    public void TryRenderGpuTileCpu_BrightnessContrast_Brightens_And_Darkens()
+    {
+        var brightEffect = new FakeBrightnessContrastGpuEffect();
+        brightEffect.Token.Brightness = 20; // +51 shift
+        brightEffect.Token.Contrast = 0;
+
+        byte[] src = new byte[] { 50, 100, 200, 255, 230, 20, 0, 128 };
+        CpuPaint.NoteTileSourceBytes(brightEffect, src, 2, 1, 8);
+        byte[] dstBytes = new byte[8];
+        var pin = System.Runtime.InteropServices.GCHandle.Alloc(dstBytes, System.Runtime.InteropServices.GCHandleType.Pinned);
+        try
+        {
+            var tile = new FakeTile { Ptr = pin.AddrOfPinnedObject(), Width = 2, Height = 1, Stride = 8 };
+            Assert.True(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(brightEffect), tile, new FakePoint()));
+            // 50 + 51 = 101, 100 + 51 = 151, 200 + 51 = 251, alpha = 255
+            Assert.Equal(101, (int)dstBytes[0]);
+            Assert.Equal(151, (int)dstBytes[1]);
+            Assert.Equal(251, (int)dstBytes[2]);
+            Assert.Equal(255, (int)dstBytes[3]);
+            // 230 + 51 = 281 -> clamped 255, 20 + 51 = 71, 0 + 51 = 51, alpha = 128
+            Assert.Equal(255, (int)dstBytes[4]);
+            Assert.Equal(71, (int)dstBytes[5]);
+            Assert.Equal(51, (int)dstBytes[6]);
+            Assert.Equal(128, (int)dstBytes[7]);
+        }
+        finally
+        {
+            pin.Free();
+        }
+
+        var darkEffect = new FakeBrightnessContrastGpuEffect();
+        darkEffect.Token.Brightness = -20; // -51 shift
+        darkEffect.Token.Contrast = 0;
+        CpuPaint.NoteTileSourceBytes(darkEffect, src, 2, 1, 8);
+        pin = System.Runtime.InteropServices.GCHandle.Alloc(dstBytes, System.Runtime.InteropServices.GCHandleType.Pinned);
+        try
+        {
+            var tile = new FakeTile { Ptr = pin.AddrOfPinnedObject(), Width = 2, Height = 1, Stride = 8 };
+            Assert.True(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(darkEffect), tile, new FakePoint()));
+            // 50 - 51 = -1 -> clamped 0, 100 - 51 = 49, 200 - 51 = 149, alpha = 255
+            Assert.Equal(0, (int)dstBytes[0]);
+            Assert.Equal(49, (int)dstBytes[1]);
+            Assert.Equal(149, (int)dstBytes[2]);
+            Assert.Equal(255, (int)dstBytes[3]);
+        }
+        finally
+        {
+            pin.Free();
+        }
+
+        var contrastEffect = new FakeBrightnessContrastGpuEffect();
+        contrastEffect.Token.Brightness = 0;
+        contrastEffect.Token.Contrast = 50; // factor = 1.5
+        byte[] cSrc = new byte[] { 128, 200, 50, 255 };
+        CpuPaint.NoteTileSourceBytes(contrastEffect, cSrc, 1, 1, 4);
+        byte[] cDst = new byte[4];
+        pin = System.Runtime.InteropServices.GCHandle.Alloc(cDst, System.Runtime.InteropServices.GCHandleType.Pinned);
+        try
+        {
+            var tile = new FakeTile { Ptr = pin.AddrOfPinnedObject(), Width = 1, Height = 1, Stride = 4 };
+            Assert.True(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(contrastEffect), tile, new FakePoint()));
+            // 128 -> 128
+            // 200 -> (200-128)*1.5 + 128 = 236
+            // 50 -> (50-128)*1.5 + 128 = 11
+            Assert.Equal(128, (int)cDst[0]);
+            Assert.Equal(236, (int)cDst[1]);
+            Assert.Equal(11, (int)cDst[2]);
+            Assert.Equal(255, (int)cDst[3]);
+        }
+        finally
+        {
+            pin.Free();
+        }
+    }
+
+    [Fact]
+    public void TryRenderGpuTileCpu_HueSaturation_Identity_Leaves_Pixels_Unchanged()
+    {
+        var effect = new FakeHueSaturationGpuEffect();
+        effect.Token.Hue = 0;
+        effect.Token.Saturation = 100;
+        effect.Token.Lightness = 0;
+
+        byte[] src = new byte[] { 50, 100, 200, 255, 0, 255, 128, 128 };
+        CpuPaint.NoteTileSourceBytes(effect, src, 2, 1, 8);
+        byte[] dstBytes = new byte[8];
+        var pin = System.Runtime.InteropServices.GCHandle.Alloc(dstBytes, System.Runtime.InteropServices.GCHandleType.Pinned);
+        try
+        {
+            var tile = new FakeTile { Ptr = pin.AddrOfPinnedObject(), Width = 2, Height = 1, Stride = 8 };
+            Assert.True(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(effect), tile, new FakePoint()));
+            for (int i = 0; i < 8; i++)
+            {
+                // Rounding tolerance of +/- 1 due to floating point HSL round-trip
+                Assert.InRange((int)dstBytes[i], src[i] - 1, src[i] + 1);
+            }
+            Assert.Equal(255, (int)dstBytes[3]);
+            Assert.Equal(128, (int)dstBytes[7]);
+        }
+        finally
+        {
+            pin.Free();
+        }
+    }
+
+    [Fact]
+    public void TryRenderGpuTileCpu_HueSaturation_Hue_Rotation_Rotates_Color_Wheel()
+    {
+        var effect = new FakeHueSaturationGpuEffect();
+        effect.Token.Hue = 120; // Rotate red to green
+        effect.Token.Saturation = 100;
+        effect.Token.Lightness = 0;
+
+        // Pure red: B=0, G=0, R=255, A=255
+        byte[] src = new byte[] { 0, 0, 255, 255 };
+        CpuPaint.NoteTileSourceBytes(effect, src, 1, 1, 4);
+        byte[] dstBytes = new byte[4];
+        var pin = System.Runtime.InteropServices.GCHandle.Alloc(dstBytes, System.Runtime.InteropServices.GCHandleType.Pinned);
+        try
+        {
+            var tile = new FakeTile { Ptr = pin.AddrOfPinnedObject(), Width = 1, Height = 1, Stride = 4 };
+            Assert.True(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(effect), tile, new FakePoint()));
+            // Rotated 120 deg -> Pure Green: B=0, G=255, R=0
+            Assert.Equal(0, (int)dstBytes[0]);
+            Assert.Equal(255, (int)dstBytes[1]);
+            Assert.Equal(0, (int)dstBytes[2]);
+            Assert.Equal(255, (int)dstBytes[3]);
+
+            // Now rotate 240 deg -> Pure Blue: B=255, G=0, R=0
+            effect.Token.Hue = 240;
+            Assert.True(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(effect), tile, new FakePoint()));
+            Assert.Equal(255, (int)dstBytes[0]);
+            Assert.Equal(0, (int)dstBytes[1]);
+            Assert.Equal(0, (int)dstBytes[2]);
+            Assert.Equal(255, (int)dstBytes[3]);
+        }
+        finally
+        {
+            pin.Free();
+        }
+    }
+
+    [Fact]
+    public void TryRenderGpuTileCpu_HueSaturation_Saturation_Zero_Produces_Grayscale()
+    {
+        var effect = new FakeHueSaturationGpuEffect();
+        effect.Token.Hue = 0;
+        effect.Token.Saturation = 0; // Grayscale
+        effect.Token.Lightness = 0;
+
+        byte[] src = new byte[] { 50, 100, 200, 255 };
+        CpuPaint.NoteTileSourceBytes(effect, src, 1, 1, 4);
+        byte[] dstBytes = new byte[4];
+        var pin = System.Runtime.InteropServices.GCHandle.Alloc(dstBytes, System.Runtime.InteropServices.GCHandleType.Pinned);
+        try
+        {
+            var tile = new FakeTile { Ptr = pin.AddrOfPinnedObject(), Width = 1, Height = 1, Stride = 4 };
+            Assert.True(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(effect), tile, new FakePoint()));
+            // R, G, B channels must all be equal
+            Assert.Equal((int)dstBytes[0], (int)dstBytes[1]);
+            Assert.Equal((int)dstBytes[1], (int)dstBytes[2]);
+            Assert.Equal(125, (int)dstBytes[0]);
+            Assert.Equal(255, (int)dstBytes[3]);
+        }
+        finally
+        {
+            pin.Free();
+        }
+    }
+
+    [Fact]
+    public void TryRenderGpuTileCpu_HueSaturation_Lightness_Shifts_Luminance()
+    {
+        var effect = new FakeHueSaturationGpuEffect();
+        effect.Token.Hue = 0;
+        effect.Token.Saturation = 100;
+        effect.Token.Lightness = 20; // Brighten
+
+        byte[] src = new byte[] { 50, 100, 200, 255 };
+        CpuPaint.NoteTileSourceBytes(effect, src, 1, 1, 4);
+        byte[] dstBytes = new byte[4];
+        var pin = System.Runtime.InteropServices.GCHandle.Alloc(dstBytes, System.Runtime.InteropServices.GCHandleType.Pinned);
+        try
+        {
+            var tile = new FakeTile { Ptr = pin.AddrOfPinnedObject(), Width = 1, Height = 1, Stride = 4 };
+            Assert.True(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(effect), tile, new FakePoint()));
+            // All RGB values must be brighter than source
+            Assert.True(dstBytes[0] > src[0]);
+            Assert.True(dstBytes[1] > src[1]);
+            Assert.True(dstBytes[2] > src[2]);
+            Assert.Equal(255, (int)dstBytes[3]);
+
+            // Darken with -20
+            effect.Token.Lightness = -20;
+            Assert.True(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(effect), tile, new FakePoint()));
+            Assert.True(dstBytes[0] < src[0]);
+            Assert.True(dstBytes[1] < src[1]);
+            Assert.True(dstBytes[2] < src[2]);
+            Assert.Equal(255, (int)dstBytes[3]);
+        }
+        finally
+        {
+            pin.Free();
+        }
+    }
+
+    [Fact]
+    public void TryRenderGpuTileCpu_Brightness_And_Hue_Bounds_And_Missing_TileSource_Fail_Cleanly()
+    {
+        var bcEffect = new FakeBrightnessContrastGpuEffect();
+        var hsEffect = new FakeHueSaturationGpuEffect();
+        byte[] dstBytes = new byte[8];
+        var pin = System.Runtime.InteropServices.GCHandle.Alloc(dstBytes, System.Runtime.InteropServices.GCHandleType.Pinned);
+        try
+        {
+            var tile = new FakeTile { Ptr = pin.AddrOfPinnedObject(), Width = 2, Height = 1, Stride = 8 };
+
+            // 1. Missing source fails cleanly without throwing
+            Assert.False(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(bcEffect), tile, new FakePoint()));
+            Assert.False(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(hsEffect), tile, new FakePoint()));
+
+            byte[] src = new byte[] { 10, 20, 30, 255, 40, 50, 60, 255 };
+            CpuPaint.NoteTileSourceBytes(bcEffect, src, 2, 1, 8);
+            CpuPaint.NoteTileSourceBytes(hsEffect, src, 2, 1, 8);
+
+            // 2. Out-of-bounds offset fails cleanly
+            var outOfBoundsPoint = new FakePoint { X = 1, Y = 1 };
+            Assert.False(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(bcEffect), tile, outOfBoundsPoint));
+            Assert.False(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(hsEffect), tile, outOfBoundsPoint));
+
+            // 3. Tile exceeding source width fails cleanly
+            var oversizeTile = new FakeTile { Ptr = pin.AddrOfPinnedObject(), Width = 3, Height = 1, Stride = 12 };
+            Assert.False(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(bcEffect), oversizeTile, new FakePoint()));
+            Assert.False(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(hsEffect), oversizeTile, new FakePoint()));
+
+            // 4. Invalid pointer or dimensions fail cleanly
+            var nullPtrTile = new FakeTile { Ptr = IntPtr.Zero, Width = 2, Height = 1, Stride = 8 };
+            Assert.False(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(bcEffect), nullPtrTile, new FakePoint()));
+            Assert.False(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(hsEffect), nullPtrTile, new FakePoint()));
+
+            var zeroDimTile = new FakeTile { Ptr = pin.AddrOfPinnedObject(), Width = 0, Height = 1, Stride = 8 };
+            Assert.False(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(bcEffect), zeroDimTile, new FakePoint()));
+            Assert.False(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(hsEffect), zeroDimTile, new FakePoint()));
+        }
+        finally
+        {
+            pin.Free();
+        }
+    }
+
+    private sealed class FakePixelSurface
+    {
+        private readonly byte[] _px;
+        private System.Runtime.InteropServices.GCHandle _pin;
+        public FakePixelSurface(byte[] px, int w, int h, int stride)
+        {
+            _px = (byte[])px.Clone();
+            Width = w;
+            Height = h;
+            Stride = stride;
+            _pin = System.Runtime.InteropServices.GCHandle.Alloc(_px, System.Runtime.InteropServices.GCHandleType.Pinned);
+        }
+        public int Width { get; }
+        public int Height { get; }
+        public int Stride { get; }
+        public System.IntPtr GetPointAddress(int x, int y) =>
+            System.Runtime.InteropServices.Marshal.UnsafeAddrOfPinnedArrayElement(_px, y * Stride + x * 4);
+        public int CloneCalls { get; private set; }
+        public FakePixelSurface Clone()
+        {
+            CloneCalls++;
+            return new FakePixelSurface(_px, Width, Height, Stride);
+        }
+        public void Free()
+        {
+            if (_pin.IsAllocated)
+                _pin.Free();
+        }
+    }
+
+    private sealed class FakeDirectLayer
+    {
+        public FakeDirectLayer(FakePixelSurface s) { Surface = s; }
+        public FakePixelSurface Surface { get; }
+    }
+
+    private sealed class FakeDirectDoc
+    {
+        public FakeDirectDoc(FakeDirectLayer l) { ActiveLayer = l; }
+        public FakeDirectLayer ActiveLayer { get; }
+    }
+
+    private sealed class FakeDirectWs
+    {
+        public FakeDirectWs(FakeDirectDoc d) { ActiveDocumentWorkspace = d; }
+        public FakeDirectDoc ActiveDocumentWorkspace { get; }
+    }
+
+    private sealed class FakeDirectMenu
+    {
+        public FakeDirectMenu(FakePixelSurface s)
+        {
+            AppWorkspace = new FakeDirectWs(new FakeDirectDoc(new FakeDirectLayer(s)));
+        }
+        public FakeDirectWs AppWorkspace { get; }
+    }
+
+    [Fact]
+    public void NoteDirectApplySource_Miss_Paths_Are_Silent()
+    {
+        // Nulls and chain-less shapes must not throw and must not stash.
+        CpuPaint.NoteDirectApplySource(null, null);
+        CpuPaint.NoteDirectApplySource(new object(), new object());
+        CpuPaint.NoteDirectApplySource(null, new FakeAutoLevelGpuEffect());
+        CpuPaint.NoteDirectApplySource(new FakeDirectMenu(
+            new FakePixelSurface(new byte[] { 0, 0, 0, 0 }, 1, 1, 4)), null);
+        // Nothing was stashed for this instance: render still misses.
+        Assert.False(CpuPaint.TryRenderGpuTileCpu(
+            new FakeGpuEffect.Renderer(new FakeAutoLevelGpuEffect()), new FakeTile(), new FakePoint()));
+    }
+
+    [Fact]
+    public void Direct_Source_Is_A_Byte_Snapshot_Without_Leaking_A_Native_Surface_Clone()
+    {
+        var live = new FakePixelSurface(new byte[] { 64, 64, 64, 255, 192, 192, 192, 255 }, 2, 1, 8);
+        var effect = new FakeAutoLevelGpuEffect();
+        try
+        {
+            CpuPaint.NoteDirectApplySource(new FakeDirectMenu(live), effect);
+            Assert.Equal(0, live.CloneCalls);
+            System.Runtime.InteropServices.Marshal.Copy(new byte[] { 128, 128, 128, 255, 128, 128, 128, 255 }, 0, live.GetPointAddress(0, 0), 8);
+            byte[] output = new byte[8];
+            var pin = System.Runtime.InteropServices.GCHandle.Alloc(output, System.Runtime.InteropServices.GCHandleType.Pinned);
+            try
+            {
+                var tile = new FakeTile { Ptr = pin.AddrOfPinnedObject(), Width = 2, Height = 1, Stride = 8 };
+                Assert.True(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(effect), tile, new FakePoint()));
+                Assert.Equal(0, output[0]);
+                Assert.Equal(255, output[4]);
+            }
+            finally { pin.Free(); }
+        }
+        finally { live.Free(); }
+    }
+
+    private class FakeObjectRefProxy
+    {
+        protected object InnerRef { get; }
+        internal FakeObjectRefProxy(object inner) { InnerRef = inner; }
+    }
+    private sealed class FakeEffectProxy : FakeObjectRefProxy
+    {
+        internal FakeEffectProxy(object inner) : base(inner) { }
+    }
+
+    [Fact]
+    public void Menu_Proxy_And_Renderer_Inner_Effect_Share_The_Source_Snapshot()
+    {
+        var effect = new FakeAutoLevelGpuEffect();
+        CpuPaint.NoteTileSourceBytes(new FakeEffectProxy(effect), new byte[] { 64,64,64,255,192,192,192,255 }, 2, 1, 8);
+        byte[] output = new byte[8];
+        var pin = System.Runtime.InteropServices.GCHandle.Alloc(output, System.Runtime.InteropServices.GCHandleType.Pinned);
+        try
+        {
+            Assert.True(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(effect),
+                new FakeTile { Ptr = pin.AddrOfPinnedObject(), Width = 2, Height = 1, Stride = 8 }, new FakePoint()));
+            Assert.Equal(0, output[0]);
+            Assert.Equal(255, output[4]);
+        }
+        finally { pin.Free(); }
+    }
+
+    [Fact]
+    public void NoteDirectApplySource_Stashes_Surface_For_Direct_Apply()
+    {
+        var live = new FakePixelSurface(
+            new byte[] { 64, 64, 64, 255, 192, 192, 192, 255 }, 2, 1, 8);
+        var menu = new FakeDirectMenu(live);
+        var effect = new FakeAutoLevelGpuEffect();
+        try
+        {
+            CpuPaint.NoteDirectApplySource(menu, effect);
+            byte[] dstBytes = new byte[8];
+            var pin = System.Runtime.InteropServices.GCHandle.Alloc(dstBytes, System.Runtime.InteropServices.GCHandleType.Pinned);
+            try
+            {
+                var tile = new FakeTile { Ptr = pin.AddrOfPinnedObject(), Width = 2, Height = 1, Stride = 8 };
+                Assert.True(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(effect), tile, new FakePoint()));
+                Assert.Equal(0, (int)dstBytes[0]);
+                Assert.Equal(255, (int)dstBytes[4]);
+            }
+            finally
+            {
+                pin.Free();
+            }
+        }
+        finally
+        {
+            live.Free();
+        }
+    }
+
+    [Fact]
+    public void NoteDirectApplySource_Resnapshots_Over_Dialog_Stash()
+    {
+        var effect = new FakeAutoLevelGpuEffect();
+        // Dialog path stashed first (narrow range).
+        CpuPaint.NoteTileSourceBytes(effect, new byte[] { 10, 10, 10, 255, 20, 20, 20, 255 }, 2, 1, 8);
+        // Live surface now holds a wider range: re-stash must win.
+        var live = new FakePixelSurface(
+            new byte[] { 64, 64, 64, 255, 192, 192, 192, 255 }, 2, 1, 8);
+        try
+        {
+            CpuPaint.NoteDirectApplySource(new FakeDirectMenu(live), effect);
+            byte[] dstBytes = new byte[8];
+            var pin = System.Runtime.InteropServices.GCHandle.Alloc(dstBytes, System.Runtime.InteropServices.GCHandleType.Pinned);
+            try
+            {
+                var tile = new FakeTile { Ptr = pin.AddrOfPinnedObject(), Width = 2, Height = 1, Stride = 8 };
+                Assert.True(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(effect), tile, new FakePoint()));
+                // Wide range 64..192 (not the stale 10..20).
+                Assert.Equal(0, (int)dstBytes[0]);
+                Assert.Equal(255, (int)dstBytes[4]);
+            }
+            finally
+            {
+                pin.Free();
+            }
+        }
+        finally
+        {
+            live.Free();
+        }
+    }
+
+    [Fact]
+    public void TryRenderGpuTileCpu_AutoLevel_Flat_Channel_Is_Identity()
+    {
+        var effect = new FakeAutoLevelGpuEffect();
+        // Uniform opaque gray: no range to stretch, pixels pass through.
+        byte[] src = new byte[] { 100, 100, 100, 255, 100, 100, 100, 255 };
+        CpuPaint.NoteTileSourceBytes(effect, src, 2, 1, 8);
+        byte[] dstBytes = new byte[8];
+        var pin = System.Runtime.InteropServices.GCHandle.Alloc(dstBytes, System.Runtime.InteropServices.GCHandleType.Pinned);
+        try
+        {
+            var tile = new FakeTile { Ptr = pin.AddrOfPinnedObject(), Width = 2, Height = 1, Stride = 8 };
+            Assert.True(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(effect), tile, new FakePoint()));
+            Assert.Equal(100, (int)dstBytes[0]);
+            Assert.Equal(100, (int)dstBytes[4]);
+            Assert.Equal(255, (int)dstBytes[3]);
+        }
+        finally
+        {
+            pin.Free();
+        }
     }
 
     [Fact]

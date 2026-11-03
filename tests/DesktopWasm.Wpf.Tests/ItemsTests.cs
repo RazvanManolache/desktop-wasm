@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Text;
 using DesktopWasm.Core;
@@ -436,15 +437,21 @@ public sealed class ItemsTests
         Assert.Equal(2, combo.SelectedIndex);
 
         Assert.True(manager.TryFocus(combo));
-        Key(router, "ArrowDown"); // wraps to the first row
-        Assert.Equal(0, combo.SelectedIndex);
-        Key(router, "ArrowUp"); // wraps to the last row
+        // Native oracle (UNSTALL gallery oracle, combo mode): real WPF
+        // clamps (DOWN-FROM-LAST=2 UP-FROM-FIRST=0), like the ListBox gate.
+        combo.SelectedIndex = 2;
+        Key(router, "ArrowDown"); // clamps on the last row
         Assert.Equal(2, combo.SelectedIndex);
+        Key(router, "ArrowUp");
+        Assert.Equal(1, combo.SelectedIndex);
+        combo.SelectedIndex = 0;
+        Key(router, "ArrowUp"); // clamps on the first row
+        Assert.Equal(0, combo.SelectedIndex);
         Down(router, 200, 15);
         Assert.True(combo.IsDropDownOpen);
         Key(router, "Escape");
         Assert.False(combo.IsDropDownOpen);
-        Assert.Equal(2, combo.SelectedIndex);
+        Assert.Equal(0, combo.SelectedIndex);
     }
 
     [Fact]
@@ -649,5 +656,562 @@ public sealed class ItemsTests
         Assert.Equal(0, children[0].ArrangedRect.Y);
         Assert.Equal(0, children[1].ArrangedRect.X);
         Assert.Equal(20, children[1].ArrangedRect.Y);
+    }
+
+    private sealed class ItemTestStyleSelector(Style styleA, Style styleB) : StyleSelector
+    {
+        public override Style? SelectStyle(object item, DependencyObject container)
+        {
+            var text = item?.ToString() ?? string.Empty;
+            return text.StartsWith("A") ? styleA : styleB;
+        }
+    }
+
+    private sealed class ItemTestDataTemplateSelector(DataTemplate templateA, DataTemplate templateB) : DataTemplateSelector
+    {
+        public override DataTemplate? SelectTemplate(object item, DependencyObject container)
+        {
+            var text = item?.ToString() ?? string.Empty;
+            return text.StartsWith("A") ? templateA : templateB;
+        }
+    }
+
+    [Fact]
+    public void ItemsControl_ItemContainerStyle_applies_style_to_generated_containers()
+    {
+        var style = new Style(typeof(Label));
+        style.Setters.Add(new Setter(FrameworkElement.TagProperty, "Styled"));
+        var control = new ItemsControl
+        {
+            ItemContainerStyle = style
+        };
+        control.AddItem("Original");
+        var container = Assert.IsType<Label>(control.ItemContainerGenerator.ContainerFromIndex(0));
+        Assert.Equal(style, container.Style);
+        Assert.Equal("Styled", container.Tag);
+        Assert.Equal("Original", container.Content);
+    }
+
+    [Fact]
+    public void ItemsControl_ItemContainerStyleSelector_selects_style_per_item()
+    {
+        var styleA = new Style(typeof(Label));
+        styleA.Setters.Add(new Setter(FrameworkElement.TagProperty, "AlphaStyle"));
+        var styleB = new Style(typeof(Label));
+        styleB.Setters.Add(new Setter(FrameworkElement.TagProperty, "BetaStyle"));
+        var control = new ItemsControl
+        {
+            ItemContainerStyleSelector = new ItemTestStyleSelector(styleA, styleB)
+        };
+        control.AddItem("A1");
+        control.AddItem("B1");
+        var container0 = Assert.IsType<Label>(control.ItemContainerGenerator.ContainerFromIndex(0));
+        var container1 = Assert.IsType<Label>(control.ItemContainerGenerator.ContainerFromIndex(1));
+        Assert.Equal(styleA, container0.Style);
+        Assert.Equal(styleB, container1.Style);
+        Assert.Equal("AlphaStyle", container0.Tag);
+        Assert.Equal("BetaStyle", container1.Tag);
+        Assert.Equal("A1", container0.Content);
+        Assert.Equal("B1", container1.Content);
+    }
+
+    [Fact]
+    public void ItemsControl_ItemsSource_INotifyCollectionChanged_updates_containers_live()
+    {
+        var collection = new System.Collections.ObjectModel.ObservableCollection<string> { "One", "Two" };
+        var control = new ItemsControl
+        {
+            ItemsSource = collection
+        };
+        Assert.Equal(2, control.Items.Count);
+        Assert.NotNull(control.ItemContainerGenerator.ContainerFromIndex(0));
+        Assert.NotNull(control.ItemContainerGenerator.ContainerFromIndex(1));
+
+        collection.Add("Three");
+        Assert.Equal(3, control.Items.Count);
+        var container2 = Assert.IsType<Label>(control.ItemContainerGenerator.ContainerFromIndex(2));
+        Assert.Equal("Three", container2.Content);
+    }
+
+    [Fact]
+    public void ItemsControl_DisplayMemberPath_formats_label_content()
+    {
+        var control = new ItemsControl
+        {
+            DisplayMemberPath = "Name"
+        };
+        control.AddItem(new { Name = "Alice", Age = 30 });
+        var container = Assert.IsType<Label>(control.ItemContainerGenerator.ContainerFromIndex(0));
+        Assert.Equal("Alice", container.Content);
+    }
+
+    [Fact]
+    public void ListBox_ItemTemplateSelector_selects_per_item_data_template()
+    {
+        var tmplA = new DataTemplate("<TextBlock " + Ns + " Text=\"TypeA\" />");
+        var tmplB = new DataTemplate("<TextBlock " + Ns + " Text=\"TypeB\" />");
+        var list = new ListBox
+        {
+            ItemTemplateSelector = new ItemTestDataTemplateSelector(tmplA, tmplB),
+            ItemsSource = new[] { "A-Item", "B-Item" }
+        };
+        Assert.Equal(2, list.Items.Count);
+        var row0 = list.Items[0];
+        var row1 = list.Items[1];
+        Assert.Same(tmplA, row0.ContentTemplate);
+        Assert.Same(tmplB, row1.ContentTemplate);
+        var txt0 = Assert.IsType<TextBlock>(row0.TemplatedContent);
+        var txt1 = Assert.IsType<TextBlock>(row1.TemplatedContent);
+        Assert.Equal("TypeA", txt0.Text);
+        Assert.Equal("TypeB", txt1.Text);
+    }
+
+    [Fact]
+    public void ListBox_ItemContainerStyleSelector_applies_style_per_row()
+    {
+        var styleA = new Style(typeof(ListBoxItem));
+        styleA.Setters.Add(new Setter(FrameworkElement.TagProperty, "TagA"));
+        var styleB = new Style(typeof(ListBoxItem));
+        styleB.Setters.Add(new Setter(FrameworkElement.TagProperty, "TagB"));
+        var list = new ListBox
+        {
+            ItemContainerStyleSelector = new ItemTestStyleSelector(styleA, styleB),
+            ItemsSource = new[] { "A-Row", "B-Row" }
+        };
+        Assert.Equal(2, list.Items.Count);
+        Assert.Equal("TagA", list.Items[0].Tag);
+        Assert.Equal("TagB", list.Items[1].Tag);
+    }
+
+    [Fact]
+    public void VirtualizingStackPanel_realizes_only_visible_items_for_large_data_set()
+    {
+        var panel = new VirtualizingStackPanel();
+        var control = new ItemsControl
+        {
+            ItemsPanel = new ItemsPanelTemplate(() => panel),
+            ItemsSource = Enumerable.Range(0, 10000).Select(i => $"Item {i}").ToList(),
+            Height = 200,
+            Width = 300
+        };
+
+        // Measure with 200 DIPs height
+        control.Measure(new WpfSize(300, 200));
+        control.Arrange(new WpfRect(0, 0, 300, 200));
+
+        // Total dataset has 10,000 items, but only a small window should be realized!
+        Assert.Equal(10000, control.Items.Count);
+        Assert.True(control.ItemContainerGenerator.RealizedCount < 50);
+        Assert.True(panel.RealizedCount < 50);
+        Assert.True(control.ItemContainerGenerator.IsRealized(0));
+        Assert.False(control.ItemContainerGenerator.IsRealized(9999));
+
+        // Bounds cache accurately estimated/measured total extent
+        Assert.True(panel.ExtentHeight >= 200000);
+        Assert.Equal(200, panel.ViewportHeight);
+    }
+
+    [Fact]
+    public void VirtualizingStackPanel_bounds_caching_and_scroll_realization()
+    {
+        var panel = new VirtualizingStackPanel();
+        var control = new ItemsControl
+        {
+            ItemsPanel = new ItemsPanelTemplate(() => panel),
+            ItemsSource = Enumerable.Range(0, 1000).Select(i => $"Row {i}").ToList(),
+            Height = 200,
+            Width = 300
+        };
+
+        control.Measure(new WpfSize(300, 200));
+        control.Arrange(new WpfRect(0, 0, 300, 200));
+
+        var initialRealizedStart = panel.RealizedRange.StartIndex;
+        Assert.Equal(0, initialRealizedStart);
+        Assert.True(control.ItemContainerGenerator.IsRealized(0));
+
+        // Scroll down by 500 DIPs
+        panel.SetVerticalOffset(500);
+        control.Measure(new WpfSize(300, 200));
+        control.Arrange(new WpfRect(0, 0, 300, 200));
+
+        // Item 0 should now be out of the realization window and de-realized
+        Assert.False(control.ItemContainerGenerator.IsRealized(0));
+        Assert.True(panel.RealizedRange.StartIndex > 10);
+        Assert.True(control.ItemContainerGenerator.RealizedCount < 50);
+
+        // Bounds cache cached measured bounds
+        Assert.True(panel.GetItemBounds(panel.RealizedRange.StartIndex) > 0);
+        Assert.True(panel.GetTotalExtent(1000) > 0);
+    }
+
+    [Fact]
+    public void VirtualizingStackPanel_horizontal_virtualization()
+    {
+        var panel = new VirtualizingStackPanel { Orientation = Orientation.Horizontal };
+        var control = new ItemsControl
+        {
+            ItemsPanel = new ItemsPanelTemplate(() => panel),
+            ItemsSource = Enumerable.Range(0, 2000).Select(i => $"Col {i}").ToList(),
+            Height = 100,
+            Width = 250
+        };
+
+        control.Measure(new WpfSize(250, 100));
+        control.Arrange(new WpfRect(0, 0, 250, 100));
+
+        Assert.Equal(2000, control.Items.Count);
+        Assert.True(control.ItemContainerGenerator.RealizedCount < 30);
+        Assert.True(panel.ExtentWidth >= 20000);
+        Assert.Equal(250, panel.ViewportWidth);
+    }
+
+    [Fact]
+    public void VirtualizingStackPanel_virtualization_toggle_realizes_all_when_disabled()
+    {
+        var panel = new VirtualizingStackPanel();
+        var control = new ItemsControl
+        {
+            ItemsPanel = new ItemsPanelTemplate(() => panel),
+            ItemsSource = Enumerable.Range(0, 30).Select(i => $"Item {i}").ToList(),
+            Height = 100,
+            Width = 300
+        };
+        VirtualizingStackPanel.SetIsVirtualizing(control, false);
+
+        control.Measure(new WpfSize(300, 100));
+        control.Arrange(new WpfRect(0, 0, 300, 100));
+
+        // When virtualization is disabled, all 30 items are realized
+        Assert.Equal(30, control.ItemContainerGenerator.RealizedCount);
+        for (var i = 0; i < 30; i++)
+        {
+            Assert.True(control.ItemContainerGenerator.IsRealized(i));
+        }
+    }
+
+    [Fact]
+    public void VirtualizingStackPanel_selection_preserved_across_scroll_and_derealization()
+    {
+        var panel = new VirtualizingStackPanel();
+        var listView = new ListView
+        {
+            ItemsPanel = new ItemsPanelTemplate(() => panel),
+            ItemsSource = Enumerable.Range(0, 1000).Select(i => $"Item {i}").ToList(),
+            Height = 200,
+            Width = 300
+        };
+
+        listView.SelectedIndex = 500;
+        Assert.Equal("Item 500", listView.SelectedItem);
+
+        listView.Measure(new WpfSize(300, 200));
+        listView.Arrange(new WpfRect(0, 0, 300, 200));
+
+        Assert.True(listView.ItemContainerGenerator.IsRealized(0));
+        Assert.False(listView.ItemContainerGenerator.IsRealized(500));
+
+        panel.SetVerticalOffset(panel.GetTotalExtent(500));
+        listView.Measure(new WpfSize(300, 200));
+        listView.Arrange(new WpfRect(0, 0, 300, 200));
+
+        Assert.True(listView.ItemContainerGenerator.IsRealized(500));
+        var container500 = Assert.IsType<ListViewItem>(listView.ItemContainerGenerator.ContainerFromIndex(500));
+        Assert.True(container500.IsSelected);
+        Assert.True(Selector.GetIsSelected(container500));
+
+        panel.SetVerticalOffset(0);
+        listView.Measure(new WpfSize(300, 200));
+        listView.Arrange(new WpfRect(0, 0, 300, 200));
+
+        Assert.False(listView.ItemContainerGenerator.IsRealized(500));
+        Assert.Equal(500, listView.SelectedIndex);
+        Assert.Equal("Item 500", listView.SelectedItem);
+
+        panel.SetVerticalOffset(panel.GetTotalExtent(500));
+        listView.Measure(new WpfSize(300, 200));
+        listView.Arrange(new WpfRect(0, 0, 300, 200));
+
+        var container500Again = Assert.IsType<ListViewItem>(listView.ItemContainerGenerator.ContainerFromIndex(500));
+        Assert.True(container500Again.IsSelected);
+    }
+
+    [Fact]
+    public void VirtualizingStackPanel_collection_mutation_add_and_remove_incremental()
+    {
+        var data = new ObservableCollection<string>(Enumerable.Range(0, 500).Select(i => $"Item {i}"));
+        var panel = new VirtualizingStackPanel();
+        var control = new ItemsControl
+        {
+            ItemsPanel = new ItemsPanelTemplate(() => panel),
+            ItemsSource = data,
+            Height = 200,
+            Width = 300
+        };
+
+        control.Measure(new WpfSize(300, 200));
+        control.Arrange(new WpfRect(0, 0, 300, 200));
+
+        panel.SetVerticalOffset(300);
+        control.Measure(new WpfSize(300, 200));
+        control.Arrange(new WpfRect(0, 0, 300, 200));
+
+        var offsetBefore = panel.VerticalOffset;
+        Assert.Equal(300, offsetBefore);
+        var realizedCountBefore = control.ItemContainerGenerator.RealizedCount;
+        Assert.True(realizedCountBefore < 30);
+
+        data.Add("Item 500");
+        Assert.Equal(501, control.Items.Count);
+        Assert.Equal(300, panel.VerticalOffset);
+        Assert.True(control.ItemContainerGenerator.RealizedCount < 30);
+
+        data.RemoveAt(500);
+        Assert.Equal(500, control.Items.Count);
+        Assert.Equal(300, panel.VerticalOffset);
+    }
+
+    [Fact]
+    public void VirtualizingStackPanel_collection_mutation_insert_preserves_selected_item()
+    {
+        var data = new ObservableCollection<string>(Enumerable.Range(0, 200).Select(i => $"Item {i}"));
+        var panel = new VirtualizingStackPanel();
+        var selector = new ListView
+        {
+            ItemsPanel = new ItemsPanelTemplate(() => panel),
+            ItemsSource = data,
+            Height = 200,
+            Width = 300
+        };
+
+        selector.SelectedIndex = 10;
+        Assert.Equal("Item 10", selector.SelectedItem);
+
+        data.Insert(0, "Header Item");
+        Assert.Equal(11, selector.SelectedIndex);
+        Assert.Equal("Item 10", selector.SelectedItem);
+
+        data.RemoveAt(0);
+        Assert.Equal(10, selector.SelectedIndex);
+        Assert.Equal("Item 10", selector.SelectedItem);
+
+        data.RemoveAt(10);
+        Assert.Equal(-1, selector.SelectedIndex);
+        Assert.Null(selector.SelectedItem);
+    }
+
+    [Fact]
+    public void ScrollViewer_virtualizing_items_control_realizes_bounded_containers_and_scrolls()
+    {
+        var scrollViewer = new ScrollViewer { CanContentScroll = true, Height = 200, Width = 300 };
+        var control = new ItemsControl
+        {
+            ItemsPanel = new ItemsPanelTemplate(() => new VirtualizingStackPanel()),
+            ItemsSource = Enumerable.Range(0, 10000).Select(i => $"Row {i}").ToList()
+        };
+        scrollViewer.Content = control;
+
+        scrollViewer.Measure(new WpfSize(300, 200));
+        scrollViewer.Arrange(new WpfRect(0, 0, 300, 200));
+
+        Assert.Equal(10000, control.Items.Count);
+        Assert.True(control.ItemContainerGenerator.RealizedCount < 50);
+        Assert.True(scrollViewer.ExtentHeight >= 200000);
+
+        scrollViewer.ScrollToVerticalOffset(1200);
+        scrollViewer.Measure(new WpfSize(300, 200));
+        scrollViewer.Arrange(new WpfRect(0, 0, 300, 200));
+
+        Assert.True(control.ItemContainerGenerator.RealizedCount < 50);
+        var panel = Assert.IsType<VirtualizingStackPanel>(control.ItemsHost);
+        Assert.True(panel.RealizedRange.StartIndex > 20);
+    }
+
+    [Fact]
+    public void ListBox_with_virtualizing_panel_realizes_bounded_containers_and_coordinates_selection()
+    {
+        var list = new ListBox
+        {
+            ItemsPanel = new ItemsPanelTemplate(() => new VirtualizingStackPanel()),
+            ItemsSource = Enumerable.Range(0, 5000).Select(i => $"Entry {i}").ToList(),
+            Height = 200,
+            Width = 300
+        };
+
+        list.Measure(new WpfSize(300, 200));
+        list.Arrange(new WpfRect(0, 0, 300, 200));
+
+        Assert.True(list.ItemContainerGenerator.RealizedCount < 50);
+        Assert.True(list.Items.Count < 50);
+
+        list.SelectedIndex = 3000;
+        Assert.Equal(3000, list.SelectedIndex);
+
+        list.Measure(new WpfSize(300, 200));
+        list.Arrange(new WpfRect(0, 0, 300, 200));
+
+        var row3000 = Assert.IsType<ListBoxItem>(list.ItemContainerGenerator.ContainerFromIndex(3000));
+        Assert.True(row3000.IsSelected);
+    }
+
+    [Fact]
+    public void VirtualizingStackPanel_container_recycling_zero_heap_container_allocations_during_steady_state_scrolling()
+    {
+        var panel = new VirtualizingStackPanel
+        {
+            VirtualizationMode = VirtualizationMode.Recycling
+        };
+        var list = new ListBox
+        {
+            ItemsPanel = new ItemsPanelTemplate(() => panel),
+            ItemsSource = Enumerable.Range(0, 10000).Select(i => $"Entry {i:D5}").ToList(),
+            Height = 200,
+            Width = 300
+        };
+
+        // Initial layout pass
+        list.Measure(new WpfSize(300, 200));
+        list.Arrange(new WpfRect(0, 0, 300, 200));
+
+        // Warm up scroll to reach full steady-state window capacity (11 containers)
+        for (var i = 1; i <= 3; i++)
+        {
+            panel.SetVerticalOffset(i * 24.0);
+            list.Measure(new WpfSize(300, 200));
+            list.Arrange(new WpfRect(0, 0, 300, 200));
+        }
+
+        var steadyStateContainers = list.ItemContainerGenerator.ContainersCreatedCount;
+        Assert.True(steadyStateContainers > 0, "Initial containers must be created.");
+        Assert.True(steadyStateContainers <= 30, $"Expected bounded steady-state containers (<= 30), got {steadyStateContainers}.");
+
+        // Continuous steady-state scrolling downward across 50 steps
+        for (var step = 4; step <= 54; step++)
+        {
+            panel.SetVerticalOffset(step * 24.0);
+            list.Measure(new WpfSize(300, 200));
+            list.Arrange(new WpfRect(0, 0, 300, 200));
+
+            // CRITICAL INVARIANT: Zero heap container allocations during continuous steady-state scrolling
+            Assert.Equal(steadyStateContainers, list.ItemContainerGenerator.ContainersCreatedCount);
+            Assert.True(list.ItemContainerGenerator.RealizedCount <= steadyStateContainers);
+
+            // Verify the recycled container at the actual window start shows correct item data.
+            // The window start derives from measured item bounds (~28.6px rows vs 24px scroll
+            // steps), so `step` drifts outside the window; ContainerFromIndex realizes on
+            // demand per the WPF contract, so only query inside the realized window.
+            var visibleIndex = panel.RealizedRange.StartIndex;
+            Assert.True(list.ItemContainerGenerator.IsRealized(visibleIndex));
+            var container = Assert.IsType<ListBoxItem>(list.ItemContainerGenerator.ContainerFromIndex(visibleIndex));
+            Assert.Equal($"Entry {visibleIndex:D5}", container.Content);
+        }
+
+        // Continuous steady-state scrolling upward back across 50 steps
+        for (var step = 53; step >= 4; step--)
+        {
+            panel.SetVerticalOffset(step * 24.0);
+            list.Measure(new WpfSize(300, 200));
+            list.Arrange(new WpfRect(0, 0, 300, 200));
+
+            // CRITICAL INVARIANT: Zero heap container allocations scrolling back
+            Assert.Equal(steadyStateContainers, list.ItemContainerGenerator.ContainersCreatedCount);
+        }
+
+        Assert.Equal(steadyStateContainers, list.ItemContainerGenerator.ContainersCreatedCount);
+    }
+
+    [Fact]
+    public void VirtualizingStackPanel_container_recycling_preserves_selection_and_cleans_recycled_containers()
+    {
+        var panel = new VirtualizingStackPanel
+        {
+            VirtualizationMode = VirtualizationMode.Recycling
+        };
+        var list = new ListBox
+        {
+            ItemsPanel = new ItemsPanelTemplate(() => panel),
+            ItemsSource = Enumerable.Range(0, 5000).Select(i => $"Item {i}").ToList(),
+            Height = 200,
+            Width = 300
+        };
+
+        // Pre-select item 42 (ListBox brings item into view by default)
+        list.SelectedIndex = 42;
+        Assert.Equal(42, list.SelectedIndex);
+
+        // Layout at item 42: container 42 is realized and selected
+        list.Measure(new WpfSize(300, 200));
+        list.Arrange(new WpfRect(0, 0, 300, 200));
+
+        Assert.True(list.ItemContainerGenerator.IsRealized(42));
+        var container42 = Assert.IsType<ListBoxItem>(list.ItemContainerGenerator.ContainerFromIndex(42));
+        Assert.True(container42.IsSelected, "Item 42 container must be selected.");
+
+        // Scroll far away to item 2000: container 42 is recycled into the pool
+        panel.SetVerticalOffset(panel.GetTotalExtent(2000));
+        list.Measure(new WpfSize(300, 200));
+        list.Arrange(new WpfRect(0, 0, 300, 200));
+
+        Assert.False(list.ItemContainerGenerator.IsRealized(42), "Item 42 must be de-realized at offset 2000.");
+
+        // Verify unselected items at 2000 reusing recycled containers are NOT marked selected
+        var container2000 = Assert.IsType<ListBoxItem>(list.ItemContainerGenerator.ContainerFromIndex(2000));
+        Assert.False(container2000.IsSelected, "Recycled container for unselected item 2000 must not inherit selection.");
+
+        // Scroll back to item 42: container is recycled back and has selection restored
+        panel.SetVerticalOffset(panel.GetTotalExtent(42));
+        list.Measure(new WpfSize(300, 200));
+        list.Arrange(new WpfRect(0, 0, 300, 200));
+
+        Assert.True(list.ItemContainerGenerator.IsRealized(42));
+        var container42Again = Assert.IsType<ListBoxItem>(list.ItemContainerGenerator.ContainerFromIndex(42));
+        Assert.True(container42Again.IsSelected, "Selection must be restored when item 42 is re-realized.");
+    }
+
+    [Fact]
+    public void ListView_container_recycling_zero_heap_container_allocations_during_steady_state_scrolling()
+    {
+        var panel = new VirtualizingStackPanel
+        {
+            VirtualizationMode = VirtualizationMode.Recycling
+        };
+        var listView = new ListView
+        {
+            ItemsPanel = new ItemsPanelTemplate(() => panel),
+            ItemsSource = Enumerable.Range(0, 8000).Select(i => $"Row {i:D4}").ToList(),
+            Height = 200,
+            Width = 300
+        };
+
+        // Initial layout pass
+        listView.Measure(new WpfSize(300, 200));
+        listView.Arrange(new WpfRect(0, 0, 300, 200));
+
+        // Warm up scroll to reach full steady-state window capacity (11 containers)
+        for (var i = 1; i <= 3; i++)
+        {
+            panel.SetVerticalOffset(i * 24.0);
+            listView.Measure(new WpfSize(300, 200));
+            listView.Arrange(new WpfRect(0, 0, 300, 200));
+        }
+
+        var steadyStateContainers = listView.ItemContainerGenerator.ContainersCreatedCount;
+        Assert.True(steadyStateContainers > 0);
+
+        for (var step = 4; step <= 34; step++)
+        {
+            panel.SetVerticalOffset(step * 24.0);
+            listView.Measure(new WpfSize(300, 200));
+            listView.Arrange(new WpfRect(0, 0, 300, 200));
+
+            // CRITICAL INVARIANT: Zero heap container allocations during continuous steady-state scrolling
+            Assert.Equal(steadyStateContainers, listView.ItemContainerGenerator.ContainersCreatedCount);
+            // Same window-start discipline as the ListBox test above: `step` drifts outside
+            // the measured window, and ContainerFromIndex realizes on demand.
+            var visibleRow = panel.RealizedRange.StartIndex;
+            Assert.True(listView.ItemContainerGenerator.IsRealized(visibleRow));
+            var lvi = Assert.IsType<ListViewItem>(listView.ItemContainerGenerator.ContainerFromIndex(visibleRow));
+            Assert.Equal($"Row {visibleRow:D4}", lvi.Content);
+        }
     }
 }

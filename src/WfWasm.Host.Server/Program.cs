@@ -135,6 +135,7 @@ app.MapGet("/api/appresolve", (string app, string name, HttpContext context) =>
     }
     catch (Exception ex)
     {
+        Console.Error.WriteLine($"[AppTransform] {app}/{name}: {ex}");
         return Results.Problem($"assembly resolution failed for '{app}/{name}': {ex.GetType().Name}: {ex.Message}");
     }
 });

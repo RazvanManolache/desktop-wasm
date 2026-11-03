@@ -25,9 +25,11 @@
       "transformVersion": "wpf-convert-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Engine-native demo; runs only after WPF host import (import lane).",
+      "availabilityNote": "Missing local input: WPF BrowserHost import (engine-native demo, no upstream package needed).",
       "evidence": [],
-      "gaps": []
+      "gaps": [
+        "WPF BrowserHost import (engine-native demo, no upstream package needed)"
+      ]
     },
     {
       "id": "animation",
@@ -53,9 +55,11 @@
       "transformVersion": "wpf-convert-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Engine-native demo; runs only after WPF host import (import lane).",
+      "availabilityNote": "Missing local input: WPF BrowserHost import (engine-native demo, no upstream package needed).",
       "evidence": [],
-      "gaps": []
+      "gaps": [
+        "WPF BrowserHost import (engine-native demo, no upstream package needed)"
+      ]
     },
     {
       "id": "asset-explorer",
@@ -81,9 +85,11 @@
       "transformVersion": "wpf-convert-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Engine-native demo; runs only after WPF host import (import lane).",
+      "availabilityNote": "Missing local input: WPF BrowserHost import (engine-native demo, no upstream package needed).",
       "evidence": [],
-      "gaps": []
+      "gaps": [
+        "WPF BrowserHost import (engine-native demo, no upstream package needed)"
+      ]
     },
     {
       "id": "avalondock",
@@ -773,10 +779,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this benchmark input in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027benchmark-advanceddatagridview\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027benchmark-advanceddatagridview\u0027 not staged in this root"
+        "app folder for \u0027benchmark-advanceddatagridview\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -805,10 +811,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this benchmark input in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027benchmark-bizhawk\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027benchmark-bizhawk\u0027 not staged in this root"
+        "app folder for \u0027benchmark-bizhawk\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -837,10 +843,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this benchmark input in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027benchmark-chip8\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027benchmark-chip8\u0027 not staged in this root"
+        "app folder for \u0027benchmark-chip8\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -869,10 +875,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this benchmark input in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027benchmark-componentone\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027benchmark-componentone\u0027 not staged in this root"
+        "app folder for \u0027benchmark-componentone\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -901,10 +907,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this benchmark input in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027benchmark-cyotek\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027benchmark-cyotek\u0027 not staged in this root"
+        "app folder for \u0027benchmark-cyotek\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -933,10 +939,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this benchmark input in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027benchmark-devexpress\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027benchmark-devexpress\u0027 not staged in this root"
+        "app folder for \u0027benchmark-devexpress\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -965,10 +971,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this benchmark input in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027benchmark-dockpanel\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027benchmark-dockpanel\u0027 not staged in this root"
+        "app folder for \u0027benchmark-dockpanel\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -997,10 +1003,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this benchmark input in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027benchmark-external-calculator\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027benchmark-external-calculator\u0027 not staged in this root"
+        "app folder for \u0027benchmark-external-calculator\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -1029,10 +1035,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this benchmark input in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027benchmark-fastcoloredtextbox\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027benchmark-fastcoloredtextbox\u0027 not staged in this root"
+        "app folder for \u0027benchmark-fastcoloredtextbox\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -1059,13 +1065,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this benchmark input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027benchmark-fiddler-classic\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027.artifacts/benchmark-apps/benchmark-fiddler-classic\u0027 (sha 23104C3B1D5C\u2026); runtime unverified.",
+      "evidence": [
+        "local:.artifacts/benchmark-apps/benchmark-fiddler-classic#23104C3B1D5C1F9E4CBC1BB1C65819A90DD33CE50A3D79151858DAF9E9F5FAC8"
+      ],
+      "gaps": []
     },
     {
       "id": "benchmark-gitextensions",
@@ -1093,10 +1099,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this benchmark input in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027benchmark-gitextensions\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027benchmark-gitextensions\u0027 not staged in this root"
+        "app folder for \u0027benchmark-gitextensions\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -1125,10 +1131,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this benchmark input in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027benchmark-hexbox\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027benchmark-hexbox\u0027 not staged in this root"
+        "app folder for \u0027benchmark-hexbox\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -1157,10 +1163,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this benchmark input in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027benchmark-infragistics\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027benchmark-infragistics\u0027 not staged in this root"
+        "app folder for \u0027benchmark-infragistics\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -1189,10 +1195,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this benchmark input in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027benchmark-keepass\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027benchmark-keepass\u0027 not staged in this root"
+        "app folder for \u0027benchmark-keepass\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -1221,10 +1227,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this benchmark input in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027benchmark-krypton\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027benchmark-krypton\u0027 not staged in this root"
+        "app folder for \u0027benchmark-krypton\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -1253,10 +1259,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this benchmark input in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027benchmark-linqpad5\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027benchmark-linqpad5\u0027 not staged in this root"
+        "app folder for \u0027benchmark-linqpad5\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -1285,10 +1291,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this benchmark input in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027benchmark-minesweeper\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027benchmark-minesweeper\u0027 not staged in this root"
+        "app folder for \u0027benchmark-minesweeper\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -1317,10 +1323,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this benchmark input in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027benchmark-mremoteng\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027benchmark-mremoteng\u0027 not staged in this root"
+        "app folder for \u0027benchmark-mremoteng\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -1349,10 +1355,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this benchmark input in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027benchmark-naps2\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027benchmark-naps2\u0027 not staged in this root"
+        "app folder for \u0027benchmark-naps2\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -1381,10 +1387,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this benchmark input in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027benchmark-openpdn\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027benchmark-openpdn\u0027 not staged in this root"
+        "app folder for \u0027benchmark-openpdn\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -1413,10 +1419,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this benchmark input in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027benchmark-pkhex\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027benchmark-pkhex\u0027 not staged in this root"
+        "app folder for \u0027benchmark-pkhex\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -1445,10 +1451,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this benchmark input in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027benchmark-realtaiizor\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027benchmark-realtaiizor\u0027 not staged in this root"
+        "app folder for \u0027benchmark-realtaiizor\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -1477,10 +1483,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this benchmark input in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027benchmark-reflector\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027benchmark-reflector\u0027 not staged in this root"
+        "app folder for \u0027benchmark-reflector\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -1509,10 +1515,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this benchmark input in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027benchmark-sharex\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027benchmark-sharex\u0027 not staged in this root"
+        "app folder for \u0027benchmark-sharex\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -1541,10 +1547,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this benchmark input in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027benchmark-subtitleedit\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027benchmark-subtitleedit\u0027 not staged in this root"
+        "app folder for \u0027benchmark-subtitleedit\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -1573,10 +1579,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this benchmark input in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027benchmark-treemap\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027benchmark-treemap\u0027 not staged in this root"
+        "app folder for \u0027benchmark-treemap\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -1605,10 +1611,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this benchmark input in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027benchmark-vgapainter\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027benchmark-vgapainter\u0027 not staged in this root"
+        "app folder for \u0027benchmark-vgapainter\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -1635,9 +1641,11 @@
       "transformVersion": "wpf-convert-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Engine-native demo; runs only after WPF host import (import lane).",
+      "availabilityNote": "Missing local input: WPF BrowserHost import (engine-native demo, no upstream package needed).",
       "evidence": [],
-      "gaps": []
+      "gaps": [
+        "WPF BrowserHost import (engine-native demo, no upstream package needed)"
+      ]
     },
     {
       "id": "calc-keypad",
@@ -1663,9 +1671,11 @@
       "transformVersion": "wpf-convert-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Engine-native demo; runs only after WPF host import (import lane).",
+      "availabilityNote": "Missing local input: WPF BrowserHost import (engine-native demo, no upstream package needed).",
       "evidence": [],
-      "gaps": []
+      "gaps": [
+        "WPF BrowserHost import (engine-native demo, no upstream package needed)"
+      ]
     },
     {
       "id": "calculator",
@@ -1692,10 +1702,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this app folder in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027calculator\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027calculator\u0027 not staged in this root"
+        "app folder for \u0027calculator\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -1723,10 +1733,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this app folder in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027calendar\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027calendar\u0027 not staged in this root"
+        "app folder for \u0027calendar\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -1753,9 +1763,11 @@
       "transformVersion": "wpf-convert-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Engine-native demo; runs only after WPF host import (import lane).",
+      "availabilityNote": "Missing local input: WPF BrowserHost import (engine-native demo, no upstream package needed).",
       "evidence": [],
-      "gaps": []
+      "gaps": [
+        "WPF BrowserHost import (engine-native demo, no upstream package needed)"
+      ]
     },
     {
       "id": "color-lab",
@@ -1781,9 +1793,11 @@
       "transformVersion": "wpf-convert-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Engine-native demo; runs only after WPF host import (import lane).",
+      "availabilityNote": "Missing local input: WPF BrowserHost import (engine-native demo, no upstream package needed).",
       "evidence": [],
-      "gaps": []
+      "gaps": [
+        "WPF BrowserHost import (engine-native demo, no upstream package needed)"
+      ]
     },
     {
       "id": "controls",
@@ -1807,10 +1821,13 @@
         "wpf"
       ],
       "transformVersion": "wpf-convert-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Engine-native demo; runs only after WPF host import (import lane).",
-      "evidence": [],
+      "availabilityNote": "Staged locally at \u0027inputs/wpf/catalog-staging/browserhost-20261031T003154Z/blazor.boot.json\u0027 (sha 37660C5D20B9\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/wpf/catalog-staging/browserhost-20261031T003154Z/blazor.boot.json#37660C5D20B97D4BBE12A6B5B7EC980CDAD07AD7554EBE2D656639986119623A",
+        "producer:generation 20261031T003154Z pin wpf:build-boot-manifest 37660C5D"
+      ],
       "gaps": []
     },
     {
@@ -1837,9 +1854,11 @@
       "transformVersion": "wpf-convert-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Engine-native demo; runs only after WPF host import (import lane).",
+      "availabilityNote": "Missing local input: WPF BrowserHost import (engine-native demo, no upstream package needed).",
       "evidence": [],
-      "gaps": []
+      "gaps": [
+        "WPF BrowserHost import (engine-native demo, no upstream package needed)"
+      ]
     },
     {
       "id": "dialogs",
@@ -1865,9 +1884,11 @@
       "transformVersion": "wpf-convert-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Engine-native demo; runs only after WPF host import (import lane).",
+      "availabilityNote": "Missing local input: WPF BrowserHost import (engine-native demo, no upstream package needed).",
       "evidence": [],
-      "gaps": []
+      "gaps": [
+        "WPF BrowserHost import (engine-native demo, no upstream package needed)"
+      ]
     },
     {
       "id": "drag-drop",
@@ -1893,9 +1914,11 @@
       "transformVersion": "wpf-convert-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Engine-native demo; runs only after WPF host import (import lane).",
+      "availabilityNote": "Missing local input: WPF BrowserHost import (engine-native demo, no upstream package needed).",
       "evidence": [],
-      "gaps": []
+      "gaps": [
+        "WPF BrowserHost import (engine-native demo, no upstream package needed)"
+      ]
     },
     {
       "id": "effects",
@@ -1921,9 +1944,11 @@
       "transformVersion": "wpf-convert-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Engine-native demo; runs only after WPF host import (import lane).",
+      "availabilityNote": "Missing local input: WPF BrowserHost import (engine-native demo, no upstream package needed).",
       "evidence": [],
-      "gaps": []
+      "gaps": [
+        "WPF BrowserHost import (engine-native demo, no upstream package needed)"
+      ]
     },
     {
       "id": "files-clipboard",
@@ -1949,9 +1974,11 @@
       "transformVersion": "wpf-convert-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Engine-native demo; runs only after WPF host import (import lane).",
+      "availabilityNote": "Missing local input: WPF BrowserHost import (engine-native demo, no upstream package needed).",
       "evidence": [],
-      "gaps": []
+      "gaps": [
+        "WPF BrowserHost import (engine-native demo, no upstream package needed)"
+      ]
     },
     {
       "id": "geometry",
@@ -2005,12 +2032,12 @@
       },
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Package staged in frozen WPF-wasm root under apps/geometry; copy to this root pending (import lane).",
+      "availabilityNote": "Missing local input: package copy for \u0027geometry\u0027 hash-pinned from manifest.",
       "evidence": [
         "frozen-root manifest apps/geometry"
       ],
       "gaps": [
-        "package for \u0027geometry\u0027 not copied to this root"
+        "package copy for \u0027geometry\u0027 hash-pinned from manifest"
       ]
     },
     {
@@ -2277,15 +2304,14 @@
         "gaps": [],
         "sourceCommit": "811d01e95c8c929e68539d698d0a0609e94fd185"
       },
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Package staged in frozen WPF-wasm root under apps/hello-real; copy to this root pending (import lane).",
+      "availabilityNote": "Staged locally at \u0027inputs/wpf/catalog-staging/hello-real\u0027 (sha E51A1047325C\u2026); runtime unverified.",
       "evidence": [
-        "frozen-root manifest apps/hello-real"
+        "frozen-root manifest apps/hello-real",
+        "local:inputs/wpf/catalog-staging/hello-real#E51A1047325C35E6AC5C204E07BF617578096A0F524D5A591C7D282B56EFFBDC"
       ],
-      "gaps": [
-        "package for \u0027hello-real\u0027 not copied to this root"
-      ]
+      "gaps": []
     },
     {
       "id": "hello-xaml",
@@ -2311,9 +2337,11 @@
       "transformVersion": "wpf-convert-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Engine-native demo; runs only after WPF host import (import lane).",
+      "availabilityNote": "Missing local input: WPF BrowserHost import (engine-native demo, no upstream package needed).",
       "evidence": [],
-      "gaps": []
+      "gaps": [
+        "WPF BrowserHost import (engine-native demo, no upstream package needed)"
+      ]
     },
     {
       "id": "hittest",
@@ -2339,9 +2367,11 @@
       "transformVersion": "wpf-convert-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Engine-native demo; runs only after WPF host import (import lane).",
+      "availabilityNote": "Missing local input: WPF BrowserHost import (engine-native demo, no upstream package needed).",
       "evidence": [],
-      "gaps": []
+      "gaps": [
+        "WPF BrowserHost import (engine-native demo, no upstream package needed)"
+      ]
     },
     {
       "id": "ilspy",
@@ -5439,9 +5469,11 @@
       "transformVersion": "wpf-convert-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Engine-native demo; runs only after WPF host import (import lane).",
+      "availabilityNote": "Missing local input: WPF BrowserHost import (engine-native demo, no upstream package needed).",
       "evidence": [],
-      "gaps": []
+      "gaps": [
+        "WPF BrowserHost import (engine-native demo, no upstream package needed)"
+      ]
     },
     {
       "id": "input",
@@ -5465,10 +5497,13 @@
         "wpf"
       ],
       "transformVersion": "wpf-convert-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Engine-native demo; runs only after WPF host import (import lane).",
-      "evidence": [],
+      "availabilityNote": "Staged locally at \u0027inputs/wpf/catalog-staging/browserhost-20261031T003154Z/blazor.boot.json\u0027 (sha 37660C5D20B9\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/wpf/catalog-staging/browserhost-20261031T003154Z/blazor.boot.json#37660C5D20B97D4BBE12A6B5B7EC980CDAD07AD7554EBE2D656639986119623A",
+        "producer:generation 20261031T003154Z pin wpf:build-boot-manifest 37660C5D"
+      ],
       "gaps": []
     },
     {
@@ -5495,9 +5530,11 @@
       "transformVersion": "wpf-convert-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Engine-native demo; runs only after WPF host import (import lane).",
+      "availabilityNote": "Missing local input: WPF BrowserHost import (engine-native demo, no upstream package needed).",
       "evidence": [],
-      "gaps": []
+      "gaps": [
+        "WPF BrowserHost import (engine-native demo, no upstream package needed)"
+      ]
     },
     {
       "id": "layout",
@@ -5523,9 +5560,11 @@
       "transformVersion": "wpf-convert-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Engine-native demo; runs only after WPF host import (import lane).",
+      "availabilityNote": "Missing local input: WPF BrowserHost import (engine-native demo, no upstream package needed).",
       "evidence": [],
-      "gaps": []
+      "gaps": [
+        "WPF BrowserHost import (engine-native demo, no upstream package needed)"
+      ]
     },
     {
       "id": "listbox",
@@ -5551,9 +5590,11 @@
       "transformVersion": "wpf-convert-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Engine-native demo; runs only after WPF host import (import lane).",
+      "availabilityNote": "Missing local input: WPF BrowserHost import (engine-native demo, no upstream package needed).",
       "evidence": [],
-      "gaps": []
+      "gaps": [
+        "WPF BrowserHost import (engine-native demo, no upstream package needed)"
+      ]
     },
     {
       "id": "mahapps",
@@ -7453,15 +7494,14 @@
         "gaps": [],
         "sourceCommit": "087728011a8d71926ccf86cb28dc99439e9b1c3f"
       },
-      "availability": "notConverted",
+      "availability": "available",
       "upstreamStatus": "not-converted",
-      "availabilityNote": "Resource dictionaries, control templates, triggers and animations need conversion coverage.",
+      "availabilityNote": "Staged locally at \u0027inputs/wpf/catalog-staging/material-design\u0027 (sha 0935A3652038\u2026); runtime unverified.",
       "evidence": [
-        "frozen-root manifest apps/material-design"
+        "frozen-root manifest apps/material-design",
+        "local:inputs/wpf/catalog-staging/material-design#0935A365203809BFE6093AC202C5049E0FEF5C928813A99D219859C968B9B676"
       ],
-      "gaps": [
-        "Resource dictionaries, control templates, triggers and animations need conversion coverage."
-      ]
+      "gaps": []
     },
     {
       "id": "menu",
@@ -7487,9 +7527,11 @@
       "transformVersion": "wpf-convert-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Engine-native demo; runs only after WPF host import (import lane).",
+      "availabilityNote": "Missing local input: WPF BrowserHost import (engine-native demo, no upstream package needed).",
       "evidence": [],
-      "gaps": []
+      "gaps": [
+        "WPF BrowserHost import (engine-native demo, no upstream package needed)"
+      ]
     },
     {
       "id": "mixed-session-pilot",
@@ -7518,10 +7560,10 @@
       "transformVersion": "mixed-v1",
       "availability": "unavailable",
       "upstreamStatus": "pilot",
-      "availabilityNote": "No mixed WinForms\u002BWPF session proven; owned by the interop lane.",
+      "availabilityNote": "No proven mixed session: entry carries no typed bridge identity; receipts cannot promote it.",
       "evidence": [],
       "gaps": [
-        "mixed session not proven"
+        "typed bridge identity (provider \u002B contract) from the interop lane"
       ]
     },
     {
@@ -7649,12 +7691,12 @@
       },
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Package staged in frozen WPF-wasm root under apps/oxyplot; copy to this root pending (import lane).",
+      "availabilityNote": "Missing local input: package copy for \u0027oxyplot\u0027 hash-pinned from manifest.",
       "evidence": [
         "frozen-root manifest apps/oxyplot"
       ],
       "gaps": [
-        "package for \u0027oxyplot\u0027 not copied to this root"
+        "package copy for \u0027oxyplot\u0027 hash-pinned from manifest"
       ]
     },
     {
@@ -7681,13 +7723,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this app folder in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027paintnet\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027targets/paint.net\u0027 (sha 56BC4E6620DC\u2026); runtime unverified.",
+      "evidence": [
+        "local:targets/paint.net#56BC4E6620DCB56171BFE363640C0279286FB3D4B98D2067DC919EE4925C1310"
+      ],
+      "gaps": []
     },
     {
       "id": "pc-space-map",
@@ -7869,9 +7911,11 @@
       "transformVersion": "wpf-convert-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Engine-native demo; runs only after WPF host import (import lane).",
+      "availabilityNote": "Missing local input: WPF BrowserHost import (engine-native demo, no upstream package needed).",
       "evidence": [],
-      "gaps": []
+      "gaps": [
+        "WPF BrowserHost import (engine-native demo, no upstream package needed)"
+      ]
     },
     {
       "id": "primitives",
@@ -7897,9 +7941,11 @@
       "transformVersion": "wpf-convert-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Engine-native demo; runs only after WPF host import (import lane).",
+      "availabilityNote": "Missing local input: WPF BrowserHost import (engine-native demo, no upstream package needed).",
       "evidence": [],
-      "gaps": []
+      "gaps": [
+        "WPF BrowserHost import (engine-native demo, no upstream package needed)"
+      ]
     },
     {
       "id": "project-planner",
@@ -7925,9 +7971,11 @@
       "transformVersion": "wpf-convert-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Engine-native demo; runs only after WPF host import (import lane).",
+      "availabilityNote": "Missing local input: WPF BrowserHost import (engine-native demo, no upstream package needed).",
       "evidence": [],
-      "gaps": []
+      "gaps": [
+        "WPF BrowserHost import (engine-native demo, no upstream package needed)"
+      ]
     },
     {
       "id": "resources",
@@ -7953,9 +8001,11 @@
       "transformVersion": "wpf-convert-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Engine-native demo; runs only after WPF host import (import lane).",
+      "availabilityNote": "Missing local input: WPF BrowserHost import (engine-native demo, no upstream package needed).",
       "evidence": [],
-      "gaps": []
+      "gaps": [
+        "WPF BrowserHost import (engine-native demo, no upstream package needed)"
+      ]
     },
     {
       "id": "screen-to-gif",
@@ -8446,9 +8496,11 @@
       "transformVersion": "wpf-convert-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Engine-native demo; runs only after WPF host import (import lane).",
+      "availabilityNote": "Missing local input: WPF BrowserHost import (engine-native demo, no upstream package needed).",
       "evidence": [],
-      "gaps": []
+      "gaps": [
+        "WPF BrowserHost import (engine-native demo, no upstream package needed)"
+      ]
     },
     {
       "id": "shell",
@@ -8474,9 +8526,11 @@
       "transformVersion": "wpf-convert-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Engine-native demo; runs only after WPF host import (import lane).",
+      "availabilityNote": "Missing local input: WPF BrowserHost import (engine-native demo, no upstream package needed).",
       "evidence": [],
-      "gaps": []
+      "gaps": [
+        "WPF BrowserHost import (engine-native demo, no upstream package needed)"
+      ]
     },
     {
       "id": "simple-binding",
@@ -8532,12 +8586,12 @@
       },
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Package staged in frozen WPF-wasm root under apps/simple-binding; copy to this root pending (import lane).",
+      "availabilityNote": "Missing local input: package copy for \u0027simple-binding\u0027 hash-pinned from manifest.",
       "evidence": [
         "frozen-root manifest apps/simple-binding"
       ],
       "gaps": [
-        "package for \u0027simple-binding\u0027 not copied to this root"
+        "package copy for \u0027simple-binding\u0027 hash-pinned from manifest"
       ]
     },
     {
@@ -8564,9 +8618,11 @@
       "transformVersion": "wpf-convert-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Engine-native demo; runs only after WPF host import (import lane).",
+      "availabilityNote": "Missing local input: WPF BrowserHost import (engine-native demo, no upstream package needed).",
       "evidence": [],
-      "gaps": []
+      "gaps": [
+        "WPF BrowserHost import (engine-native demo, no upstream package needed)"
+      ]
     },
     {
       "id": "slider",
@@ -8592,9 +8648,11 @@
       "transformVersion": "wpf-convert-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Engine-native demo; runs only after WPF host import (import lane).",
+      "availabilityNote": "Missing local input: WPF BrowserHost import (engine-native demo, no upstream package needed).",
       "evidence": [],
-      "gaps": []
+      "gaps": [
+        "WPF BrowserHost import (engine-native demo, no upstream package needed)"
+      ]
     },
     {
       "id": "smoke",
@@ -8619,13 +8677,14 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this app folder in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027smoke\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/catalog-staging/canvas-host-20261031T003154Z/blazor.boot.json\u0027 (sha 5913C8D8AC03\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/winforms/catalog-staging/canvas-host-20261031T003154Z/blazor.boot.json#5913C8D8AC031E1E77361EC3DD7D556DFBE4AF37114BFEE39B8FA9710784DE59",
+        "producer:generation 20261031T003154Z pin backend:canvas-boot-manifest 5913C8D8"
+      ],
+      "gaps": []
     },
     {
       "id": "syncfusion-auto-complete",
@@ -8651,13 +8710,15 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this Syncfusion input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027syncfusion-auto-complete\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-auto-complete\u0027 (sha 84A949D5680F\u2026); runtime unverified.",
+      "evidence": [
+        "acceptance:.artifacts/autocomplete-repair/live/results.json (launch/render; caret caveat, not full parity)",
+        "local:inputs/winforms/syncfusion-staging/syncfusion-auto-complete#84A949D5680F4B9F7DA71AC7BCB2A8E0FA4DC4E53C6AC1530B0F2D3C12416015",
+        "producer:generation 20261031T003154Z pin backend:canvas-boot-manifest 5913C8D8"
+      ],
+      "gaps": []
     },
     {
       "id": "syncfusion-barcode",
@@ -8683,13 +8744,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this Syncfusion input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027syncfusion-barcode\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-barcode\u0027 (sha 047A2CC575D3\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/winforms/syncfusion-staging/syncfusion-barcode#047A2CC575D3BFD513B0E28C8625FB7924D5D5C9D0B901D7C24E6866BBE1D25F"
+      ],
+      "gaps": []
     },
     {
       "id": "syncfusion-bullet-graph",
@@ -8715,13 +8776,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this Syncfusion input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027syncfusion-bullet-graph\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-bullet-graph\u0027 (sha D54A81BCEC8E\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/winforms/syncfusion-staging/syncfusion-bullet-graph#D54A81BCEC8EAD030168F3F689FAABFCDE60B09A6B4B99206BF9BE43076044D5"
+      ],
+      "gaps": []
     },
     {
       "id": "syncfusion-buttons",
@@ -8747,13 +8808,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this Syncfusion input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027syncfusion-buttons\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-buttons\u0027 (sha 315B863BAE62\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/winforms/syncfusion-staging/syncfusion-buttons#315B863BAE62CDFB1B777A7C424FDA2A294678ACD7309BCD0898013D87651A6A"
+      ],
+      "gaps": []
     },
     {
       "id": "syncfusion-calendar",
@@ -8779,13 +8840,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this Syncfusion input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027syncfusion-calendar\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-calendar\u0027 (sha 371538453D7C\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/winforms/syncfusion-staging/syncfusion-calendar#371538453D7CB083433A1E2851CB57CBED3BDD4FA5FAD9F89B34537E82BD4684"
+      ],
+      "gaps": []
     },
     {
       "id": "syncfusion-chart",
@@ -8811,13 +8872,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this Syncfusion input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027syncfusion-chart\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-chart\u0027 (sha 9400D1952B19\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/winforms/syncfusion-staging/syncfusion-chart#9400D1952B1918132FC330B38710FB0031E7820DD06649769D6A3B8E0C841FCA"
+      ],
+      "gaps": []
     },
     {
       "id": "syncfusion-clock",
@@ -8843,13 +8904,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this Syncfusion input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027syncfusion-clock\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-clock\u0027 (sha 9581952C05BF\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/winforms/syncfusion-staging/syncfusion-clock#9581952C05BFA16A72AB0C926DE7AD0C1D9861831297F03E838F9FBAF7C6750E"
+      ],
+      "gaps": []
     },
     {
       "id": "syncfusion-combobox",
@@ -8875,13 +8936,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this Syncfusion input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027syncfusion-combobox\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-combobox\u0027 (sha E7113DB46B2C\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/winforms/syncfusion-staging/syncfusion-combobox#E7113DB46B2C1346B8E40DCF431EAD23329805114A93F4D437593A0A3A2546F8"
+      ],
+      "gaps": []
     },
     {
       "id": "syncfusion-control-bars",
@@ -8907,13 +8968,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this Syncfusion input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027syncfusion-control-bars\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-control-bars\u0027 (sha 7DB4345F579A\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/winforms/syncfusion-staging/syncfusion-control-bars#7DB4345F579A6CF83FB65D2FB8CBB80AEA12495ABF931ADBB45F6BFB6B2BBC70"
+      ],
+      "gaps": []
     },
     {
       "id": "syncfusion-datagrid",
@@ -8939,13 +9000,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this Syncfusion input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027syncfusion-datagrid\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-datagrid\u0027 (sha 3B2F8282A7DD\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/winforms/syncfusion-staging/syncfusion-datagrid#3B2F8282A7DDB004FCE78E4B620E1604B0CA1CCE766DAD49E3D283641662BA03"
+      ],
+      "gaps": []
     },
     {
       "id": "syncfusion-diagram",
@@ -8971,13 +9032,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this Syncfusion input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027syncfusion-diagram\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-diagram\u0027 (sha 4F3C9F0B23D5\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/winforms/syncfusion-staging/syncfusion-diagram#4F3C9F0B23D5A3B8F15F2CF2CB72E6AB22AB4156833174B38197651B44EE6FB5"
+      ],
+      "gaps": []
     },
     {
       "id": "syncfusion-docking",
@@ -9003,13 +9064,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this Syncfusion input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027syncfusion-docking\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-docking\u0027 (sha 44E00A5AB1CF\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/winforms/syncfusion-staging/syncfusion-docking#44E00A5AB1CF3E669B4F9A4E09BB61CDE5EA3BC7B1BDEA1B803FDC04F1F7F19D"
+      ],
+      "gaps": []
     },
     {
       "id": "syncfusion-font-combo",
@@ -9035,13 +9096,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this Syncfusion input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027syncfusion-font-combo\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-font-combo\u0027 (sha 46C4ECC586B0\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/winforms/syncfusion-staging/syncfusion-font-combo#46C4ECC586B0787B304CFE58F60AAE7FF2A34595E2A99EFD7C292CBAFEAADCF5"
+      ],
+      "gaps": []
     },
     {
       "id": "syncfusion-gauges",
@@ -9067,13 +9128,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this Syncfusion input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027syncfusion-gauges\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-gauges\u0027 (sha B7D1D432A3B8\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/winforms/syncfusion-staging/syncfusion-gauges#B7D1D432A3B8E40A560E011A464913027D5ED55029350AA282079E405B5C2078"
+      ],
+      "gaps": []
     },
     {
       "id": "syncfusion-grid-cells",
@@ -9099,13 +9160,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this Syncfusion input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027syncfusion-grid-cells\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-grid-cells\u0027 (sha 4F397FD6D1B9\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/winforms/syncfusion-staging/syncfusion-grid-cells#4F397FD6D1B9B24FF15D9C89BF1909A2564FDC593985CFF9BB2B5539F1593BDE"
+      ],
+      "gaps": []
     },
     {
       "id": "syncfusion-grid-grouping",
@@ -9131,13 +9192,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this Syncfusion input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027syncfusion-grid-grouping\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-grid-grouping\u0027 (sha 5F33E2F2157D\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/winforms/syncfusion-staging/syncfusion-grid-grouping#5F33E2F2157D277F6164A87B396B210B1F88D6D49461B57070E7BC171D455D67"
+      ],
+      "gaps": []
     },
     {
       "id": "syncfusion-html",
@@ -9163,13 +9224,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this Syncfusion input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027syncfusion-html\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-html\u0027 (sha F1A7419F78DF\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/winforms/syncfusion-staging/syncfusion-html#F1A7419F78DF68A5AAE75A8025064A070A3A742E371E05746E05989E6F97E1C4"
+      ],
+      "gaps": []
     },
     {
       "id": "syncfusion-hub-tile",
@@ -9195,13 +9256,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this Syncfusion input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027syncfusion-hub-tile\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-hub-tile\u0027 (sha AE1D17234E8F\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/winforms/syncfusion-staging/syncfusion-hub-tile#AE1D17234E8F9E2860582C782B8EBD4CDED1A94003FF9F8E91B4E173A794043A"
+      ],
+      "gaps": []
     },
     {
       "id": "syncfusion-maps",
@@ -9227,13 +9288,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this Syncfusion input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027syncfusion-maps\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-maps\u0027 (sha 01088CC36E78\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/winforms/syncfusion-staging/syncfusion-maps#01088CC36E78FA10F32CA679A2E09D245A44E1DA460BE3B83FE6E36871D0734F"
+      ],
+      "gaps": []
     },
     {
       "id": "syncfusion-masked-edit",
@@ -9259,13 +9320,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this Syncfusion input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027syncfusion-masked-edit\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-masked-edit\u0027 (sha 8FA17724D349\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/winforms/syncfusion-staging/syncfusion-masked-edit#8FA17724D34931D70B22467C05C173E8C1CB74C9B64D4F3C286B7E3DD578E3CD"
+      ],
+      "gaps": []
     },
     {
       "id": "syncfusion-multi-column-tree",
@@ -9291,13 +9352,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this Syncfusion input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027syncfusion-multi-column-tree\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-multi-column-tree\u0027 (sha 96B1F669365B\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/winforms/syncfusion-staging/syncfusion-multi-column-tree#96B1F669365BC15AB8020508B91255F4C68F054B2435AC3AFE5E080BCA5E60AD"
+      ],
+      "gaps": []
     },
     {
       "id": "syncfusion-navigation-drawer",
@@ -9323,13 +9384,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this Syncfusion input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027syncfusion-navigation-drawer\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-navigation-drawer\u0027 (sha 93901033D23B\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/winforms/syncfusion-staging/syncfusion-navigation-drawer#93901033D23B68881FDD3D96C5137175D6B62711E099EE3516A0EB9F366DDEC7"
+      ],
+      "gaps": []
     },
     {
       "id": "syncfusion-numeric",
@@ -9355,13 +9416,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this Syncfusion input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027syncfusion-numeric\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-numeric\u0027 (sha 22CF45A376BE\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/winforms/syncfusion-staging/syncfusion-numeric#22CF45A376BEAC63E0B4240E7D4EB496F4A6E450EBFC35C2584C31C2D8A19006"
+      ],
+      "gaps": []
     },
     {
       "id": "syncfusion-pivot-chart",
@@ -9387,13 +9448,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this Syncfusion input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027syncfusion-pivot-chart\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-pivot-chart\u0027 (sha 7FD3F0499FAE\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/winforms/syncfusion-staging/syncfusion-pivot-chart#7FD3F0499FAE77F4C1AABBA365FB1DE4710F07EEEA85CC55C7D378621429586D"
+      ],
+      "gaps": []
     },
     {
       "id": "syncfusion-pivot-grid",
@@ -9419,13 +9480,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this Syncfusion input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027syncfusion-pivot-grid\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-pivot-grid\u0027 (sha 2B33791686D2\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/winforms/syncfusion-staging/syncfusion-pivot-grid#2B33791686D22A5691DCC9BE116068CB36486775338B6BBD46F826D85C59C79B"
+      ],
+      "gaps": []
     },
     {
       "id": "syncfusion-radial-slider",
@@ -9451,13 +9512,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this Syncfusion input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027syncfusion-radial-slider\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-radial-slider\u0027 (sha 20B3003137D2\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/winforms/syncfusion-staging/syncfusion-radial-slider#20B3003137D24F3AF269B509DD9A16E376048263204779570CEB913BBA58DE25"
+      ],
+      "gaps": []
     },
     {
       "id": "syncfusion-range-slider",
@@ -9483,13 +9544,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this Syncfusion input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027syncfusion-range-slider\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-range-slider\u0027 (sha ABF1B8F1391F\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/winforms/syncfusion-staging/syncfusion-range-slider#ABF1B8F1391FB31735753E4F7C0471A7EC9B8A39DB3ABF121210A4CF311D365A"
+      ],
+      "gaps": []
     },
     {
       "id": "syncfusion-rating",
@@ -9515,13 +9576,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this Syncfusion input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027syncfusion-rating\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-rating\u0027 (sha E48F1BCF87E0\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/winforms/syncfusion-staging/syncfusion-rating#E48F1BCF87E0367869117735889A440A02E627DF8A050A0BEB9C3D0283A0D7B0"
+      ],
+      "gaps": []
     },
     {
       "id": "syncfusion-scroll-frame",
@@ -9547,13 +9608,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this Syncfusion input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027syncfusion-scroll-frame\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-scroll-frame\u0027 (sha C082103BF580\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/winforms/syncfusion-staging/syncfusion-scroll-frame#C082103BF58074BB85DBFC806AD40F9A21E2CD3CFA8049329B8EF9E6FE82D937"
+      ],
+      "gaps": []
     },
     {
       "id": "syncfusion-skin-manager",
@@ -9579,13 +9640,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this Syncfusion input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027syncfusion-skin-manager\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-skin-manager\u0027 (sha AAC0069A42D7\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/winforms/syncfusion-staging/syncfusion-skin-manager#AAC0069A42D7E32E8D6C223225C5999FF2A082B22A912DB1EB131523FF091870"
+      ],
+      "gaps": []
     },
     {
       "id": "syncfusion-smith-chart",
@@ -9611,13 +9672,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this Syncfusion input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027syncfusion-smith-chart\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-smith-chart\u0027 (sha 9A208E76E4D6\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/winforms/syncfusion-staging/syncfusion-smith-chart#9A208E76E4D6616B63367B5B4A4035AF7A142CCAC836CD382B6B32AD702F89E6"
+      ],
+      "gaps": []
     },
     {
       "id": "syncfusion-spell-checker",
@@ -9643,13 +9704,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this Syncfusion input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027syncfusion-spell-checker\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-spell-checker\u0027 (sha 83EE60B1E154\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/winforms/syncfusion-staging/syncfusion-spell-checker#83EE60B1E154FDB4347C9BE855D75A1313C0FC387C9A2458928E744115872AE5"
+      ],
+      "gaps": []
     },
     {
       "id": "syncfusion-split-container",
@@ -9675,13 +9736,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this Syncfusion input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027syncfusion-split-container\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-split-container\u0027 (sha E58BCE386340\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/winforms/syncfusion-staging/syncfusion-split-container#E58BCE386340FC16E70939602C13F2C7BA23946E5C6CD51D5E6AA0E5B5D8D94C"
+      ],
+      "gaps": []
     },
     {
       "id": "syncfusion-status-bar",
@@ -9707,13 +9768,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this Syncfusion input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027syncfusion-status-bar\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-status-bar\u0027 (sha 29EC5695435E\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/winforms/syncfusion-staging/syncfusion-status-bar#29EC5695435ED52E5C30F7B83830BA695CD35669FF6C063E0705269F399BBEA6"
+      ],
+      "gaps": []
     },
     {
       "id": "syncfusion-tabbed-mdi",
@@ -9739,13 +9800,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this Syncfusion input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027syncfusion-tabbed-mdi\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-tabbed-mdi\u0027 (sha 78B441FAF162\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/winforms/syncfusion-staging/syncfusion-tabbed-mdi#78B441FAF162BFCA5DA11A6D191CCCB68A886078FCCC75E8882B4160D3BA10E2"
+      ],
+      "gaps": []
     },
     {
       "id": "syncfusion-tile-layout",
@@ -9771,13 +9832,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this Syncfusion input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027syncfusion-tile-layout\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-tile-layout\u0027 (sha 4573FD49B4C8\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/winforms/syncfusion-staging/syncfusion-tile-layout#4573FD49B4C8FC090E7067B81E0FDAA934D9ADFF35E7686C7A5F4F38570EA1A2"
+      ],
+      "gaps": []
     },
     {
       "id": "syncfusion-toggle",
@@ -9803,13 +9864,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this Syncfusion input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027syncfusion-toggle\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-toggle\u0027 (sha 2FB49DF475C5\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/winforms/syncfusion-staging/syncfusion-toggle#2FB49DF475C545B00AF0C6DD5C94030ABA5A44A1308D66E6AC26529618B6F7C8"
+      ],
+      "gaps": []
     },
     {
       "id": "syncfusion-tool-tip",
@@ -9835,13 +9896,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this Syncfusion input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027syncfusion-tool-tip\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-tool-tip\u0027 (sha 5C03FA40926D\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/winforms/syncfusion-staging/syncfusion-tool-tip#5C03FA40926D7E76955E2D4D0AE4CC87699633109544B57E5AB8AF3993EB3209"
+      ],
+      "gaps": []
     },
     {
       "id": "syncfusion-tree-map",
@@ -9867,13 +9928,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this Syncfusion input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027syncfusion-tree-map\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-tree-map\u0027 (sha 0CD97A196E57\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/winforms/syncfusion-staging/syncfusion-tree-map#0CD97A196E5780BB9437EEEDAB8E28E90CFF7E091261F85A104258707456D532"
+      ],
+      "gaps": []
     },
     {
       "id": "syncfusion-treeview",
@@ -9899,13 +9960,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this Syncfusion input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027syncfusion-treeview\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-treeview\u0027 (sha B665847C5FC8\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/winforms/syncfusion-staging/syncfusion-treeview#B665847C5FC8A3EDC13D49D5227AA459930BF9726DAF28247B16B7674F7AC973"
+      ],
+      "gaps": []
     },
     {
       "id": "syncfusion-wizard",
@@ -9931,13 +9992,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this Syncfusion input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027syncfusion-wizard\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-wizard\u0027 (sha 233CB858614B\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/winforms/syncfusion-staging/syncfusion-wizard#233CB858614B5560958A9775A6E271C3F78806A1EA976196F5114F7F980CE84F"
+      ],
+      "gaps": []
     },
     {
       "id": "syncfusion-word",
@@ -9963,13 +10024,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this Syncfusion input in the new root.",
-      "evidence": [],
-      "gaps": [
-        "app folder \u0027syncfusion-word\u0027 not staged in this root"
-      ]
+      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-word\u0027 (sha 238E14907559\u2026); runtime unverified.",
+      "evidence": [
+        "local:inputs/winforms/syncfusion-staging/syncfusion-word#238E14907559EC1C64E325AFF2194E981049568254F340E6B7430043A23299C4"
+      ],
+      "gaps": []
     },
     {
       "id": "tabs",
@@ -9995,9 +10056,11 @@
       "transformVersion": "wpf-convert-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Engine-native demo; runs only after WPF host import (import lane).",
+      "availabilityNote": "Missing local input: WPF BrowserHost import (engine-native demo, no upstream package needed).",
       "evidence": [],
-      "gaps": []
+      "gaps": [
+        "WPF BrowserHost import (engine-native demo, no upstream package needed)"
+      ]
     },
     {
       "id": "telerik-bookshelf",
@@ -10024,10 +10087,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this app folder in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027telerik-bookshelf\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027telerik-bookshelf\u0027 not staged in this root"
+        "app folder for \u0027telerik-bookshelf\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -10055,10 +10118,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this app folder in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027telerik-bugtracker\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027telerik-bugtracker\u0027 not staged in this root"
+        "app folder for \u0027telerik-bugtracker\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -10086,10 +10149,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this app folder in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027telerik-demoappshub\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027telerik-demoappshub\u0027 not staged in this root"
+        "app folder for \u0027telerik-demoappshub\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -10117,10 +10180,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this app folder in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027telerik-diagram\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027telerik-diagram\u0027 not staged in this root"
+        "app folder for \u0027telerik-diagram\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -10148,10 +10211,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this app folder in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027telerik-erp\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027telerik-erp\u0027 not staged in this root"
+        "app folder for \u0027telerik-erp\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -10179,10 +10242,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this app folder in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027telerik-exportwithdpl\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027telerik-exportwithdpl\u0027 not staged in this root"
+        "app folder for \u0027telerik-exportwithdpl\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -10210,10 +10273,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this app folder in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027telerik-fileexplorer\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027telerik-fileexplorer\u0027 not staged in this root"
+        "app folder for \u0027telerik-fileexplorer\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -10241,10 +10304,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this app folder in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027telerik-hotelapp\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027telerik-hotelapp\u0027 not staged in this root"
+        "app folder for \u0027telerik-hotelapp\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -10272,16 +10335,20 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this app folder in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027telerik-medicalapp\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027telerik-medicalapp\u0027 not staged in this root"
+        "app folder for \u0027telerik-medicalapp\u0027 plus WinForms transform inputs"
       ]
     },
     {
       "id": "telerik-photo",
       "aliases": [
+        "/app/photo-album",
         "/app/telerik-photo",
+        "/demo/photo-album",
+        "photo-album",
+        "photoalbum",
         "telerikphoto"
       ],
       "label": "Telerik: Photo Album",
@@ -10303,10 +10370,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this app folder in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027telerik-photo\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027telerik-photo\u0027 not staged in this root"
+        "app folder for \u0027telerik-photo\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -10334,10 +10401,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this app folder in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027telerik-richtexteditor\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027telerik-richtexteditor\u0027 not staged in this root"
+        "app folder for \u0027telerik-richtexteditor\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -10365,10 +10432,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this app folder in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027telerik-rssreader\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027telerik-rssreader\u0027 not staged in this root"
+        "app folder for \u0027telerik-rssreader\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -10396,10 +10463,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this app folder in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027telerik-spellcheckasyoutype\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027telerik-spellcheckasyoutype\u0027 not staged in this root"
+        "app folder for \u0027telerik-spellcheckasyoutype\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -10427,10 +10494,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this app folder in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027telerik-toastnotificationmanagerexamples\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027telerik-toastnotificationmanagerexamples\u0027 not staged in this root"
+        "app folder for \u0027telerik-toastnotificationmanagerexamples\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -10457,8 +10524,223 @@
       "transformVersion": "wpf-convert-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Engine-native demo; runs only after WPF host import (import lane).",
+      "availabilityNote": "Missing local input: WPF BrowserHost import (engine-native demo, no upstream package needed).",
       "evidence": [],
+      "gaps": [
+        "WPF BrowserHost import (engine-native demo, no upstream package needed)"
+      ]
+    },
+    {
+      "id": "testapp-joint",
+      "aliases": [
+        "/app/testapp-joint",
+        "/demo/testapp-joint"
+      ],
+      "label": "AvalonDock TestApp (joint)",
+      "description": "AvalonDock TestApp converted to a joint WinForms\u002BWPF package (staged, serving \u002B behavior unverified).",
+      "category": "Mixed",
+      "icon": "",
+      "provenance": {
+        "family": "mixed",
+        "origin": "original",
+        "sourceUrl": "https://github.com/Dirkster99/AvalonDock/blob/10d1cc6fb3ef45284b31bf2372a35d83f3b3ca02/source/TestApp/TestApp.csproj",
+        "repository": "https://github.com/Dirkster99/AvalonDock",
+        "commit": "10d1cc6fb3ef45284b31bf2372a35d83f3b3ca02",
+        "project": "source/TestApp/TestApp.csproj",
+        "license": "MS-PL",
+        "boundary": "Serving \u002B behavior unverified: staged bytes only. WPF-routed refs moved into the engine namespace; method-body call compatibility proven only by browser boot (verifier lane).",
+        "hasRecipe": true
+      },
+      "entry": {
+        "kind": "converted-app",
+        "entryAssembly": "TestApp",
+        "manifestSlug": "testapp-joint",
+        "bootNote": "Joint converted app boots via package loader once served; serving \u002B behavior unverified.",
+        "bridge": {
+          "provider": "DesktopWasm.Interop.WindowsFormsHostResolver",
+          "contract": "System.Windows.Forms.Integration.WindowsFormsHost"
+        }
+      },
+      "capabilities": [
+        "winforms",
+        "wpf"
+      ],
+      "transformVersion": "wpf-convert-v1",
+      "package": {
+        "schemaVersion": 1,
+        "mapVersion": "wpf-convert-v1",
+        "status": "converted",
+        "assemblies": [
+          {
+            "name": "AvalonDock",
+            "file": "AvalonDock.dc5a7c01ab3c4cae11ed74d4dd233824e9a0c9f881338984b2b54b7a3473f681.bin",
+            "sha256": "dc5a7c01ab3c4cae11ed74d4dd233824e9a0c9f881338984b2b54b7a3473f681",
+            "references": [
+              "AvalonDock.Core",
+              "DesktopWasm.Wpf",
+              "mscorlib",
+              "System",
+              "System.Core",
+              "System.Xml"
+            ],
+            "inputSha256": "17ea86d020b20ed1582f66b90a7816240f8d6ec55b048d3bcd22d2ce9fad9544",
+            "artifact": "mixed"
+          },
+          {
+            "name": "AvalonDock.Core",
+            "file": "AvalonDock.Core.4d2754fa55760f0c48509606ac40a2d97066591b981237fcc29b4c6fd85714b1.bin",
+            "sha256": "4d2754fa55760f0c48509606ac40a2d97066591b981237fcc29b4c6fd85714b1",
+            "references": [
+              "netstandard"
+            ],
+            "inputSha256": "4d2754fa55760f0c48509606ac40a2d97066591b981237fcc29b4c6fd85714b1",
+            "artifact": "mixed"
+          },
+          {
+            "name": "AvalonDock.Serializer.Xml",
+            "file": "AvalonDock.Serializer.Xml.4e0457322e9accffa7a244ff2235165a1061038eed3299956e3ad02873340050.bin",
+            "sha256": "4e0457322e9accffa7a244ff2235165a1061038eed3299956e3ad02873340050",
+            "references": [
+              "AvalonDock.Core",
+              "netstandard"
+            ],
+            "inputSha256": "4e0457322e9accffa7a244ff2235165a1061038eed3299956e3ad02873340050",
+            "artifact": "mixed"
+          },
+          {
+            "name": "AvalonDock.Themes.Aero",
+            "file": "AvalonDock.Themes.Aero.c69a5cfb82209646fe8e7ee167c9a7ae071250b46324bba8c0849a46aea0edc6.bin",
+            "sha256": "c69a5cfb82209646fe8e7ee167c9a7ae071250b46324bba8c0849a46aea0edc6",
+            "references": [
+              "AvalonDock",
+              "DesktopWasm.Wpf",
+              "mscorlib",
+              "System"
+            ],
+            "inputSha256": "4723fa37003b6ea243b6433b2b46938e5b8c16dd5ae0cab939dfce04a84caa6a",
+            "artifact": "mixed"
+          },
+          {
+            "name": "AvalonDock.Themes.Arc",
+            "file": "AvalonDock.Themes.Arc.1c0e87240a2ee1cbeb3c953b3c362b0ac78daaa73103b9d76eb34ed7c36ebb11.bin",
+            "sha256": "1c0e87240a2ee1cbeb3c953b3c362b0ac78daaa73103b9d76eb34ed7c36ebb11",
+            "references": [
+              "AvalonDock",
+              "DesktopWasm.Wpf",
+              "mscorlib",
+              "System"
+            ],
+            "inputSha256": "2b7c042d59d8601e19e7eb0c64521e53134b96f74fbe079fbfabae7273c3bf37",
+            "artifact": "mixed"
+          },
+          {
+            "name": "AvalonDock.Themes.Expression",
+            "file": "AvalonDock.Themes.Expression.4984fe6c78e7afb82bb84e534472797ecb3188aa6e109a1635717d21988820e0.bin",
+            "sha256": "4984fe6c78e7afb82bb84e534472797ecb3188aa6e109a1635717d21988820e0",
+            "references": [
+              "AvalonDock",
+              "DesktopWasm.Wpf",
+              "mscorlib",
+              "System"
+            ],
+            "inputSha256": "912410207e05160e6a8100f81df7134ac77e8fe79ebff1df4e7aa6ebfffebaac",
+            "artifact": "mixed"
+          },
+          {
+            "name": "AvalonDock.Themes.Metro",
+            "file": "AvalonDock.Themes.Metro.ed5129f0d8aca5a6441a387bbfe9fb128be14664a0bfa063570d5f9ed6b8d492.bin",
+            "sha256": "ed5129f0d8aca5a6441a387bbfe9fb128be14664a0bfa063570d5f9ed6b8d492",
+            "references": [
+              "AvalonDock",
+              "mscorlib",
+              "PresentationFramework",
+              "System",
+              "System.Xaml"
+            ],
+            "inputSha256": "ed5129f0d8aca5a6441a387bbfe9fb128be14664a0bfa063570d5f9ed6b8d492",
+            "artifact": "mixed"
+          },
+          {
+            "name": "AvalonDock.Themes.VS",
+            "file": "AvalonDock.Themes.VS.2cff66fbdf3847ddf60a173dbee8dda3c4786ff0173a953b9c0d9db27d98c848.bin",
+            "sha256": "2cff66fbdf3847ddf60a173dbee8dda3c4786ff0173a953b9c0d9db27d98c848",
+            "references": [
+              "AvalonDock",
+              "DesktopWasm.Wpf",
+              "mscorlib",
+              "System",
+              "System.Core",
+              "System.Text.Json",
+              "System.Xml.Linq"
+            ],
+            "inputSha256": "25348cbc4f7606e7832bb15503500ee52ffa17ab60678b0b2942ef95de061d18",
+            "artifact": "mixed"
+          },
+          {
+            "name": "AvalonDock.Themes.VS2010",
+            "file": "AvalonDock.Themes.VS2010.1a7b0a0335114fc758583e33159df1d3a8e2b208279b671f5b2f8785fa525674.bin",
+            "sha256": "1a7b0a0335114fc758583e33159df1d3a8e2b208279b671f5b2f8785fa525674",
+            "references": [
+              "AvalonDock",
+              "mscorlib",
+              "PresentationFramework",
+              "System",
+              "System.Xaml"
+            ],
+            "inputSha256": "1a7b0a0335114fc758583e33159df1d3a8e2b208279b671f5b2f8785fa525674",
+            "artifact": "mixed"
+          },
+          {
+            "name": "AvalonDock.Themes.VS2013",
+            "file": "AvalonDock.Themes.VS2013.8d9009c97b7d9a8197f90328a8be212e781904980636f2b89c16add072f09c0f.bin",
+            "sha256": "8d9009c97b7d9a8197f90328a8be212e781904980636f2b89c16add072f09c0f",
+            "references": [
+              "AvalonDock",
+              "AvalonDock.Themes.VS",
+              "DesktopWasm.Wpf",
+              "mscorlib",
+              "System"
+            ],
+            "inputSha256": "23166091b4df002632dd864e1b3844fb780b2848dce0205e39801de26fef1ff6",
+            "artifact": "mixed"
+          },
+          {
+            "name": "TestApp",
+            "file": "TestApp.4ec427233d89d4c3739cd8ea7c4efb102f45e9a0a6c41f1211764b3573ec0397.bin",
+            "sha256": "4ec427233d89d4c3739cd8ea7c4efb102f45e9a0a6c41f1211764b3573ec0397",
+            "references": [
+              "AvalonDock",
+              "AvalonDock.Core",
+              "AvalonDock.Serializer.Xml",
+              "AvalonDock.Themes.Aero",
+              "AvalonDock.Themes.Arc",
+              "AvalonDock.Themes.Expression",
+              "AvalonDock.Themes.Metro",
+              "AvalonDock.Themes.VS",
+              "AvalonDock.Themes.VS2010",
+              "AvalonDock.Themes.VS2013",
+              "DesktopWasm.Wpf",
+              "mscorlib",
+              "System",
+              "System.Core",
+              "WfWasm.Drawing",
+              "WfWasm.WinForms",
+              "WindowsFormsIntegration"
+            ],
+            "inputSha256": "a6863ef5e83ca337a79f139793f3863b72b6fe9f5217aa02066cf3d5541d9fc4",
+            "artifact": "mixed"
+          }
+        ],
+        "gaps": []
+      },
+      "availability": "staged",
+      "upstreamStatus": "converted",
+      "availabilityNote": "Staged locally at \u0027inputs/mixed/testapp-package\u0027 (sha 7b1c88186a0d\u2026); serving \u002B behavior unverified.",
+      "evidence": [
+        "local:inputs/mixed/testapp-package#7b1c88186a0de72a7ca72282eec40f05ee37e1737a8b4784c99c92eb04938892",
+        "producer:inputs/mixed/testapp-package/PROVENANCE.json",
+        "producer:inputs/mixed/testapp-package/testapp-joint.receipt.json"
+      ],
       "gaps": []
     },
     {
@@ -10485,9 +10767,11 @@
       "transformVersion": "wpf-convert-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Engine-native demo; runs only after WPF host import (import lane).",
+      "availabilityNote": "Missing local input: WPF BrowserHost import (engine-native demo, no upstream package needed).",
       "evidence": [],
-      "gaps": []
+      "gaps": [
+        "WPF BrowserHost import (engine-native demo, no upstream package needed)"
+      ]
     },
     {
       "id": "tic-tac-toe",
@@ -10515,10 +10799,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this app folder in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027tic-tac-toe\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027tictactoe\u0027 not staged in this root"
+        "app folder for \u0027tic-tac-toe\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -10546,10 +10830,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Import lane has not staged this app folder in the new root.",
+      "availabilityNote": "Missing local input: app folder for \u0027todo\u0027 plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder \u0027todo\u0027 not staged in this root"
+        "app folder for \u0027todo\u0027 plus WinForms transform inputs"
       ]
     },
     {
@@ -10576,9 +10860,11 @@
       "transformVersion": "wpf-convert-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Engine-native demo; runs only after WPF host import (import lane).",
+      "availabilityNote": "Missing local input: WPF BrowserHost import (engine-native demo, no upstream package needed).",
       "evidence": [],
-      "gaps": []
+      "gaps": [
+        "WPF BrowserHost import (engine-native demo, no upstream package needed)"
+      ]
     },
     {
       "id": "typography",
@@ -10604,9 +10890,11 @@
       "transformVersion": "wpf-convert-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Engine-native demo; runs only after WPF host import (import lane).",
+      "availabilityNote": "Missing local input: WPF BrowserHost import (engine-native demo, no upstream package needed).",
       "evidence": [],
-      "gaps": []
+      "gaps": [
+        "WPF BrowserHost import (engine-native demo, no upstream package needed)"
+      ]
     },
     {
       "id": "validation-links",
@@ -10632,9 +10920,11 @@
       "transformVersion": "wpf-convert-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Engine-native demo; runs only after WPF host import (import lane).",
+      "availabilityNote": "Missing local input: WPF BrowserHost import (engine-native demo, no upstream package needed).",
       "evidence": [],
-      "gaps": []
+      "gaps": [
+        "WPF BrowserHost import (engine-native demo, no upstream package needed)"
+      ]
     },
     {
       "id": "wpf-calculator",
@@ -10688,12 +10978,12 @@
       },
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Package staged in frozen WPF-wasm root under apps/wpf-calculator; copy to this root pending (import lane).",
+      "availabilityNote": "Missing local input: package copy for \u0027wpf-calculator\u0027 hash-pinned from manifest.",
       "evidence": [
         "frozen-root manifest apps/wpf-calculator"
       ],
       "gaps": [
-        "package for \u0027wpf-calculator\u0027 not copied to this root"
+        "package copy for \u0027wpf-calculator\u0027 hash-pinned from manifest"
       ]
     },
     {
@@ -10713,7 +11003,7 @@
         "commit": "811d01e95c8c929e68539d698d0a0609e94fd185",
         "project": "Sample Applications/WPFGallery/WPFGallery.csproj",
         "license": "MIT",
-        "boundary": "Type conversion is complete (0 gaps; converted package staged under apps/wpf-gallery, hashes verified). The real gallery boots in the browser: Dashboard to Basic Input to ButtonPage navigation plus the ButtonPage disable-checkbox chain (unchecked to checked flips the sample button enabled to disabled), proven by post-input STATE assertions (benchmarks/results/gallery-state/gallery-state-proof JSON, 0 page errors, no error overlay). Layout GridPage boots with its 3x3 ShowGridLines example parsed (dotted boundary guides painted; benchmarks/gallery_grid_proof.py STATE proof). Layout GroupBoxPage boots (header-with-gap frame, Name/Gender fields, typed Ada lands in NameTextBox STATE; benchmarks/gallery_groupbox_proof.py STATE proof). Text TextBoxPage boots (converted AlphabeticValidationRule blocks Ann3 with HasError, Ada pushes and clears; benchmarks/gallery-textbox-proof JSON STATE proof). Collections ListBoxPage boots with its inline color rows (Blue first-selected) and its ItemsSource-bound font list (5 rows, Courier New selected at index 2; real Segoe UI and Red clicks select with content; benchmarks/gallery-listbox-proof JSON STATE proof). The Fluent theme pack merges through the engine theme fallback (AcrylicBackgroundFillColorDefault and the Default/Accent button BasedOn chains resolve app-wide). Remaining limits: loose-XAML detail pages outside the proven path keep precise boundaries (Interaction.Triggers, MenuItem Click EventSetter, FrameWindow Source, Calendar, DatePicker, RichTextBox); session-memory long-dwell idle acceptance stays open.",
+        "boundary": "Type conversion is complete (0 gaps; converted package identity transcribed from frozen manifest apps/wpf-gallery, manifest sha 65ECEA648ADC65F2E6BC6156BACA502AE73F7F69A6683400FE2FDF04586FCDDF, 29 assemblies verified against the frozen bytes). Staged in this root at inputs/wpf/catalog-staging/wpf-gallery (manifest sha 65ECEA648ADC65F2E6BC6156BACA502AE73F7F69A6683400FE2FDF04586FCDDF, 29-assembly closure digest-verified on stage 2026-11-02 by import lane RVW8900); serving + behavior unverified. Frozen-root-era browser notes below describe the frozen app, not current-workspace serving: Dashboard to Basic Input to ButtonPage navigation plus the ButtonPage disable-checkbox chain (unchecked to checked flips the sample button enabled to disabled), Layout GridPage 3x3 ShowGridLines parsing, Layout GroupBoxPage Name/Gender typing, Text TextBoxPage AlphabeticValidationRule behavior, Collections ListBoxPage color/font selection, and Fluent theme-pack fallback (proof scripts live beside the frozen root, e.g. gallery_state_proof.py). Serving \u002B behavior unverified in this workspace. Remaining limits: loose-XAML detail pages outside the proven path keep precise boundaries (Interaction.Triggers, MenuItem Click EventSetter, FrameWindow Source, Calendar, DatePicker, RichTextBox); session-memory long-dwell idle acceptance stays open.",
         "hasRecipe": true
       },
       "entry": {
@@ -11294,15 +11584,14 @@
         "gaps": [],
         "sourceCommit": "811d01e95c8c929e68539d698d0a0609e94fd185"
       },
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Package staged in frozen WPF-wasm root under apps/wpf-gallery; copy to this root pending (import lane).",
+      "availabilityNote": "Staged locally at \u0027inputs/wpf/catalog-staging/wpf-gallery\u0027 (sha 65ECEA648ADC\u2026); runtime unverified.",
       "evidence": [
-        "frozen-root manifest apps/wpf-gallery"
+        "frozen-root manifest apps/wpf-gallery",
+        "local:inputs/wpf/catalog-staging/wpf-gallery#65ECEA648ADC65F2E6BC6156BACA502AE73F7F69A6683400FE2FDF04586FCDDF"
       ],
-      "gaps": [
-        "package for \u0027wpf-gallery\u0027 not copied to this root"
-      ]
+      "gaps": []
     }
   ]
 }

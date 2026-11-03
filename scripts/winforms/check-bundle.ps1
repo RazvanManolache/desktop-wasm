@@ -6,11 +6,17 @@
 # carry System.Windows.DependencyObject (else PDN bootstrap dies with
 # TypeLoadException token 01000023: the bundled facade wins the default ALC
 # and the real fetched copy can never displace it).
-# Usage: check-bundle.ps1 [-Root src/WfWasm.CanvasHost/bin/Debug/net9.0/wwwroot/_framework]
-param([string]$Root = "src/WfWasm.CanvasHost/bin/Debug/net9.0/wwwroot/_framework")
+# Usage: check-bundle.ps1 [-Root src/WfWasm.CanvasHost/bin/Debug/net9.0/wwwroot/_framework] [-RepoRoot <repo>]
+# RepoRoot defaults to the repository root derived from THIS script's location
+# (scripts/winforms/ -> two levels up). Relative -Root resolves against it.
+param(
+    [string]$Root = "src/WfWasm.CanvasHost/bin/Debug/net9.0/wwwroot/_framework",
+    [string]$RepoRoot = ''
+)
 $ErrorActionPreference = 'Stop'
-$ws = Split-Path $PSScriptRoot -Parent
-if (![IO.Path]::IsPathRooted($Root)) { $Root = Join-Path $ws $Root }
+if (-not $RepoRoot) { $RepoRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent }
+if (![IO.Path]::IsPathRooted($RepoRoot)) { throw "RepoRoot must be absolute: $RepoRoot" }
+if (![IO.Path]::IsPathRooted($Root)) { $Root = Join-Path $RepoRoot $Root }
 $failed = $false
 
 $bootPath = Join-Path $Root 'blazor.boot.json'

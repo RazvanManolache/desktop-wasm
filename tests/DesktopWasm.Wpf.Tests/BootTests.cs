@@ -99,6 +99,23 @@ public sealed class BootTests : IDisposable
     }
 
     [Fact]
+    public void LoadComponentHydratesApplicationShutdownMode()
+    {
+        var app = new BootProbe.ShutdownProbeApp();
+        app.InitializeComponent();
+        Assert.Equal(ShutdownMode.OnMainWindowClose, app.ShutdownMode);
+        Assert.Equal(new Uri("BootWindow.xaml", UriKind.Relative), app.StartupUri);
+    }
+
+    [Fact]
+    public void LoadComponentRejectsUnknownShutdownMode()
+    {
+        var app = new BootProbe.BadShutdownProbeApp();
+        var ex = Assert.Throws<XamlLoadException>(() => app.InitializeComponent());
+        Assert.Contains("ShutdownMode", ex.Message);
+    }
+
+    [Fact]
     public void LoadComponentRejectsClassMismatch()
     {
         Application.Current = new BootProbe.ProbeApp();
@@ -168,6 +185,41 @@ public sealed class BootTests : IDisposable
         Assert.Equal(198, box.Width);
         Assert.Equal(220, box.Height);
         Assert.IsType<Grid>(box.Content);
+    }
+
+    [Fact]
+    public void LoadComponentHydratesComplexUserControlAndWiresNestedDocumentElements()
+    {
+        Application.Current = new BootProbe.ProbeApp();
+        var control = new BootProbe.ComplexUserControl();
+        Assert.Equal(350, control.Width);
+        Assert.Equal(250, control.Height);
+
+        // Verify nested element hierarchy
+        var grid = Assert.IsType<Grid>(control.Content);
+        Assert.Same(control.RootGrid, grid);
+
+        var panel = Assert.IsType<StackPanel>(Assert.Single(grid.LogicalChildren));
+        Assert.Same(control.ContainerPanel, panel);
+
+        Assert.NotNull(control.InputBox);
+        Assert.Equal("Sample Text", control.InputBox.Text);
+
+        Assert.NotNull(control.ActionButton);
+        Assert.Equal("Click Me", control.ActionButton.Content);
+
+        Assert.NotNull(control.NestedBox);
+        Assert.IsType<UserControl>(control.NestedBox);
+
+        Assert.NotNull(control.StatusLabel);
+        Assert.Equal("All Green", control.StatusLabel.Text);
+        Assert.Same(control.StatusLabel, control.NestedBox.Content);
+
+        // Verify layout passes propagate through nested UserControl
+        control.Measure(new WpfSize(400, 300));
+        control.Arrange(new WpfRect(0, 0, 400, 300));
+        Assert.True(control.DesiredSize.Width > 0);
+        Assert.True(control.DesiredSize.Height > 0);
     }
 
     [Fact]
@@ -378,6 +430,22 @@ namespace BootProbe
         }
     }
 
+    /// <summary>Stand-in for generated App codebehind carrying a
+    /// ShutdownMode attribute (joint TestApp app.xaml shape).</summary>
+    public sealed class ShutdownProbeApp : Application
+    {
+        public void InitializeComponent() =>
+            LoadComponent(this, new Uri("Boot/ShutdownApp.xaml", UriKind.Relative));
+    }
+
+    /// <summary>Stand-in for generated App codebehind with an unknown
+    /// ShutdownMode value (must fail precise, never silent).</summary>
+    public sealed class BadShutdownProbeApp : Application
+    {
+        public void InitializeComponent() =>
+            LoadComponent(this, new Uri("Boot/BadShutdownApp.xaml", UriKind.Relative));
+    }
+
     /// <summary>Stand-in for generated App codebehind with VS-generated
     /// markup-compatibility prefixes (d1P1:Ignorable).</summary>
     public sealed class CompatApp : Application
@@ -469,5 +537,21 @@ namespace BootProbe
 
         public void InitializeComponent() =>
             Application.LoadComponent(this, new Uri("Boot/Custom.xaml", UriKind.Relative));
+    }
+
+    /// <summary>Stand-in complex UserControl with nested document elements and names.</summary>
+    public sealed class ComplexUserControl : UserControl
+    {
+        public Grid? RootGrid;
+        public StackPanel? ContainerPanel;
+        public TextBox? InputBox;
+        public Button? ActionButton;
+        public UserControl? NestedBox;
+        public TextBlock? StatusLabel;
+
+        public ComplexUserControl() => InitializeComponent();
+
+        public void InitializeComponent() =>
+            Application.LoadComponent(this, new Uri("Boot/ComplexControl.xaml", UriKind.Relative));
     }
 }

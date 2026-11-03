@@ -447,11 +447,13 @@ public sealed class Slice144BamlTabMenuTests : IDisposable
     [Fact]
     public void Menu_command_without_qualified_text_fails_precise()
     {
-        // A Command without prefix:Type.Member text fails naming the text
-        // instead of resolving a bare member.
+        // A bare Command name outside the canonical holders fails naming
+        // the text (bare canonical names like Copy resolve; unknown bare
+        // text never binds).
         var entry = TestMenuEntry(new[] { TestMenuRow("CloseCommand", -94, 1) });
         var error = Assert.Throws<XamlLoadException>(() => BamlReader.LoadDictionary(TestMenuDictionary(true, entry)));
-        Assert.Contains("menu commands take prefix:Type.Member", error.Message);
+        Assert.Contains("'CloseCommand'", error.Message, StringComparison.Ordinal);
+        Assert.Contains("names an unknown command", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]

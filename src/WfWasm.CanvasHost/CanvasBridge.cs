@@ -71,7 +71,8 @@ public static partial class CanvasBridge
                     break;
                 case DrawTextCommand t:
                     ops.Add([3, t.Text, t.X, t.Y, t.FontCss, Css(t.Rgba),
-                        (int)t.HAlign, (int)t.VAlign, t.MnemonicIndex]);
+                        (int)t.HAlign, (int)t.VAlign, t.MnemonicIndex,
+                        t.ClipX, t.ClipY, t.ClipWidth, t.ClipHeight]);
                     break;
                 case FillGradientCommand g:
                     ops.Add([4, g.X, g.Y, g.Width, g.Height, Css(g.TopRgba), Css(g.BottomRgba)]);

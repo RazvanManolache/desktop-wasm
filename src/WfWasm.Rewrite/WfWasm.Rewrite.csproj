@@ -10,5 +10,10 @@
     <PackageReference Include="Mono.Cecil" Version="0.11.6" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Merge-packaging adapter seam: joint precedence policy (no engine refs). -->
+    <ProjectReference Include="..\DesktopWasm.Packaging\DesktopWasm.Packaging.csproj" />
+  </ItemGroup>
+
 </Project>
 

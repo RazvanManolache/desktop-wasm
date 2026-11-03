@@ -1,9 +1,14 @@
 @page "/"
 @inject HttpClient Http
+@inject NavigationManager Nav
 
 <PageTitle>DesktopWasm catalog · unified shell</PageTitle>
 <h1>DesktopWasm catalog</h1>
-<p>One registry for Windows Forms and WPF apps. Source of truth: <code>catalog/apps.json</code> via <code>/api/catalog</code>.</p>
+<p>Windows Forms and WPF applications, together in one library.</p>
+<nav class="studios" aria-label="Demo studios">
+    <a href="/app/smoke" @onclick='() => Nav.NavigateTo("/app/smoke", forceLoad: true)' @onclick:preventDefault>Windows Forms Studio</a>
+    <a href="/demo/controls" @onclick='() => Nav.NavigateTo("/demo/controls", forceLoad: true)' @onclick:preventDefault>WPF Studio</a>
+</nav>
 
 <div class="filters">
     <input placeholder="Filter text" @bind="_query" @bind:event="oninput" aria-label="Filter text" />
@@ -13,11 +18,12 @@
         <option value="wpf">WPF</option>
         <option value="mixed">Mixed (both)</option>
     </select>
-    <select @bind="_status" aria-label="Status filter">
-        <option value="">Any status</option>
-        <option value="ready">ready</option>
-        <option value="not-converted">not-converted</option>
-        <option value="unavailable">unavailable</option>
+    <select @bind="_status" aria-label="Input inventory filter">
+        <option value="">All input records</option>
+        <option value="available">Inputs cataloged</option>
+        <option value="missingInput">Inputs not cataloged</option>
+        <option value="notConverted">Conversion needed</option>
+        <option value="unavailable">Not prepared</option>
     </select>
     <button @onclick="ReloadAsync">Apply</button>
     <button @onclick="ClearAsync">Clear</button>
@@ -50,11 +56,13 @@ else
                 <code>@app.Id</code>
                 <span class="frameworks">@string.Join(" + ", app.Frameworks)</span>
                 @if (app.Mixed) { <span class="mixed">mixed</span> }
-                <span class="status">@app.Status</span>
-                @if (!app.Available) { <span class="unavailable">unavailable</span> }
+                <span class="status">@(app.Available ? "Prepared" : app.Status == "missingInput" ? "Check availability" : app.Status == "notConverted" ? "Conversion needed" : "Not ready")</span>
                 <p>@app.Description</p>
-                @if (app.Gaps.Length > 0) { <p class="gaps">Gaps: @string.Join("; ", app.Gaps)</p> }
-                <a href="/launch/@app.Id">Open</a>
+                <a href="@OpenRoute(app)" @onclick="() => Nav.NavigateTo(OpenRoute(app), forceLoad: true)" @onclick:preventDefault>Open</a>
+                @if (!string.IsNullOrWhiteSpace(app.AvailabilityNote))
+                {
+                    <details><summary>Input inventory</summary><p class="gaps">@app.AvailabilityNote</p></details>
+                }
             </li>
         }
     </ul>
@@ -64,6 +72,9 @@ else
     private List<CatalogEntry>? _apps;
     private string? _loadError;
     private string _query = "", _framework = "", _status = "";
+
+    private static string OpenRoute(CatalogEntry app) => app.Mixed
+        ? $"/launch/{app.Id}" : $"/app/{app.Id}";
 
     protected override async Task OnInitializedAsync() => await ReloadAsync();
 

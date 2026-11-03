@@ -121,6 +121,20 @@ public sealed class AppTransformTests
     }
 
     [Fact]
+    public void Word_Spec_Carries_PdnCpu()
+    {
+        // MEMBERREF-RESTAGE: the IsWindow forwarder only fires when the
+        // spec carries PdnCpu (sole paintnet occurrence left word with
+        // cpuPaintPath null -> fail-closed zero IsWindow -> Assign no-op,
+        // no TypeLoad but unhooked UI). The word spec must ship the helper.
+        Assert.True(AppTransform.TryGetSpec("syncfusion-word", out AppTransform.AppSpec? maybe));
+        Assert.True(maybe is not null);
+        AppTransform.AppSpec spec = maybe!;
+        Assert.False(string.IsNullOrEmpty(spec.PdnCpu), "word spec omits PdnCpu");
+        Assert.True(File.Exists(spec.PdnCpu), $"PdnCpu missing: {spec.PdnCpu}");
+    }
+
+    [Fact]
     public void Paintnet_DirectWriteForwarder_Keeps_Self_Scope()
     {
         // The DWF fake is hand-built managed (the mixed-mode pristine

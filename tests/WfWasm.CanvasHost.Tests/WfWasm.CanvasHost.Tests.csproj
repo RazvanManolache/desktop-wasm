@@ -21,8 +21,29 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\WfWasm.CanvasHost\WfWasm.CanvasHost.csproj" />
     <!-- Form/Control types: the host's file reference does not flow transitively. -->
+    <!-- EXPORT-ONLY portable repair (PUBPROGRESS-20261103-SHELL): $(RewrittenForkDll)
+         regenerated from in-repo source (exact publication form from origin/main
+         080210a). The live pinned inputs/winforms/rewritten-small reference is
+         not redistributable. Live tree intentionally keeps the pinned ref. -->
     <Reference Include="$(RewrittenForkDll)" />
   </ItemGroup>
+
+  <!-- Stage the Paint.NET test pool beside the test binary: the 7
+       paint/scene/probe suites need 45 pool assemblies adjacent at runtime
+       (rewritten transform outputs + 2 native-verbatim closure files + 6
+       WPF-stack host inputs, all hash-verified; pristine closure copies
+       are never substituted). Runs before every build; the script is
+       idempotent and skips files that already verify. -->
+  <!-- EXPORT-ONLY portable repair (PUBPROGRESS-20261103-SHELL): vendor test-pool
+       seeding is OPT-IN (-p:DesktopWasmSeedTestPool=true). The 45 pool
+       assemblies come from machine-local vendor inputs (wasm-cache, pristine
+       closure, frozen original bins) that are not redistributable; default
+       clean-clone builds skip seeding and run the suites that do not need
+       the pool. Live tree intentionally keeps the unconditional target. -->
+  <Target Name="SeedPaintNetTestPool" BeforeTargets="BeforeBuild"
+          Condition="'$(DesktopWasmSeedTestPool)' == 'true'">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)/../../scripts/winforms/Seed-CanvasHostTestPool.ps1&quot; -TestBinDir &quot;$(TargetDir).&quot;" />
+  </Target>
 
   <!-- Mirror the host: keep inbox System.Drawing.* out of the global
        alias so System.Drawing.Color/Bitmap resolve to WfWasm.Drawing. -->

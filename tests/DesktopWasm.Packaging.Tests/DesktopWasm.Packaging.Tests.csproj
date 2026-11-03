@@ -25,6 +25,10 @@
     <ProjectReference Include="..\..\src\DesktopWasm.Core\DesktopWasm.Core.csproj" />
     <ProjectReference Include="..\..\src\DesktopWasm.Convert\DesktopWasm.Convert.csproj" />
     <ProjectReference Include="..\..\src\DesktopWasm.Wpf\DesktopWasm.Wpf.csproj" />
+    <ProjectReference Include="..\..\src\WfWasm.Rewrite\WfWasm.Rewrite.csproj" />
+    <!-- Test-only consumption of the real bridge provider (the bridge
+         itself stays interop-owned; packaging only resolves its contract). -->
+    <ProjectReference Include="..\..\src\DesktopWasm.Interop\DesktopWasm.Interop.csproj" />
   </ItemGroup>
 
 </Project>

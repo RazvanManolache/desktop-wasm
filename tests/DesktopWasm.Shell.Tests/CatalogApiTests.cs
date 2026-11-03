@@ -3,6 +3,8 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using DesktopWasm.AppModel;
+using DesktopWasm.Catalog;
 using DesktopWasm.Host.Server;
 using Xunit;
 
@@ -58,10 +60,28 @@ public sealed class CatalogApiTests(ShellHost host)
     }
 
     [Fact]
+    public async Task Status_filter_uses_contract_availability_names()
+    {
+        var missing = await host.Client.GetFromJsonAsync<List<JsonElement>>(
+            "api/catalog?status=missingInput");
+        Assert.NotNull(missing);
+        Assert.Equal(
+            ["test-color-lab", "test-mixed-fixture", "test-smoke-form"],
+            missing.Select(a => a.GetProperty("id").GetString()).ToList());
+        var notConverted = await host.Client.GetFromJsonAsync<List<JsonElement>>(
+            "api/catalog?status=notConverted");
+        Assert.NotNull(notConverted);
+        Assert.Equal(["test-gif-recorder"],
+            notConverted.Select(a => a.GetProperty("id").GetString()).ToList());
+        using var bad = await host.Client.GetAsync("api/catalog?status=ready");
+        Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
+    }
+
+    [Fact]
     public async Task Status_and_text_filters_combine()
     {
         var apps = await host.Client.GetFromJsonAsync<List<JsonElement>>(
-            "api/catalog?status=ready&q=fixture");
+            "api/catalog?status=missingInput&q=fixture");
         Assert.NotNull(apps);
         Assert.Equal(
             ["test-color-lab", "test-mixed-fixture", "test-smoke-form"],
@@ -76,19 +96,41 @@ public sealed class CatalogApiTests(ShellHost host)
         Assert.Equal(
             ["winforms", "wpf"],
             app.GetProperty("frameworks").EnumerateArray().Select(e => e.GetString()).ToList());
+        Assert.Equal("mixed-session", app.GetProperty("kind").GetString());
+        Assert.Equal("pilot", app.GetProperty("origin").GetString());
+        Assert.Equal("mixed", app.GetProperty("provenance").GetProperty("family").GetString());
         var unavailable = await host.Client.GetFromJsonAsync<JsonElement>("api/catalog/test-gif-recorder");
         Assert.False(unavailable.GetProperty("available").GetBoolean());
-        Assert.Contains("capture APIs unavailable in browser",
+        Assert.Equal("notConverted", unavailable.GetProperty("status").GetString());
+        Assert.Contains("Fixture boundary note.",
             unavailable.GetProperty("gaps").EnumerateArray().Select(e => e.GetString()));
         Assert.Equal("https://example.invalid/repo",
             unavailable.GetProperty("provenance").GetProperty("sourceUrl").GetString());
     }
 
-    [Fact]
-    public async Task Legacy_alias_resolves_to_canonical_id()
+    [Theory]
+    [InlineData("test-smokeform")]
+    [InlineData("TEST-SMOKE-FORM")]
+    public async Task Legacy_aliases_resolve_to_canonical_id(string alias)
     {
-        var app = await host.Client.GetFromJsonAsync<JsonElement>("api/catalog/test-smokeform");
+        var app = await host.Client.GetFromJsonAsync<JsonElement>(
+            $"api/catalog/{Uri.EscapeDataString(alias)}");
         Assert.Equal("test-smoke-form", app.GetProperty("id").GetString());
+    }
+
+    [Theory]
+    [InlineData("photo-album")]
+    [InlineData("photoalbum")]
+    [InlineData("/app/photo-album")]
+    [InlineData("/demo/photo-album")]
+    public void Photo_album_aliases_resolve_in_live_catalog(string alias)
+    {
+        string catalogPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../catalog/apps.json"));
+        var catalog = new CatalogSource(catalogPath);
+        Assert.True(catalog.Loaded);
+        var app = catalog.Find(alias);
+        Assert.NotNull(app);
+        Assert.Equal("telerik-photo", app.Id);
     }
 
     [Fact]
@@ -117,44 +159,60 @@ public sealed class CatalogApiTests(ShellHost host)
     }
 
     [Fact]
-    public void Duplicate_ids_are_rejected_with_conflict_map()
+    public async Task Unknown_app_slug_serves_shell_page_not_api_json()
     {
-        string dir = Path.Combine(Path.GetTempPath(), "dwshell-dup-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(dir);
-        try
-        {
-            string file = Path.Combine(dir, "apps.json");
-            File.WriteAllText(file, ShellHost.FixtureCatalog().Replace(
-                "\"test-color-lab\"", "\"test-smoke-form\""));
-            var ex = Assert.Throws<CatalogConflictException>(() => new FileCatalogProvider(file));
-            Assert.Contains("duplicate-id:test-smoke-form", ex.Message);
-            Assert.True(ex.Conflicts.ContainsKey("duplicate-id:test-smoke-form"));
-        }
-        finally { Directory.Delete(dir, recursive: true); }
+        // FACTORY-shell-2: /app/* is browser navigation. A raw JSON 404 kills
+        // the shell (no library, fromUrl's Unknown-app overlay unreachable).
+        // Unknown slugs keep the 404 status but serve the shell page.
+        using var response = await host.Client.GetAsync("app/no-such-app");
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.StartsWith("text/html",
+            response.Content.Headers.ContentType?.MediaType ?? "");
+        string body = await response.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("\"unknown-app\"", body);
+        Assert.Contains("portal", body);
+    }
+
+    [Fact]
+    public void Duplicate_ids_are_rejected()
+    {
+        var descriptors = ShellHost.FixtureDescriptors().ToList();
+        descriptors.Add(descriptors[0]);
+        var ex = Assert.Throws<InvalidDataException>(() => new AppRegistry(descriptors));
+        Assert.Contains("duplicate id 'test-color-lab'", ex.Message);
     }
 
     [Fact]
     public void Alias_colliding_with_an_id_is_rejected()
     {
-        string dir = Path.Combine(Path.GetTempPath(), "dwshell-alias-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(dir);
-        try
-        {
-            string file = Path.Combine(dir, "apps.json");
-            File.WriteAllText(file, ShellHost.FixtureCatalog().Replace(
-                "\"aliases\":[\"test-smokeform\"]", "\"aliases\":[\"test-color-lab\"]"));
-            var ex = Assert.Throws<CatalogConflictException>(() => new FileCatalogProvider(file));
-            Assert.Contains("alias-collision:test-color-lab", ex.Message);
-        }
-        finally { Directory.Delete(dir, recursive: true); }
+        var descriptors = ShellHost.FixtureDescriptors().ToList();
+        descriptors[3] = descriptors[3] with { Aliases = ["test-color-lab"] };
+        var ex = Assert.Throws<InvalidDataException>(() => new AppRegistry(descriptors));
+        Assert.Contains("collides with an id", ex.Message);
     }
 
     [Fact]
     public void Missing_registry_reports_concrete_gap_not_empty_list()
     {
-        var provider = new FileCatalogProvider(Path.Combine(Path.GetTempPath(), "dwshell-missing-" + Guid.NewGuid().ToString("N"), "apps.json"));
-        Assert.False(provider.Loaded);
-        Assert.Contains("catalog-unavailable", provider.LoadError);
-        Assert.Empty(provider.All);
+        var source = new CatalogSource(Path.Combine(Path.GetTempPath(), "dwshell-missing-" + Guid.NewGuid().ToString("N"), "apps.json"));
+        Assert.False(source.Loaded);
+        Assert.Contains("catalog-unavailable", source.LoadError);
+        Assert.Null(source.Registry);
+    }
+
+    [Fact]
+    public void Invalid_registry_reports_concrete_error()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "dwshell-bad-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            string file = Path.Combine(dir, "apps.json");
+            File.WriteAllText(file, """{"schemaVersion": 2, "apps": [{"id": "BAD ID!"}]}""");
+            var source = new CatalogSource(file);
+            Assert.False(source.Loaded);
+            Assert.Contains("catalog-invalid", source.LoadError);
+        }
+        finally { Directory.Delete(dir, recursive: true); }
     }
 }

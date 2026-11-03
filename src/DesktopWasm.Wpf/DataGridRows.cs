@@ -112,6 +112,47 @@ public sealed class DataGridItemCollection : ObservableCollection<object?>
     {
     }
 
+    /// <summary>Direct-edit gate (the owning grid forbids direct edits while
+    /// ItemsSource is set, like WPF; null allows everything).</summary>
+    internal Func<bool>? IsDirectEditAllowed { get; set; }
+
+    private void RequireDirectEdit()
+    {
+        if (IsDirectEditAllowed is not null && !IsDirectEditAllowed())
+            throw new InvalidOperationException(
+                "Operation is not valid while ItemsSource is in use. Modify the source collection instead.");
+    }
+
+    protected override void InsertItem(int index, object? item)
+    {
+        RequireDirectEdit();
+        base.InsertItem(index, item);
+    }
+
+    protected override void SetItem(int index, object? item)
+    {
+        RequireDirectEdit();
+        base.SetItem(index, item);
+    }
+
+    protected override void RemoveItem(int index)
+    {
+        RequireDirectEdit();
+        base.RemoveItem(index);
+    }
+
+    protected override void ClearItems()
+    {
+        RequireDirectEdit();
+        base.ClearItems();
+    }
+
+    protected override void MoveItem(int oldIndex, int newIndex)
+    {
+        RequireDirectEdit();
+        base.MoveItem(oldIndex, newIndex);
+    }
+
     /// <summary>Active sort rules (a change re-sorts the owning grid view).</summary>
     public SortDescriptionCollection SortDescriptions { get; } = new();
 
@@ -290,9 +331,14 @@ public sealed class DataGridRow : ContentControl
         : this()
     {
         _owner = owner ?? throw new ArgumentNullException(nameof(owner));
+        // Position-preserving replace: generated rows keep the prototype
+        // order (cells presenter before details presenter, like native).
+        var template = TemplateCellsPresenter;
+        var index = template is null ? -1 : ChildList.IndexOf(template);
+        if (template is not null) RemoveChild(template);
         CellsPresenter = new DataGridCellsPresenter(owner, this);
-        RemoveChild(TemplateCellsPresenter);
-        AddChild(CellsPresenter);
+        if (index < 0 || index > ChildList.Count) AddChild(CellsPresenter);
+        else InsertChildAt(index, CellsPresenter);
     }
 
     /// <summary>Template-part row (ownerless prototype for theme templates;

@@ -807,14 +807,307 @@ namespace System.Drawing.Drawing2D
         public void Warp(PointF[] destPoints, RectangleF srcRect, Matrix? matrix, WarpMode warpMode, float flatness) =>
             throw new NotSupportedException("Path warping arrives with the warp milestone.");
 
-        public void Widen(Pen pen) =>
-            throw new NotSupportedException("Path widening arrives with the widen milestone.");
+        public void Widen(Pen pen) => Widen(pen, null, 0.25f);
 
-        public void Widen(Pen pen, Matrix? matrix) =>
-            throw new NotSupportedException("Path widening arrives with the widen milestone.");
+        public void Widen(Pen pen, Matrix? matrix) => Widen(pen, matrix, 0.25f);
 
-        public void Widen(Pen pen, Matrix? matrix, float flatness) =>
-            throw new NotSupportedException("Path widening arrives with the widen milestone.");
+        public void Widen(Pen pen, Matrix? matrix, float flatness)
+        {
+            ArgumentNullException.ThrowIfNull(pen);
+            if (pen.DashStyle != DashStyle.Solid)
+                throw new NotSupportedException("Path widening with dashed pens arrives with the dash milestone.");
+            if (pen.Alignment != PenAlignment.Center)
+                throw new NotSupportedException("Path widening with non-center pen alignment arrives with the alignment milestone.");
+            if (pen.CustomStartCap is not null || pen.CustomEndCap is not null)
+                throw new NotSupportedException("Path widening with custom line caps arrives with the cap milestone.");
+            ValidateWidenCap(pen.StartCap);
+            ValidateWidenCap(pen.EndCap);
+            if (pen.Width <= 0f || _figures.Count == 0)
+            {
+                // A hairline has no area: GDI+ widens it to empty, as does
+                // an already-empty path. The pen transform is not applied,
+                // matching the fork renderer (which strokes untransformed).
+                _figures.Clear();
+                return;
+            }
+
+            float half = pen.Width / 2f;
+            float flat = Math.Max(0.01f, flatness);
+            var widened = new List<Figure>();
+            foreach (Figure figure in _figures)
+            {
+                var lines = new Figure();
+                FlattenFigure(figure, matrix, flat, lines);
+                StrokeFlattenedFigure(lines, pen, half, widened);
+            }
+
+            _figures.Clear();
+            _figures.AddRange(widened);
+        }
+
+        private static void ValidateWidenCap(LineCap cap)
+        {
+            switch (cap)
+            {
+                case LineCap.Flat:
+                case LineCap.Square:
+                case LineCap.Round:
+                case LineCap.Triangle:
+                case LineCap.NoAnchor:
+                    return;
+                default:
+                    throw new NotSupportedException("Path widening with anchor line caps arrives with the cap milestone.");
+            }
+        }
+
+        private static void StrokeFlattenedFigure(Figure lines, Pen pen, float half, List<Figure> widened)
+        {
+            // Collapse degenerate runs; the flattener repeats the first
+            // point at the end of closed figures.
+            var pts = new List<PointF>(lines.Points.Count);
+            foreach (PointF q in lines.Points)
+            {
+                if (pts.Count == 0
+                    || (pts[^1].X - q.X) * (pts[^1].X - q.X) + (pts[^1].Y - q.Y) * (pts[^1].Y - q.Y) > 1e-12f)
+                    pts.Add(q);
+            }
+
+            if (pts.Count == 0)
+                return;
+            if (lines.Closed && pts.Count > 1 && pts[0] == pts[^1])
+                pts.RemoveAt(pts.Count - 1);
+            if (pts.Count == 0)
+                return;
+            if (pts.Count == 1)
+            {
+                // A lone point widens to a dot only with round caps.
+                if (pen.StartCap == LineCap.Round || pen.EndCap == LineCap.Round)
+                    widened.Add(CircleFigure(pts[0], half));
+                return;
+            }
+
+            bool closed = lines.Closed;
+            int n = pts.Count;
+            int segCount = closed ? n : n - 1;
+            var dirs = new PointF[segCount];
+            for (int s = 0; s < segCount; s++)
+            {
+                PointF a = pts[s];
+                PointF b = pts[(s + 1) % n];
+                float dx = b.X - a.X;
+                float dy = b.Y - a.Y;
+                float len = MathF.Sqrt((dx * dx) + (dy * dy));
+                dirs[s] = new PointF(dx / len, dy / len);
+            }
+
+            var left = new List<PointF>();
+            var right = new List<PointF>();
+            if (!closed)
+            {
+                PointF d0 = dirs[0];
+                var n0 = new PointF(-d0.Y, d0.X);
+                PointF dN = dirs[segCount - 1];
+                var nN = new PointF(-dN.Y, dN.X);
+                PointF sL = Offset(pts[0], n0, half);
+                PointF sR = Offset(pts[0], n0, -half);
+                PointF eL = Offset(pts[n - 1], nN, half);
+                PointF eR = Offset(pts[n - 1], nN, -half);
+                if (pen.StartCap == LineCap.Square)
+                {
+                    sL = Along(sL, d0, -half);
+                    sR = Along(sR, d0, -half);
+                }
+
+                if (pen.EndCap == LineCap.Square)
+                {
+                    eL = Along(eL, dN, half);
+                    eR = Along(eR, dN, half);
+                }
+
+                left.Add(sL);
+                right.Add(sR);
+                for (int i = 1; i < n - 1; i++)
+                    JoinVertex(pts[i], dirs[i - 1], dirs[i], half, pen, left, right);
+                left.Add(eL);
+                right.Add(eR);
+                var loop = new List<PointF>();
+                AppendCapBetween(loop, sR, sL, pts[0], Neg(d0), half, pen.StartCap);
+                loop.AddRange(left);
+                AppendCapBetween(loop, eL, eR, pts[n - 1], dN, half, pen.EndCap);
+                for (int i = right.Count - 1; i >= 0; i--)
+                    loop.Add(right[i]);
+                EmitClosedLoop(loop, widened);
+                return;
+            }
+
+            for (int i = 0; i < n; i++)
+                JoinVertex(pts[i], dirs[(i - 1 + n) % n], dirs[i], half, pen, left, right);
+            var ring = new List<PointF>(left);
+            for (int i = right.Count - 1; i >= 0; i--)
+                ring.Add(right[i]);
+            EmitClosedLoop(ring, widened);
+        }
+
+        private static void JoinVertex(PointF p, PointF a, PointF b, float half, Pen pen, List<PointF> left, List<PointF> right)
+        {
+            var na = new PointF(-a.Y, a.X);
+            var nb = new PointF(-b.Y, b.X);
+            float cross = (a.X * b.Y) - (a.Y * b.X);
+            // A left turn traces the longer arc on the right side.
+            JoinSide(left, p, na, a, nb, b, half, pen, outer: cross < 0f);
+            JoinSide(right, p, Neg(na), a, Neg(nb), b, half, pen, outer: cross > 0f);
+        }
+
+        private static void JoinSide(List<PointF> chain, PointF p, PointF na, PointF a, PointF nb, PointF b, float half, Pen pen, bool outer)
+        {
+            float denom = (a.X * b.Y) - (a.Y * b.X);
+            if (Math.Abs(denom) < 1e-9f)
+            {
+                if ((a.X * b.X) + (a.Y * b.Y) > 0f)
+                {
+                    chain.Add(new PointF(
+                        p.X + ((na.X + nb.X) * 0.5f * half),
+                        p.Y + ((na.Y + nb.Y) * 0.5f * half)));
+                }
+                else
+                {
+                    chain.Add(Offset(p, na, half));
+                    chain.Add(Offset(p, nb, half));
+                }
+
+                return;
+            }
+
+            float rx = (nb.X - na.X) * half;
+            float ry = (nb.Y - na.Y) * half;
+            float s = ((rx * b.Y) - (ry * b.X)) / denom;
+            var miter = new PointF(p.X + (na.X * half) + (a.X * s), p.Y + (na.Y * half) + (a.Y * s));
+            if (!outer)
+            {
+                chain.Add(miter);
+                return;
+            }
+
+            float miterLen = MathF.Sqrt(((miter.X - p.X) * (miter.X - p.X)) + ((miter.Y - p.Y) * (miter.Y - p.Y)));
+            switch (pen.LineJoin)
+            {
+                case LineJoin.Bevel:
+                    chain.Add(Offset(p, na, half));
+                    chain.Add(Offset(p, nb, half));
+                    return;
+                case LineJoin.Round:
+                    AddArc(chain, p, half, MathF.Atan2(na.Y, na.X), TurnAngle(a, b));
+                    return;
+                case LineJoin.MiterClipped:
+                {
+                    float maxLen = pen.MiterLimit * half * 2f;
+                    if (miterLen > maxLen && miterLen > 0f)
+                    {
+                        float k = maxLen / miterLen;
+                        chain.Add(new PointF(p.X + ((miter.X - p.X) * k), p.Y + ((miter.Y - p.Y) * k)));
+                    }
+                    else
+                    {
+                        chain.Add(miter);
+                    }
+
+                    return;
+                }
+
+                default:
+                {
+                    if (miterLen / (half * 2f) > pen.MiterLimit)
+                    {
+                        chain.Add(Offset(p, na, half));
+                        chain.Add(Offset(p, nb, half));
+                    }
+                    else
+                    {
+                        chain.Add(miter);
+                    }
+
+                    return;
+                }
+            }
+        }
+
+        private static void AppendCapBetween(List<PointF> loop, PointF from, PointF to, PointF tip, PointF outward, float half, LineCap cap)
+        {
+            switch (cap)
+            {
+                case LineCap.Square:
+                case LineCap.Flat:
+                case LineCap.NoAnchor:
+                    // Square corners already extended the chains; flat
+                    // caps close with the straight edge.
+                    return;
+                case LineCap.Triangle:
+                    loop.Add(Along(tip, outward, half));
+                    return;
+                default:
+                {
+                    // The semicircle must bulge through the outward side,
+                    // not a fixed rotational direction.
+                    float start = MathF.Atan2(from.Y - tip.Y, from.X - tip.X);
+                    float want = MathF.Atan2(outward.Y, outward.X);
+                    float delta = want - start;
+                    while (delta > MathF.PI)
+                        delta -= MathF.PI * 2f;
+                    while (delta <= -MathF.PI)
+                        delta += MathF.PI * 2f;
+                    AddArc(loop, tip, half, start, delta >= 0f ? MathF.PI : -MathF.PI);
+                    return;
+                }
+            }
+        }
+
+        private static void AddArc(List<PointF> list, PointF center, float radius, float startAngle, float sweep)
+        {
+            int steps = Math.Max(2, (int)Math.Ceiling(Math.Abs(sweep) / (MathF.PI / 12f)));
+            for (int i = 1; i <= steps; i++)
+            {
+                float a = startAngle + (sweep * i / steps);
+                list.Add(new PointF(center.X + (MathF.Cos(a) * radius), center.Y + (MathF.Sin(a) * radius)));
+            }
+        }
+
+        private static float TurnAngle(PointF a, PointF b) =>
+            MathF.Atan2((a.X * b.Y) - (a.Y * b.X), (a.X * b.X) + (a.Y * b.Y));
+
+        private static Figure CircleFigure(PointF center, float radius)
+        {
+            var figure = new Figure { Closed = true };
+            for (int i = 0; i < 12; i++)
+            {
+                float a = MathF.PI * 2f * i / 12f;
+                figure.Points.Add(new PointF(center.X + (MathF.Cos(a) * radius), center.Y + (MathF.Sin(a) * radius)));
+                figure.Types.Add(i == 0 ? Start : Line);
+            }
+
+            return figure;
+        }
+
+        private static void EmitClosedLoop(List<PointF> loop, List<Figure> widened)
+        {
+            if (loop.Count < 3)
+                return;
+            var figure = new Figure { Closed = true };
+            for (int i = 0; i < loop.Count; i++)
+            {
+                figure.Points.Add(loop[i]);
+                figure.Types.Add(i == 0 ? Start : Line);
+            }
+
+            widened.Add(figure);
+        }
+
+        private static PointF Offset(PointF p, PointF n, float d) =>
+            new(p.X + (n.X * d), p.Y + (n.Y * d));
+
+        private static PointF Along(PointF p, PointF d, float dist) =>
+            new(p.X + (d.X * dist), p.Y + (d.Y * dist));
+
+        private static PointF Neg(PointF v) => new(-v.X, -v.Y);
 
         ~GraphicsPath()
         {

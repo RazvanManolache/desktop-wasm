@@ -3,10 +3,10 @@ param(
     [string]$OutputRoot = (Join-Path ([IO.Path]::GetTempPath()) 'wfwasm-syncfusion-apps'),
     [string]$EvidenceRoot = (Join-Path ([IO.Path]::GetTempPath()) 'wfwasm-syncfusion-evidence')
 )
-# Publication portability: vendor staging defaults live under the system
+# Portability: vendor staging defaults live under the system
 # temp dir, not a machine-specific drive. Pass explicit paths to pin them.
 $ErrorActionPreference = 'Stop'
-$repoRoot = Split-Path $PSScriptRoot -Parent
+$repoRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $catalog = Get-Content -LiteralPath (Join-Path $repoRoot 'src/WfWasm.CanvasHost/SyncfusionDemos.json') -Raw | ConvertFrom-Json
 New-Item -ItemType Directory -Path $EvidenceRoot -Force | Out-Null
 if (!(Test-Path -LiteralPath (Join-Path $SourceRoot '.git'))) {

@@ -36,6 +36,46 @@ public partial class RichTextBox
         }
     }
 
+    // Headless char insertion (gen17: KeyDown delivered, 0px inserted).
+    // Native RichEdit inserts on WM_CHAR; headless there is none and the
+    // host's insertion emulation is TextBox-typed (a RichTextBox never
+    // matches), so the fork splices the char itself. Browser-only:
+    // desktop keeps native insertion (no double-type). Respects Handled
+    // (vendor suppression) and ReadOnly; control chars (Enter/Backspace)
+    // keep their existing host paths.
+    protected override void OnKeyPress(KeyPressEventArgs e)
+    {
+        base.OnKeyPress(e);
+        if (!OperatingSystem.IsBrowser() || e.Handled)
+        {
+            return;
+        }
+
+        char c = e.KeyChar;
+        if (c < ' ' || c == 0x7F || ReadOnly)
+        {
+            return;
+        }
+
+        try
+        {
+            string current = WasmRtf.ReadInsertBaseText(this);
+            int start = Math.Min(Math.Max(0, SelectionStart), current.Length);
+            int len = Math.Min(Math.Max(0, SelectionLength), current.Length - start);
+            ForceWindowText(WasmRtf.SpliceInsertion(current, start, len, c));
+            SelectionStart = start + 1;
+            e.Handled = true;
+            // Storage writes do not invalidate (SetWindowText stub only
+            // stores); without this the inserted char never repaints and
+            // the gate still reads 0px. Whole-box mark: caret position
+            // also moved.
+            WasmRepaintGate.RequestRepaint(this);
+        }
+        catch
+        {
+        }
+    }
+
     // Headless EDITSTREAM replacement. The desktop StreamIn/StreamOut drive
     // the native RichEdit control through Marshal.GetFunctionPointerForDelegate
     // + EM_STREAMIN/EM_STREAMOUT; the function-pointer thunk traps the
@@ -79,7 +119,7 @@ public partial class RichTextBox
                 {
                     if (box.SelectionLength > 0)
                     {
-                        string current = PInvokeCore.GetWindowText(box);
+                        string current = ReadInsertBaseText(box);
                         int start = Math.Min(box.SelectionStart, current.Length);
                         int len = Math.Min(box.SelectionLength, current.Length - start);
                         box.ForceWindowText(current.Substring(0, start) + text + current.Substring(start + len));
@@ -99,18 +139,57 @@ public partial class RichTextBox
         // RichTextNode clear-text) blank headless. Selection slices
         // best-effort from the managed selection; unreadable selection
         // falls back to the full text.
+        // Word doc-click SO (gen16): SelectionLength -> SelectedText ->
+        // GetTextEx(GT_SELECTION) -> GetTextManaged -> SelectionLength ...
+        // never unwinds: each pass re-enters GetTextManaged before the
+        // outer call returns (the SelectionStart/EM_GETSEL/TextLength
+        // detour terminates with 0, but its frames never unwind either).
+        // Same-box nested entry therefore skips the slice: full-text
+        // fallback, as for unreadable selection below. Single-threaded
+        // browser re-enters on the same thread; ThreadStatic keeps
+        // test-runner threads independent. Nesting is always same-box
+        // (the slice only touches `box`), so cross-box entry stays allowed.
+        [ThreadStatic]
+        private static RichTextBox? t_activeGetTextBox;
+
+        internal static bool TryEnterGetText(RichTextBox box)
+        {
+            if (ReferenceEquals(t_activeGetTextBox, box))
+            {
+                return false;
+            }
+
+            t_activeGetTextBox = box;
+            return true;
+        }
+
+        internal static void ExitGetText(RichTextBox box)
+        {
+            if (ReferenceEquals(t_activeGetTextBox, box))
+            {
+                t_activeGetTextBox = null;
+            }
+        }
+
         internal static string GetTextManaged(RichTextBox box, GETTEXTEX_FLAGS flags)
         {
             ArgumentNullException.ThrowIfNull(box);
             string text = PInvokeCore.GetWindowText(box);
-            if ((flags & GETTEXTEX_FLAGS.GT_SELECTION) != 0)
+            if ((flags & GETTEXTEX_FLAGS.GT_SELECTION) != 0 && TryEnterGetText(box))
             {
                 try
                 {
-                    text = SliceSelection(text, box.SelectionStart, box.SelectionLength);
+                    try
+                    {
+                        text = SliceSelection(text, box.SelectionStart, box.SelectionLength);
+                    }
+                    catch
+                    {
+                    }
                 }
-                catch
+                finally
                 {
+                    ExitGetText(box);
                 }
             }
 
@@ -132,6 +211,35 @@ public partial class RichTextBox
             int s = Math.Max(0, Math.Min(start, text.Length));
             int len = Math.Max(0, Math.Min(length, text.Length - s));
             return text.Substring(s, len);
+        }
+
+        // Base text behind headless insertion (gen18: every keystroke
+        // replaced the doc with its own char, ending in a lone "d").
+        // ForceWindowText lands in managed _text while the handle is
+        // uncreated (browser: always) and in WindowText storage once
+        // created; Control.WindowText reads the same side in both cases,
+        // while PInvokeCore.GetWindowText reads storage only. The seam is
+        // TextBoxBase (shared by TextBox and RichTextBox) so the pin can
+        // construct a plain TextBox in-harness (a live RichTextBox is
+        // unavailable: desktop demands MsftEdit, headless has none).
+        // Pinned by InsertBaseText_MatchesForceWindowText_Handleless.
+        internal static string ReadInsertBaseText(TextBoxBase box)
+        {
+            ArgumentNullException.ThrowIfNull(box);
+            return box.WindowText;
+        }
+
+        // Headless char insertion (gen17: KeyDown delivered, 0px inserted).
+        // The host's key pipeline only emulates insertion for plain TextBox
+        // (_focusedTextBox is TextBox-typed; a RichTextBox never matches),
+        // and there is no native RichEdit to insert for us, so the fork
+        // splices the char itself: replace the clamped selection (empty =
+        // caret insert), mirroring the host's TextBox math. Pure for pins.
+        internal static string SpliceInsertion(string text, int start, int length, char c)
+        {
+            int s = Math.Max(0, Math.Min(start, text.Length));
+            int len = Math.Max(0, Math.Min(length, text.Length - s));
+            return text.Substring(0, s) + c + text.Substring(s + len);
         }
 
         internal static void StreamOutManaged(RichTextBox box, Stream data, uint flags, bool includeCrLfs)

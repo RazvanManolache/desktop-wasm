@@ -1,4 +1,4 @@
-﻿@page "/"
+@page "/"
 @page "/app/{SceneSlug}"
 @using Microsoft.AspNetCore.Components.Web
 @using Microsoft.AspNetCore.Components.Routing
@@ -28,8 +28,7 @@
         @onkeyup="OnKeyUp"
         @oncontextmenu="OnContextMenu"
         @oncontextmenu:preventDefault
-        @onwheel="OnWheel"
-        @onwheel:preventDefault></canvas>
+        @onwheel="OnWheel"></canvas>
 @if (_loading || _loadError is not null)
 {
     <div class="stage-overlay @(_loadError is null ? "" : "error")" role="status">
@@ -128,7 +127,7 @@
         if (_hostScene == State.Current)
             return;
         _hostScene = State.Current;
-        WinFormsExecution.Run(() => _winFormsHost.SelectScene(State.Current));
+        DispatchUpdate(() => WinFormsExecution.Run(() => _winFormsHost.SelectScene(State.Current)));
     }
 
     private void OnSceneChanged()
@@ -167,9 +166,9 @@
             await JS.InvokeVoidAsync("preview.phase", "Creating app window");
             RefreshHost();
             if (DesktopBenchmarks.Find(scene) is { } benchmark && !_winFormsHost.HasScene(scene))
-                throw new InvalidOperationException($"{benchmark.Label} could not create its real window. See App errors and the benchmark setup notes.");
+                throw new InvalidOperationException($"{benchmark.Label} could not create its real window. See App errors and the benchmark setup notes.{_winFormsHost.FormCreationErrorSuffix(scene)}");
             if (SyncfusionDemos.Find(scene) is { } demo && !_winFormsHost.HasScene(scene))
-                throw new InvalidOperationException($"Syncfusion {demo.Label} could not create its window. See App errors for the compatibility failure.");
+                throw new InvalidOperationException($"Syncfusion {demo.Label} could not create its window. See App errors for the compatibility failure.{_winFormsHost.FormCreationErrorSuffix(scene)}");
             await RepaintAsync();
             await JS.InvokeVoidAsync("preview.ready");
         }
@@ -296,6 +295,14 @@
     [JSInvokable]
     public string PerfDumpJson() => PerfTimeline.DumpJson();
 
+    [JSInvokable]
+    public string ResourceDumpJson() => System.Text.Json.JsonSerializer.Serialize(new
+    {
+        managedBytes = GC.GetTotalMemory(false),
+        hdcLeases = global::System.Drawing.Graphics.LiveHdcLeaseCount,
+        cpu = WfWasm.PdnCpu.CpuPaint.ResourceStats(),
+    });
+
     private static string AnimVal(object target, string prop, System.Reflection.BindingFlags flags)
     {
         try
@@ -312,6 +319,10 @@
     // control got the click/key, focus state). No behavior change.
     [JSInvokable]
     public string InputTraceDump() => _winFormsHost.RecentInputContext();
+
+    [JSInvokable]
+    public string EditorStateDumpJson() => EditorStateProbe.Dump(_winFormsHost);
+
 
     [JSInvokable]
     public Task<string> GpuProbeScenario(string canvasId, string scenario)
@@ -336,7 +347,17 @@
         if (_disposed) return Task.CompletedTask;
         _winFormsHost.ViewWidth = Math.Max(1, width);
         _winFormsHost.ViewHeight = Math.Max(1, height);
-        if (_hostScene is not null) WinFormsExecution.Run(_winFormsHost.OnViewportChanged);
+        if (_hostScene is not null) DispatchUpdate(() => WinFormsExecution.Run(_winFormsHost.OnViewportChanged));
+        RequestPaint();
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public Task OnPointerCanceled()
+    {
+        if (_disposed) return Task.CompletedTask;
+        lock (_moveGate) _movePending = false;
+        DispatchUpdate(() => WinFormsExecution.Run(_winFormsHost.OnPointerCanceled));
         RequestPaint();
         return Task.CompletedTask;
     }
@@ -565,6 +586,7 @@
     // scenes request nothing and keep their single paint.
     private readonly object _repaintGate = new();
     private bool _repaintDirty;
+    private int _updateDispatchDepth;
     private bool _repaintRunning;
 
     // Input coalescing: mousemove storms (drag ticks vs slow frames)
@@ -579,6 +601,11 @@
     private bool _pendingCtrl;
     private bool _pendingAlt;
     private bool _movePending;
+    // USERFIX drag diagnostics (dw-wpf owned): exact Blazor-side dispatch
+    // proof — stashes (OnMouseMove executions) vs flushes (FlushPendingMove
+    // dispatches to the host). Logged at pointer-up; zero-cost otherwise.
+    private long _moveStashCount;
+    private long _moveFlushCount;
 
     private void EnsureRepaintSubscription()
     {
@@ -591,7 +618,7 @@
         lock (_repaintGate)
         {
             _repaintDirty = true;
-            if (_repaintRunning)
+            if (_repaintRunning || _updateDispatchDepth != 0)
                 return;
             _repaintRunning = true;
         }
@@ -623,12 +650,14 @@
             }
 
             FlushPendingMove();
+            bool frameFaulted = false;
             try
             {
                 await RepaintAsync().ConfigureAwait(false);
             }
             catch (Exception ex) when (NotePaintFailure(ex))
             {
+                frameFaulted = true;
             }
 
             // Work-conserving pace: an input already waiting (or a repaint
@@ -638,15 +667,21 @@
             bool moreWork;
             lock (_moveGate)
                 moreWork = _movePending;
-            if (!moreWork)
+            if (!moreWork && !frameFaulted)
                 lock (_repaintGate)
                     moreWork = _repaintDirty;
-            if (!moreWork)
+            if (!moreWork || frameFaulted)
                 await Task.Delay(16);
         }
     }
 
     private Task OnMouseDown(Microsoft.AspNetCore.Components.Web.MouseEventArgs e)
+    {
+        DispatchUpdate(() => { _ = OnMouseDownCore(e); });
+        return Task.CompletedTask;
+    }
+
+    private Task OnMouseDownCore(Microsoft.AspNetCore.Components.Web.MouseEventArgs e)
     {
         bool perfIn = PerfTimeline.Enabled;
         double anchorIn = perfIn ? PerfTimeline.NowAnchor() : 0;
@@ -673,12 +708,19 @@
 
     private Task OnMouseUp(Microsoft.AspNetCore.Components.Web.MouseEventArgs e)
     {
+        DispatchUpdate(() => { _ = OnMouseUpCore(e); });
+        return Task.CompletedTask;
+    }
+
+    private Task OnMouseUpCore(Microsoft.AspNetCore.Components.Web.MouseEventArgs e)
+    {
         bool perfIn = PerfTimeline.Enabled;
         double anchorIn = perfIn ? PerfTimeline.NowAnchor() : 0;
         long swIn = PerfTimeline.Stamp();
         int x = (int)e.OffsetX;
         int y = (int)e.OffsetY;
         FlushPendingMove();
+        if (PerfTimeline.Enabled) Console.WriteLine($"[Home] DragUp stashed={_moveStashCount} flushed={_moveFlushCount}");
         WinFormsExecution.Run(() => _winFormsHost.OnMouseUp(x, y, WinFormsAppHost.MapDomButton(e.Button), e.ShiftKey, e.CtrlKey, e.AltKey));
         if (perfIn) PerfInput(PerfTimeline.KindUp, x, y, 0, anchorIn, swIn);
         RequestPaint();
@@ -697,6 +739,7 @@
             _pendingCtrl = e.CtrlKey;
             _pendingAlt = e.AltKey;
             _movePending = true;
+            _moveStashCount++;
         }
 
         RequestPaint();
@@ -719,6 +762,7 @@
             ctrl = _pendingCtrl;
             alt = _pendingAlt;
             _movePending = false;
+            _moveFlushCount++;
         }
 
         long swMove = PerfTimeline.Enabled ? PerfTimeline.Stamp() : 0;
@@ -760,14 +804,36 @@
         long swIn = PerfTimeline.Stamp();
         int x = (int)e.OffsetX;
         int y = (int)e.OffsetY;
-        FlushPendingMove();
-        WinFormsExecution.Run(() => _winFormsHost.OnMouseWheelRaw(x, y, e.DeltaX, e.DeltaY, (int)e.DeltaMode, e.ShiftKey, e.CtrlKey, e.AltKey));
-        if (perfIn) PerfInput(PerfTimeline.KindWheel, x, y, 0, anchorIn, swIn);
-        RequestPaint();
+        DispatchUpdate(() =>
+        {
+            FlushPendingMove();
+            WinFormsExecution.Run(() => _winFormsHost.OnMouseWheelRaw(x, y, e.DeltaX, e.DeltaY, (int)e.DeltaMode, e.ShiftKey, e.CtrlKey, e.AltKey));
+            if (perfIn) PerfInput(PerfTimeline.KindWheel, x, y, 0, anchorIn, swIn);
+        });
         return Task.CompletedTask;
     }
 
+    // Input and construction can invalidate midway through a state change.
+    // Keep dirty marks until the outer update completes, then paint immediately.
+    // This avoids re-entering incomplete popup/form construction and layout.
+    private void DispatchUpdate(Action dispatch)
+    {
+        lock (_repaintGate) _updateDispatchDepth++;
+        try { dispatch(); }
+        finally
+        {
+            lock (_repaintGate) _updateDispatchDepth--;
+            RequestPaint();
+        }
+    }
+
     private Task OnKeyDown(KeyboardEventArgs e)
+    {
+        DispatchUpdate(() => { _ = OnKeyDownCore(e); });
+        return Task.CompletedTask;
+    }
+
+    private Task OnKeyDownCore(KeyboardEventArgs e)
     {
         bool perfIn = PerfTimeline.Enabled;
         double anchorIn = perfIn ? PerfTimeline.NowAnchor() : 0;
@@ -775,6 +841,13 @@
         try
         {
             WinFormsExecution.Run(() => _winFormsHost.OnKeyDown(e.Key, e.ShiftKey, e.CtrlKey, e.AltKey));
+            if (((e.CtrlKey || e.MetaKey) && (e.Key == "v" || e.Key == "V")) || (e.ShiftKey && e.Key == "Insert"))
+            {
+                // Keydown default is prevented on this canvas, so no paste event
+                // ever arrives: pull the clipboard here and commit through the
+                // same caret-safe path as keystrokes.
+                _ = DoPasteAsync();
+            }
         }
         catch (Exception ex)
         {
@@ -789,12 +862,45 @@
         return Task.CompletedTask;
     }
 
+    private async Task DoPasteAsync()
+    {
+        string? text = null;
+        try { text = await JS.InvokeAsync<string>("wfwasm.readClipboardText"); } catch { }
+        if (string.IsNullOrEmpty(text))
+            return;
+        try
+        {
+            DispatchUpdate(() => WinFormsExecution.Run(() => _winFormsHost.CommitPaste(text)));
+        }
+        catch (Exception ex)
+        {
+            // Same contract as keys: a vendor TextChanged failure still surfaces.
+            System.Console.WriteLine("[Home] OnPaste error: " + ex.GetType().Name + ": " + ex.Message.Split('\n')[0]);
+            try { WfWasm.CanvasHost.BrowserErrorReporter.Report("paste", ex); } catch { }
+        }
+        RequestPaint();
+    }
+
     private Task OnKeyUp(KeyboardEventArgs e)
+    {
+        DispatchUpdate(() => { _ = OnKeyUpCore(e); });
+        return Task.CompletedTask;
+    }
+
+    private Task OnKeyUpCore(KeyboardEventArgs e)
     {
         bool perfIn = PerfTimeline.Enabled;
         double anchorIn = perfIn ? PerfTimeline.NowAnchor() : 0;
         long swIn = PerfTimeline.Stamp();
-        WinFormsExecution.Run(() => _winFormsHost.OnKeyUp(e.Key, e.ShiftKey, e.CtrlKey, e.AltKey));
+        try
+        {
+            WinFormsExecution.Run(() => _winFormsHost.OnKeyUp(e.Key, e.ShiftKey, e.CtrlKey, e.AltKey));
+        }
+        catch (System.Exception ex)
+        {
+            System.Console.WriteLine("[Home] OnKeyUp error: " + ex.GetType().Name + ": " + ex.Message.Split('\n')[0]);
+            try { WfWasm.CanvasHost.BrowserErrorReporter.Report("key-up", ex); } catch { }
+        }
         if (perfIn) PerfInput(PerfTimeline.KindKeyUp, 0, 0, PerfKeyHash(e), anchorIn, swIn);
         RequestPaint();
         return Task.CompletedTask;

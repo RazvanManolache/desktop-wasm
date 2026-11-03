@@ -30,6 +30,18 @@ public enum ScrollUnit
 /// </summary>
 public abstract class VirtualizingPanel : Panel
 {
+    /// <summary>Owning container generator (matches VirtualizingPanel.ItemContainerGenerator).</summary>
+    public ItemContainerGenerator? ItemContainerGenerator
+    {
+        get
+        {
+            if (ItemsControl.GetItemsOwner(this) is { } owner) return owner.ItemContainerGenerator;
+            for (var node = (DependencyObject?)this; node is not null; node = (node as FrameworkElement)?.Parent)
+                if (node is ListBox lb) return lb.ItemContainerGenerator;
+            return null;
+        }
+    }
+
     /// <summary>
     /// Scroll-unit knob (matches
     /// System.Windows.Controls.VirtualizingPanel.ScrollUnitProperty;
@@ -111,6 +123,18 @@ public abstract class VirtualizingPanel : Panel
         if (element is UIElement visual) visual.SetAttached("VirtualizingPanel.IsVirtualizingWhenGrouping", value);
         element.SetValue(IsVirtualizingWhenGroupingProperty, value);
     }
+
+    /// <summary>Virtualization mode knob (matches System.Windows.Controls.VirtualizingPanel.VirtualizationModeProperty).</summary>
+    public static readonly DependencyProperty VirtualizationModeProperty =
+        VirtualizingStackPanel.VirtualizationModeProperty;
+
+    /// <summary>Reads the virtualization mode (attached bag plus DP store, Standard default like WPF).</summary>
+    public static VirtualizationMode GetVirtualizationMode(DependencyObject element) =>
+        VirtualizingStackPanel.GetVirtualizationMode(element);
+
+    /// <summary>Writes the virtualization mode (matches SetVirtualizationMode).</summary>
+    public static void SetVirtualizationMode(DependencyObject element, VirtualizationMode value) =>
+        VirtualizingStackPanel.SetVirtualizationMode(element, value);
 }
 
 /// <summary>

@@ -105,7 +105,8 @@ public static class JointClosure
                     // below can produce missing-dependency gaps.
                     if (provided.Contains(reference.Name) || seen.ContainsKey(reference.Name) ||
                         JointMap.WpfSourceAssemblies.Contains(reference.Name) ||
-                        JointMap.WinFormsSourceAssemblies.Contains(reference.Name)) continue;
+                        JointMap.WinFormsSourceAssemblies.Contains(reference.Name) ||
+                        JointMap.RuntimeProvidedJointInterfaces.Contains(reference.Name)) continue;
                     if (reference.Name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || reference.Name.Contains('\\'))
                     { gaps.Add(new JointGap(name, JointGap.DependencyName, reference.Name)); continue; }
                     var candidate = new[] { referrerDir }.Concat(searches)
@@ -128,21 +129,32 @@ public static class JointClosure
     public static IReadOnlyList<JointGap> VerifyPayload(BuiltJointClosure closure, string stageDirectory)
     {
         var gaps = new List<JointGap>();
+        // Exact assembly-name match (file name without extension): a prefix
+        // match confuses 'AvalonDock' with 'AvalonDock.Core' and its other
+        // sibling assemblies in a real multi-assembly closure.
+        static bool IsPayloadFor(string? file, string name) =>
+            file is not null && Path.GetFileNameWithoutExtension(file)
+                .Equals(name, StringComparison.OrdinalIgnoreCase);
         var files = Directory.Exists(stageDirectory)
-            ? Directory.GetFiles(stageDirectory).Select(Path.GetFileName).ToHashSet(StringComparer.OrdinalIgnoreCase)!
+            ? Directory.GetFiles(stageDirectory)
             : [];
         foreach (var node in closure.Nodes)
         {
-            var staged = files.FirstOrDefault(f => f is not null &&
-                f.StartsWith(node.Name + ".", StringComparison.OrdinalIgnoreCase));
-            if (staged is null)
+            var matches = files.Where(f => IsPayloadFor(Path.GetFileName(f), node.Name)).ToList();
+            if (matches.Count == 0)
             {
                 gaps.Add(new JointGap(node.Name, JointGap.MissingDependency, $"Staged payload missing for '{node.Name}'."));
                 continue;
             }
-            var hash = HashOf(Path.Combine(stageDirectory, staged!));
+            if (matches.Count > 1)
+            {
+                gaps.Add(new JointGap(node.Name, JointGap.HashMismatch,
+                    $"Assembly '{node.Name}' staged {matches.Count} times ({string.Join(", ", matches.Select(Path.GetFileName))}): one payload per package."));
+                continue;
+            }
+            var hash = HashOf(matches[0]);
             if (!hash.Equals(node.Sha256, StringComparison.OrdinalIgnoreCase))
-                gaps.Add(new JointGap(node.Name, JointGap.HashMismatch, $"Staged '{staged}' does not match closure hash {node.Sha256}."));
+                gaps.Add(new JointGap(node.Name, JointGap.HashMismatch, $"Staged '{Path.GetFileName(matches[0])}' does not match closure hash {node.Sha256}."));
         }
         // One shared payload per package: a shared-payload node staged under
         // more than one file name is a duplication defect, not a second copy.
@@ -152,11 +164,10 @@ public static class JointClosure
             .ToHashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var name in sharedNames)
         {
-            var copies = files.Where(f => f is not null &&
-                f.StartsWith(name + ".", StringComparison.OrdinalIgnoreCase)).ToList();
+            var copies = files.Where(f => IsPayloadFor(Path.GetFileName(f), name)).ToList();
             if (copies.Count > 1)
                 gaps.Add(new JointGap(name, JointGap.HashMismatch,
-                    $"Shared payload '{name}' staged {copies.Count} times ({string.Join(", ", copies)}): one payload per package."));
+                    $"Shared payload '{name}' staged {copies.Count} times ({string.Join(", ", copies.Select(Path.GetFileName))}): one payload per package."));
         }
         return gaps;
     }

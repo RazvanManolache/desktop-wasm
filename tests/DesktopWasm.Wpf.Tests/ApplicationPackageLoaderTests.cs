@@ -42,6 +42,65 @@ public sealed class ApplicationPackageLoaderTests
     }
 
     [Fact]
+    public async Task Fetch_start_reported_before_each_fetch_verify_complete_after()
+    {
+        // Tiered-timer contract: no inter-file gap is silent. Each file
+        // emits fetch-start (after semaphore acquire, before fetch) and
+        // verify-complete (after hash verify).
+        var package = Package() with
+        {
+            Assemblies =
+            [
+                Package().Assemblies[0],
+                Package().Assemblies[0] with { Name = "Second", File = "second.bin" },
+                Package().Assemblies[0] with { Name = "Third", File = "third.bin" },
+            ]
+        };
+        var events = new List<string>();
+        void Record(string e) { lock (events) events.Add(e); }
+        using var loader = await ApplicationPackageLoader.CreateAsync(package, "fixture",
+            async file => { Record($"fetch:{file}"); await Task.Delay(10); return (byte[])[1, 2, 3]; },
+            phase => { Record($"verify:{phase}"); return Task.CompletedTask; },
+            start => { Record($"start:{start}"); return Task.CompletedTask; });
+        Assert.Equal(3, events.Count(e => e.StartsWith("start:", StringComparison.Ordinal)));
+        Assert.Equal(3, events.Count(e => e.StartsWith("fetch:", StringComparison.Ordinal)));
+        Assert.Equal(3, events.Count(e => e.StartsWith("verify:", StringComparison.Ordinal)));
+        foreach (var (name, file) in new[] { ("Entry", "entry.bin"), ("Second", "second.bin"), ("Third", "third.bin") })
+        {
+            var start = events.FindIndex(e => e == $"start:fetch-start {name}");
+            var fetch = events.FindIndex(e => e == $"fetch:{file}");
+            var verify = events.FindIndex(e => e.StartsWith($"verify:{name} (", StringComparison.Ordinal));
+            Assert.True(start >= 0 && fetch >= 0 && verify >= 0, $"missing phase for {name}");
+            Assert.True(start < fetch && fetch < verify, $"phase order broken for {name}");
+        }
+    }
+
+    [Fact]
+    public async Task Fetch_concurrency_never_exceeds_four()
+    {
+        var package = Package() with
+        {
+            Assemblies = [Package().Assemblies[0],
+                .. Enumerable.Range(0, 7)
+                    .Select(i => Package().Assemblies[0] with { Name = $"F{i}", File = $"f{i}.bin" })]
+        };
+        var current = 0;
+        var max = 0;
+        using var loader = await ApplicationPackageLoader.CreateAsync(package, "fixture", async _ =>
+        {
+            var c = System.Threading.Interlocked.Increment(ref current);
+            int prev, next;
+            do { prev = max; next = System.Math.Max(prev, c); }
+            while (System.Threading.Interlocked.CompareExchange(ref max, next, prev) != prev);
+            await Task.Delay(50);
+            System.Threading.Interlocked.Decrement(ref current);
+            return (byte[])[1, 2, 3];
+        });
+        Assert.True(max <= 4, $"max fetch concurrency {max} exceeds the 4-way semaphore");
+        Assert.True(max > 1, $"expected real fetch concurrency, saw max {max}");
+    }
+
+    [Fact]
     public async Task Conversion_failure_reports_actual_assembly_and_gap_without_fetching_images()
     {
         var called = false;

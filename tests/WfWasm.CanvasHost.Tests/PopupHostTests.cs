@@ -1,4 +1,4 @@
-using WfWasm.CanvasHost;
+﻿using WfWasm.CanvasHost;
 using WfWasm.Renderer;
 using WfWasm.Shim;
 using FormsButton = System.Windows.Forms.Button;
@@ -22,6 +22,33 @@ public sealed class PopupHostTests
                 return cp;
             }
         }
+    }
+
+    private sealed class LifecycleChild : FormsControl
+    {
+        public int Creates;
+        protected override void OnCreateControl() { Creates++; base.OnCreateControl(); }
+    }
+
+    [Fact]
+    public void Popup_handle_only_show_completes_child_creation_before_paint()
+    {
+        using var host = new WinFormsAppHost();
+        host.SelectScene(AppScene.Smoke);
+        using var popup = new PopupControl { Left = 400, Top = 300, Width = 160, Height = 120 };
+        var child = new LifecycleChild { Width = 100, Height = 24 };
+        popup.Controls.Add(child);
+        _ = popup.Handle;
+        Assert.Equal(0, child.Creates);
+        System.Windows.Forms.WasmPopupHost.Track(popup);
+        try
+        {
+            host.Paint(new RecordingRenderer());
+            Assert.Equal(1, child.Creates);
+            host.Paint(new RecordingRenderer());
+            Assert.Equal(1, child.Creates);
+        }
+        finally { System.Windows.Forms.WasmPopupHost.Untrack(popup); }
     }
 
     [Fact]

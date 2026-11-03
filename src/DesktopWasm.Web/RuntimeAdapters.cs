@@ -1,3 +1,5 @@
+using System.Net.Http.Json;
+
 namespace DesktopWasm.Web;
 
 /// <summary>
@@ -17,8 +19,23 @@ public interface IRuntimeAdapter
     Task<AdapterBootResult> BootAsync(CatalogEntry app, string sessionId);
 }
 
-public sealed record AdapterStatus(bool CanBoot, string Detail);
+public sealed record AdapterStatus(bool CanBoot, string Detail, string? MountedUrl = null);
 public sealed record AdapterBootResult(bool Started, string Detail);
+
+public sealed class MountStatusDto
+{
+    public bool CanBoot { get; set; }
+    public string Detail { get; set; } = "";
+    public string? MountedUrl { get; set; }
+}
+
+public sealed class MountReport
+{
+    public string App { get; set; } = "";
+    public string SessionId { get; set; } = "";
+    public MountStatusDto? Winforms { get; set; }
+    public MountStatusDto? Wpf { get; set; }
+}
 
 /// <summary>WinForms boot adapter. Mounts WfWasm.CanvasHost behind this seam after source-ready.</summary>
 public sealed class WinFormsRuntimeAdapter(HttpClient http) : IRuntimeAdapter
@@ -30,26 +47,24 @@ public sealed class WinFormsRuntimeAdapter(HttpClient http) : IRuntimeAdapter
     {
         if (!app.Supports(Framework))
             return new AdapterStatus(false, $"App '{app.Id}' does not declare the winforms capability.");
-        if (!app.Available)
-            return new AdapterStatus(false,
-                $"WinForms package for '{app.Id}' is not available: {string.Join("; ", app.Gaps)}");
         try
         {
-            using var response = await http.GetAsync($"api/packages/{Uri.EscapeDataString(app.Id)}/manifest");
-            if (!response.IsSuccessStatusCode)
-                return new AdapterStatus(false,
-                    $"WinForms package manifest returned {(int)response.StatusCode}; host mount deferred until packaging publishes it.");
-            return new AdapterStatus(true, "Package manifest present; host mount runs after source-ready import verification.");
+            var report = await http.GetFromJsonAsync<MountReport>(
+                $"api/mount-status?app={Uri.EscapeDataString(app.Id)}");
+            var status = report?.Winforms;
+            if (status is null)
+                return new AdapterStatus(false, "Mount status did not report a WinForms adapter.");
+            return new AdapterStatus(status.CanBoot, status.Detail, status.MountedUrl);
         }
         catch (Exception ex)
         {
-            return new AdapterStatus(false, $"Package probe failed: {ex.GetBaseException().Message}");
+            return new AdapterStatus(false, $"Mount probe failed: {ex.GetBaseException().Message}");
         }
     }
 
     public Task<AdapterBootResult> BootAsync(CatalogEntry app, string sessionId) =>
         Task.FromResult(new AdapterBootResult(false,
-            "WinForms host mount is gated on source-ready (importer-owned hosts). Session reserved; no stub boot performed."));
+            "WinForms host mount waits on staged local inputs (import-lane receipts); the app is not Available yet. Session reserved; no stub boot performed."));
 }
 
 /// <summary>WPF boot adapter. Mounts DesktopWasm.BrowserHost behind this seam after source-ready.</summary>
@@ -62,26 +77,24 @@ public sealed class WpfRuntimeAdapter(HttpClient http) : IRuntimeAdapter
     {
         if (!app.Supports(Framework))
             return new AdapterStatus(false, $"App '{app.Id}' does not declare the wpf capability.");
-        if (!app.Available)
-            return new AdapterStatus(false,
-                $"WPF package for '{app.Id}' is not available: {string.Join("; ", app.Gaps)}");
         try
         {
-            using var response = await http.GetAsync($"api/packages/{Uri.EscapeDataString(app.Id)}/manifest");
-            if (!response.IsSuccessStatusCode)
-                return new AdapterStatus(false,
-                    $"WPF package manifest returned {(int)response.StatusCode}; host mount deferred until packaging publishes it.");
-            return new AdapterStatus(true, "Package manifest present; host mount runs after source-ready import verification.");
+            var report = await http.GetFromJsonAsync<MountReport>(
+                $"api/mount-status?app={Uri.EscapeDataString(app.Id)}");
+            var status = report?.Wpf;
+            if (status is null)
+                return new AdapterStatus(false, "Mount status did not report a WPF adapter.");
+            return new AdapterStatus(status.CanBoot, status.Detail, status.MountedUrl);
         }
         catch (Exception ex)
         {
-            return new AdapterStatus(false, $"Package probe failed: {ex.GetBaseException().Message}");
+            return new AdapterStatus(false, $"Mount probe failed: {ex.GetBaseException().Message}");
         }
     }
 
     public Task<AdapterBootResult> BootAsync(CatalogEntry app, string sessionId) =>
         Task.FromResult(new AdapterBootResult(false,
-            "WPF host mount is gated on source-ready (importer-owned hosts). Session reserved; no stub boot performed."));
+            "WPF host mount waits on staged local inputs (import-lane receipts); the app is not Available yet. Session reserved; no stub boot performed."));
 }
 
 /// <summary>

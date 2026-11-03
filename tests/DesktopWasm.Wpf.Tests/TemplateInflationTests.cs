@@ -21,145 +21,6 @@ public sealed class TemplateInflationTests : IDisposable
         XamlLoader.CustomElementSource = null;
     }
 
-    /// <summary>ScreenToGif SelectControl shape: Control with DP-backed props,
-    /// OnApplyTemplate resolving a named template part (like
-    /// SelectControl.cs Template.FindName("StatusControlGrid", this)).</summary>
-    private sealed class SelectControlStub : Control
-    {
-        public static readonly DependencyProperty TitleProperty =
-            DependencyProperty.Register(nameof(Title), typeof(string), typeof(SelectControlStub),
-                new PropertyMetadata(string.Empty));
-
-        public string Title
-        {
-            get => (string?)GetValue(TitleProperty) ?? string.Empty;
-            set => SetValue(TitleProperty, value);
-        }
-
-        public static readonly DependencyProperty ShowStatusProperty =
-            DependencyProperty.Register(nameof(ShowStatus), typeof(bool), typeof(SelectControlStub),
-                new PropertyMetadata(true));
-
-        public bool ShowStatus
-        {
-            get => (bool)(GetValue(ShowStatusProperty) ?? true);
-            set => SetValue(ShowStatusProperty, value);
-        }
-
-        public UniformGrid? StatusGrid { get; private set; }
-
-        public bool Applied { get; private set; }
-
-        protected override void OnApplyTemplate()
-        {
-            Applied = true;
-            StatusGrid = Template?.FindName("StatusControlGrid", this) as UniformGrid;
-        }
-
-        protected override WpfSize MeasureCore(WpfSize available)
-        {
-            var width = 0.0;
-            var height = 0.0;
-            foreach (var child in Children)
-            {
-                child.Measure(available);
-                width = Math.Max(width, child.DesiredSize.Width);
-                height += child.DesiredSize.Height;
-            }
-            return new WpfSize(width, height);
-        }
-
-        protected override void ArrangeCore(WpfRect finalRect)
-        {
-            var y = finalRect.Y;
-            foreach (var child in Children)
-            {
-                child.Arrange(new WpfRect(finalRect.X, y, finalRect.Width, child.DesiredSize.Height));
-                y += child.DesiredSize.Height;
-            }
-        }
-
-        protected override void OnRender(DrawingContext dc)
-        {
-            foreach (var child in Children) RenderVisible(dc, child);
-        }
-    }
-
-    /// <summary>Gallery ControlExample shape: bare Control with a
-    /// content-property sample slot (no measure override of its own).</summary>
-    [ContentProperty("Sample")]
-    private sealed class SampleHostStub : Control
-    {
-        public static readonly DependencyProperty SampleProperty = DependencyProperty.Register(
-            nameof(Sample), typeof(object), typeof(SampleHostStub), new PropertyMetadata(null));
-
-        public object? Sample
-        {
-            get => GetValue(SampleProperty);
-            set => SetValue(SampleProperty, value);
-        }
-    }
-
-    /// <summary>Gallery PageHeader shape: DP Title/Description/ShowDescription
-    /// (mirrors WPFGallery PageHeader codebehind exactly).</summary>
-    private sealed class PageHeaderStub : Control
-    {
-        public static readonly DependencyProperty TitleProperty = DependencyProperty.Register(
-            nameof(Title), typeof(string), typeof(PageHeaderStub), new PropertyMetadata(null));
-
-        public static readonly DependencyProperty DescriptionProperty = DependencyProperty.Register(
-            nameof(Description), typeof(string), typeof(PageHeaderStub), new PropertyMetadata(null));
-
-        public static readonly DependencyProperty ShowDescriptionProperty = DependencyProperty.Register(
-            nameof(ShowDescription), typeof(bool), typeof(PageHeaderStub), new PropertyMetadata(true));
-
-        public string? Title
-        {
-            get => (string?)GetValue(TitleProperty);
-            set => SetValue(TitleProperty, value);
-        }
-
-        public string? Description
-        {
-            get => (string?)GetValue(DescriptionProperty);
-            set => SetValue(DescriptionProperty, value);
-        }
-
-        public bool ShowDescription
-        {
-            get => (bool)(GetValue(ShowDescriptionProperty) ?? true);
-            set => SetValue(ShowDescriptionProperty, value);
-        }
-
-        protected override WpfSize MeasureCore(WpfSize available)
-        {
-            var width = 0.0;
-            var height = 0.0;
-            foreach (var child in Children)
-            {
-                child.Measure(available);
-                width = Math.Max(width, child.DesiredSize.Width);
-                height += child.DesiredSize.Height;
-            }
-            return new WpfSize(width, height);
-        }
-
-        protected override void ArrangeCore(WpfRect finalRect)
-        {
-            var y = finalRect.Y;
-            foreach (var child in Children)
-            {
-                child.Arrange(new WpfRect(finalRect.X, y, finalRect.Width, child.DesiredSize.Height));
-                y += child.DesiredSize.Height;
-            }
-        }
-
-        protected override void OnRender(DrawingContext dc)
-        {
-            foreach (var child in Children) RenderVisible(dc, child);
-        }
-    }
-
     private sealed class BoolToVisibilityConverter : IValueConverter
     {
         public object? Convert(object? value, Type targetType, object? parameter, System.Globalization.CultureInfo culture) =>
@@ -1623,7 +1484,300 @@ public sealed class TemplateInflationTests : IDisposable
         var decorator = Assert.IsType<AdornerDecorator>(Assert.Single(root.LogicalChildren));
         Assert.Null(decorator.CacheMode);
     }
+
+    [Fact]
+    public void ControlTemplate_element_expansion_validates_hierarchical_nesting_and_templatebindings()
+    {
+        SeedApp();
+        UseTestAssembly();
+        var xaml = @"
+<ResourceDictionary xmlns=""http://schemas.microsoft.com/winfx/2006/xaml/presentation""
+                    xmlns:x=""http://schemas.microsoft.com/winfx/2006/xaml""
+                    xmlns:t=""clr-namespace:DesktopWasm.Wpf.Tests"">
+  <ControlTemplate x:Key=""ComplexButtonTemplate"" TargetType=""{x:Type t:SelectControlStub}"">
+    <Border x:Name=""OuterBorder"" Background=""{TemplateBinding Background}"" BorderBrush=""{TemplateBinding BorderBrush}"" BorderThickness=""{TemplateBinding BorderThickness}"">
+      <Grid x:Name=""LayoutGrid"">
+        <Grid.RowDefinitions>
+          <RowDefinition Height=""Auto"" />
+          <RowDefinition Height=""*"" />
+        </Grid.RowDefinitions>
+        <StackPanel Grid.Row=""0"" x:Name=""HeaderPanel"">
+          <TextBlock x:Name=""HeaderPart"" Text=""{TemplateBinding Title}"" FontWeight=""Bold"" />
+        </StackPanel>
+        <ContentPresenter Grid.Row=""1"" x:Name=""PART_Content"" HorizontalAlignment=""Center"" VerticalAlignment=""Center"" />
+      </Grid>
+    </Border>
+  </ControlTemplate>
+</ResourceDictionary>";
+
+        var dict = XamlLoader.LoadResourceDictionary(xaml);
+        var template = Assert.IsType<ControlTemplate>(dict["ComplexButtonTemplate"]);
+
+        // 1. Verify LoadContent generates a fresh independent hierarchical visual tree
+        var first = Assert.IsType<Border>(template.LoadContent());
+        var second = Assert.IsType<Border>(template.LoadContent());
+        Assert.NotSame(first, second);
+
+        var firstGrid = Assert.IsType<Grid>(first.Child);
+        var secondGrid = Assert.IsType<Grid>(second.Child);
+        Assert.NotSame(firstGrid, secondGrid);
+        Assert.Equal(2, firstGrid.RowDefinitions.Count);
+
+        var stackPanel = Assert.IsType<StackPanel>(firstGrid.Children[0]);
+        var header = Assert.IsType<TextBlock>(stackPanel.Children[0]);
+        Assert.Equal("HeaderPart", header.Name);
+
+        var presenter = Assert.IsType<ContentPresenter>(firstGrid.Children[1]);
+        Assert.Equal("PART_Content", presenter.Name);
+
+        // 2. Verify ApplyTemplate attaches visual tree and resolves template parts and bindings
+        var control = new SelectControlStub
+        {
+            Title = "Template Header",
+            Background = Brushes.Navy,
+            BorderBrush = Brushes.Silver,
+            BorderThickness = new Thickness(2),
+            Template = template,
+        };
+
+        Assert.True(control.ApplyTemplate());
+        Assert.True(control.Applied);
+
+        var appliedBorder = Assert.IsType<Border>(control.TemplateRoot);
+        Assert.Same(appliedBorder, control.Template?.FindName("OuterBorder", control));
+        Assert.Same(appliedBorder, control.GetTemplateChild("OuterBorder"));
+
+        var appliedGrid = Assert.IsType<Grid>(control.GetTemplateChild("LayoutGrid"));
+        Assert.NotNull(appliedGrid);
+
+        var appliedHeader = Assert.IsType<TextBlock>(control.GetTemplateChild("HeaderPart"));
+        Assert.NotNull(appliedHeader);
+        Assert.Equal("Template Header", appliedHeader.Text);
+
+        var appliedPresenter = Assert.IsType<ContentPresenter>(control.GetTemplateChild("PART_Content"));
+        Assert.NotNull(appliedPresenter);
+
+        Assert.Equal(new SolidColorBrush(Colors.Navy).ToRgba(), ((SolidColorBrush)appliedBorder.Background!).ToRgba());
+        Assert.Equal(new SolidColorBrush(Colors.Silver).ToRgba(), ((SolidColorBrush)appliedBorder.BorderBrush!).ToRgba());
+        Assert.Equal(new Thickness(2), appliedBorder.BorderThickness);
+
+        // Layout pass verification
+        control.Measure(new WpfSize(300, 200));
+        control.Arrange(new WpfRect(0, 0, 300, 200));
+        Assert.True(control.DesiredSize.Width > 0);
+        Assert.True(control.DesiredSize.Height > 0);
+    }
+
+    [Fact]
+    public void DataTemplate_element_expansion_validates_hierarchical_nesting_and_binding_evaluation()
+    {
+        SeedApp();
+        var xaml = @"
+<ResourceDictionary xmlns=""http://schemas.microsoft.com/winfx/2006/xaml/presentation""
+                    xmlns:x=""http://schemas.microsoft.com/winfx/2006/xaml"">
+  <DataTemplate x:Key=""ComplexCardTemplate"">
+    <Border x:Name=""CardBorder"" Background=""White"" BorderThickness=""1"" CornerRadius=""4"">
+      <Grid x:Name=""CardGrid"">
+        <StackPanel x:Name=""ContentStack"" Orientation=""Vertical"">
+          <TextBlock x:Name=""TitleText"" Text=""{Binding Title}"" FontWeight=""Bold"" />
+          <TextBlock x:Name=""DetailsText"" Text=""{Binding Description}"" Margin=""0,4,0,0"" />
+        </StackPanel>
+      </Grid>
+    </Border>
+    <DataTemplate.Triggers>
+      <DataTrigger Binding=""{Binding IsHighlighted}"" Value=""True"">
+        <Setter TargetName=""CardBorder"" Property=""Background"" Value=""LightGreen"" />
+      </DataTrigger>
+    </DataTemplate.Triggers>
+  </DataTemplate>
+</ResourceDictionary>";
+
+        var dict = XamlLoader.LoadResourceDictionary(xaml);
+        var template = Assert.IsType<DataTemplate>(dict["ComplexCardTemplate"]);
+
+        // 1. Verify LoadContent creates fresh independent hierarchical instances
+        var first = Assert.IsType<Border>(template.LoadContent());
+        var second = Assert.IsType<Border>(template.LoadContent());
+        Assert.NotSame(first, second);
+
+        var firstGrid = Assert.IsType<Grid>(first.Child);
+        var secondGrid = Assert.IsType<Grid>(second.Child);
+        Assert.NotSame(firstGrid, secondGrid);
+
+        var firstStack = Assert.IsType<StackPanel>(firstGrid.Children[0]);
+        Assert.Equal(2, firstStack.Children.Count);
+
+        var title = Assert.IsType<TextBlock>(firstStack.Children[0]);
+        var details = Assert.IsType<TextBlock>(firstStack.Children[1]);
+        Assert.Equal("TitleText", title.Name);
+        Assert.Equal("DetailsText", details.Name);
+
+        // 2. Verify DataContext evaluates bindings and DataTemplate triggers
+        first.DataContext = new ItemCardModel { Title = "Card 1", Description = "Active Item", IsHighlighted = true };
+
+        Assert.Equal("Card 1", title.Text);
+        Assert.Equal("Active Item", details.Text);
+        Assert.Equal(new SolidColorBrush(Colors.LightGreen).ToRgba(), ((SolidColorBrush)first.Background!).ToRgba());
+
+        // Toggle trigger condition off
+        first.DataContext = new ItemCardModel { Title = "Card 1", Description = "Inactive Item", IsHighlighted = false };
+        Assert.Equal("Inactive Item", details.Text);
+        Assert.Equal(new SolidColorBrush(Colors.White).ToRgba(), ((SolidColorBrush)first.Background!).ToRgba());
+
+        // Layout pass verification
+        first.Measure(new WpfSize(200, 100));
+        first.Arrange(new WpfRect(0, 0, 200, 100));
+        Assert.True(first.DesiredSize.Width > 0);
+        Assert.True(first.DesiredSize.Height > 0);
+    }
 }
+
+public sealed class ItemCardModel
+{
+    public string Title { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public bool IsHighlighted { get; set; }
+}
+
+/// <summary>ScreenToGif SelectControl shape: Control with DP-backed props,
+/// OnApplyTemplate resolving a named template part (like
+/// SelectControl.cs Template.FindName("StatusControlGrid", this)).</summary>
+public sealed class SelectControlStub : Control
+{
+    public static readonly DependencyProperty TitleProperty =
+        DependencyProperty.Register(nameof(Title), typeof(string), typeof(SelectControlStub),
+            new PropertyMetadata(string.Empty));
+
+    public string Title
+    {
+        get => (string?)GetValue(TitleProperty) ?? string.Empty;
+        set => SetValue(TitleProperty, value);
+    }
+
+    public static readonly DependencyProperty ShowStatusProperty =
+        DependencyProperty.Register(nameof(ShowStatus), typeof(bool), typeof(SelectControlStub),
+            new PropertyMetadata(true));
+
+    public bool ShowStatus
+    {
+        get => (bool)(GetValue(ShowStatusProperty) ?? true);
+        set => SetValue(ShowStatusProperty, value);
+    }
+
+    public UniformGrid? StatusGrid { get; private set; }
+
+    public bool Applied { get; private set; }
+
+    protected override void OnApplyTemplate()
+    {
+        Applied = true;
+        StatusGrid = Template?.FindName("StatusControlGrid", this) as UniformGrid;
+    }
+
+    protected override WpfSize MeasureCore(WpfSize available)
+    {
+        var width = 0.0;
+        var height = 0.0;
+        foreach (var child in Children)
+        {
+            child.Measure(available);
+            width = Math.Max(width, child.DesiredSize.Width);
+            height += child.DesiredSize.Height;
+        }
+        return new WpfSize(width, height);
+    }
+
+    protected override void ArrangeCore(WpfRect finalRect)
+    {
+        var y = finalRect.Y;
+        foreach (var child in Children)
+        {
+            child.Arrange(new WpfRect(finalRect.X, y, finalRect.Width, child.DesiredSize.Height));
+            y += child.DesiredSize.Height;
+        }
+    }
+
+    protected override void OnRender(DrawingContext dc)
+    {
+        foreach (var child in Children) RenderVisible(dc, child);
+    }
+}
+
+/// <summary>Gallery ControlExample shape: bare Control with a
+/// content-property sample slot (no measure override of its own).</summary>
+[ContentProperty("Sample")]
+public sealed class SampleHostStub : Control
+{
+    public static readonly DependencyProperty SampleProperty = DependencyProperty.Register(
+        nameof(Sample), typeof(object), typeof(SampleHostStub), new PropertyMetadata(null));
+
+    public object? Sample
+    {
+        get => GetValue(SampleProperty);
+        set => SetValue(SampleProperty, value);
+    }
+}
+
+/// <summary>Gallery PageHeader shape: DP Title/Description/ShowDescription
+/// (mirrors WPFGallery PageHeader codebehind exactly).</summary>
+public sealed class PageHeaderStub : Control
+{
+    public static readonly DependencyProperty TitleProperty = DependencyProperty.Register(
+        nameof(Title), typeof(string), typeof(PageHeaderStub), new PropertyMetadata(null));
+
+    public static readonly DependencyProperty DescriptionProperty = DependencyProperty.Register(
+        nameof(Description), typeof(string), typeof(PageHeaderStub), new PropertyMetadata(null));
+
+    public static readonly DependencyProperty ShowDescriptionProperty = DependencyProperty.Register(
+        nameof(ShowDescription), typeof(bool), typeof(PageHeaderStub), new PropertyMetadata(true));
+
+    public string? Title
+    {
+        get => (string?)GetValue(TitleProperty);
+        set => SetValue(TitleProperty, value);
+    }
+
+    public string? Description
+    {
+        get => (string?)GetValue(DescriptionProperty);
+        set => SetValue(DescriptionProperty, value);
+    }
+
+    public bool ShowDescription
+    {
+        get => (bool)(GetValue(ShowDescriptionProperty) ?? true);
+        set => SetValue(ShowDescriptionProperty, value);
+    }
+
+    protected override WpfSize MeasureCore(WpfSize available)
+    {
+        var width = 0.0;
+        var height = 0.0;
+        foreach (var child in Children)
+        {
+            child.Measure(available);
+            width = Math.Max(width, child.DesiredSize.Width);
+            height += child.DesiredSize.Height;
+        }
+        return new WpfSize(width, height);
+    }
+
+    protected override void ArrangeCore(WpfRect finalRect)
+    {
+        var y = finalRect.Y;
+        foreach (var child in Children)
+        {
+            child.Arrange(new WpfRect(finalRect.X, y, finalRect.Width, child.DesiredSize.Height));
+            y += child.DesiredSize.Height;
+        }
+    }
+
+    protected override void OnRender(DrawingContext dc)
+    {
+        foreach (var child in Children) RenderVisible(dc, child);
+    }
+}
+
 
 /// <summary>Converted single-visual host (matches wpf:Plane3D
 /// [ContentProperty("Child")]): nests one visual directly.</summary>

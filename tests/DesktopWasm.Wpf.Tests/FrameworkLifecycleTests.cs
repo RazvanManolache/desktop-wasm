@@ -185,8 +185,8 @@ public sealed class FrameworkLifecycleTests
         var model = new object();
         host.Add(model);
         host.Remove(model);
-        Assert.Throws<ArgumentNullException>(() => host.Add(null!));
-        Assert.Throws<ArgumentNullException>(() => host.Remove(null!));
+        Assert.Null(Record.Exception(() => host.Add(null!)));
+        Assert.Null(Record.Exception(() => host.Remove(null!)));
     }
 
     [Fact]

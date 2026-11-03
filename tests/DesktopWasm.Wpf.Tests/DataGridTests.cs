@@ -362,10 +362,11 @@ public sealed class DataGridTests
     }
 
     [Fact]
-    public void Baml_rejects_complex_binding_property()
+    public void Baml_rejects_truncated_complex_property_start()
     {
         // A real Binding arrives as a complex-property subtree (record 0x07),
-        // which needs markup-extension support: precise boundary, not a gap.
+        // which the reader parses; a start truncated mid-member stays a
+        // precise XamlLoadException (never a raw bounds crash).
         const string pf = "PresentationFramework";
         const string tGrid = "System.Windows.Controls.DataGrid";
         var b = new B();
@@ -379,11 +380,11 @@ public sealed class DataGridTests
         b.Raw(0x03).I16(1).Raw(0x00);
         b.Sized(0x1F, p => p.U16(0).I16(1).Raw(0x00).Str("Columns"));
         b.Raw(0x0B).U16(0);
-        b.Raw(0x07).Raw(0x00); // complex property: Binding markup extension
+        b.Raw(0x07).Raw(0x00); // complex property truncated mid-member
 
         using var stream = new MemoryStream(b.ToArray());
         var ex = Assert.Throws<XamlLoadException>(() => XamlLoader.LoadComponent<Window>(stream));
-        Assert.Contains("0x07", ex.Message);
+        Assert.Contains("truncated BAML complex-property start", ex.Message);
     }
 
     [Fact]

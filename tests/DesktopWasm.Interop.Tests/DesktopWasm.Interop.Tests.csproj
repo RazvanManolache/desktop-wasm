@@ -22,12 +22,21 @@
     <ProjectReference Include="..\..\src\DesktopWasm.Interop\DesktopWasm.Interop.csproj" />
     <ProjectReference Include="..\..\src\DesktopWasm.Core\DesktopWasm.Core.csproj" />
     <ProjectReference Include="..\..\src\DesktopWasm.Graphics\DesktopWasm.Graphics.csproj" />
-    <ProjectReference Include="..\..\src\DesktopWasm.Wpf\DesktopWasm.Wpf.csproj" />
+    <ProjectReference Include="..\..\src\DesktopWasm.Wpf\DesktopWasm.Wpf.csproj">
+      <Aliases>global,WpfEng</Aliases>
+    </ProjectReference>
     <!-- Same alias scheme as Interop: Fork:: for real fork controls,
          WasmDraw:: for the canvas-backed drawing they bind. -->
     <ProjectReference Include="..\..\src\WfWasm.WinForms\WfWasm.WinForms.csproj">
       <Aliases>Fork</Aliases>
     </ProjectReference>
+    <!-- Real broadcast provider; Win32Events-only alias so the WPF
+         adapter's same-namespace types stay unambiguous globally. -->
+    <ProjectReference Include="..\..\src\Microsoft.Win32.SystemEvents\Microsoft.Win32.SystemEvents.csproj">
+      <Aliases>Win32Events</Aliases>
+    </ProjectReference>
+    <!-- Joint policy input (test-only consumption; packaging owns src). -->
+    <ProjectReference Include="..\..\src\DesktopWasm.Packaging\DesktopWasm.Packaging.csproj" />
     <ProjectReference Include="..\..\src\WfWasm.Drawing\WfWasm.Drawing.csproj">
       <Aliases>WasmDraw</Aliases>
     </ProjectReference>

@@ -87,7 +87,7 @@ public sealed class GpuRenderingPolicyTests
         public void DrawEllipse(float x, float y, float w, float h, float lw, uint outline, uint? fill = null) => Operations++;
         public void DrawText(string text, float x, float y, string font, uint rgba) => Operations++;
         public void DrawTextAligned(string text, float x, float y, string font, uint rgba,
-            TextHAlign h, TextVAlign v, int mnemonicIndex = -1) => Operations++;
+            TextHAlign h, TextVAlign v, int mnemonicIndex = -1, float clipX = 0, float clipY = 0, float clipWidth = 0, float clipHeight = 0) => Operations++;
         public void DrawImage(byte[] rgba, int w, int h, float x, float y, float dw, float dh) => Operations++;
         public void Dispose() { }
     }

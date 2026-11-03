@@ -47,6 +47,197 @@ namespace Windows.Win32
 
         internal static HWND GetDesktopWindow() => default;
         internal static HWND GetForegroundWindow() => new HWND(global::System.Windows.Forms.WasmForeground.Current);
+        internal static HWND GetParent(HWND hWnd)
+        {
+            if (hWnd.IsNull)
+            {
+                return HWND.Null;
+            }
+
+            try
+            {
+                var control = global::System.Windows.Forms.Control.FromHandle((nint)hWnd.Value);
+                if (control is not null && !control.IsDisposed)
+                {
+                    var parent = control.Parent;
+                    if (parent is not null && !parent.IsDisposed && parent.IsHandleCreated)
+                    {
+                        return (HWND)parent.Handle;
+                    }
+                }
+            }
+            catch
+            {
+            }
+
+            return HWND.Null;
+        }
+
+        internal static nint GetParent(nint hWnd) => GetParent((HWND)hWnd).Value;
+
+        internal static HWND GetAncestor(HWND hWnd, GET_ANCESTOR_FLAGS flags)
+        {
+            if (hWnd.IsNull)
+            {
+                return HWND.Null;
+            }
+
+            try
+            {
+                var control = global::System.Windows.Forms.Control.FromHandle((nint)hWnd.Value);
+                if (control is null || control.IsDisposed)
+                {
+                    return HWND.Null;
+                }
+
+                switch (flags)
+                {
+                    case GET_ANCESTOR_FLAGS.GA_PARENT:
+                        if (control.Parent is not null && !control.Parent.IsDisposed && control.Parent.IsHandleCreated)
+                        {
+                            return (HWND)control.Parent.Handle;
+                        }
+                        return HWND.Null;
+
+                    case GET_ANCESTOR_FLAGS.GA_ROOT:
+                    case GET_ANCESTOR_FLAGS.GA_ROOTOWNER:
+                        global::System.Windows.Forms.Control current = control;
+                        int depth = 0;
+                        while (current.Parent is not null && !current.Parent.IsDisposed && depth < 50)
+                        {
+                            depth++;
+                            current = current.Parent;
+                        }
+                        if (flags == GET_ANCESTOR_FLAGS.GA_ROOTOWNER && current is global::System.Windows.Forms.Form form && form.Owner is not null && !form.Owner.IsDisposed && form.Owner.IsHandleCreated)
+                        {
+                            return (HWND)form.Owner.Handle;
+                        }
+                        return current.IsHandleCreated ? (HWND)current.Handle : HWND.Null;
+
+                    default:
+                        return HWND.Null;
+                }
+            }
+            catch
+            {
+            }
+
+            return HWND.Null;
+        }
+
+        internal static nint GetAncestor(nint hWnd, GET_ANCESTOR_FLAGS flags) => GetAncestor((HWND)hWnd, flags).Value;
+
+        internal static HWND GetWindow(HWND hWnd, GET_WINDOW_CMD uCmd)
+        {
+            if (hWnd.IsNull)
+            {
+                return HWND.Null;
+            }
+
+            try
+            {
+                var control = global::System.Windows.Forms.Control.FromHandle((nint)hWnd.Value);
+                if (control is null || control.IsDisposed)
+                {
+                    return HWND.Null;
+                }
+
+                switch (uCmd)
+                {
+                    case GET_WINDOW_CMD.GW_CHILD:
+                        if (control.Controls.Count > 0)
+                        {
+                            for (int i = 0; i < control.Controls.Count; i++)
+                            {
+                                var child = control.Controls[i];
+                                if (child is not null && !child.IsDisposed && child.IsHandleCreated)
+                                {
+                                    return (HWND)child.Handle;
+                                }
+                            }
+                        }
+                        return HWND.Null;
+
+                    case GET_WINDOW_CMD.GW_OWNER:
+                        if (control is global::System.Windows.Forms.Form form && form.Owner is not null && !form.Owner.IsDisposed && form.Owner.IsHandleCreated)
+                        {
+                            return (HWND)form.Owner.Handle;
+                        }
+                        return HWND.Null;
+
+                    case GET_WINDOW_CMD.GW_HWNDNEXT:
+                        if (control.Parent is not null && !control.Parent.IsDisposed)
+                        {
+                            int idx = control.Parent.Controls.IndexOf(control);
+                            if (idx >= 0 && idx + 1 < control.Parent.Controls.Count)
+                            {
+                                var next = control.Parent.Controls[idx + 1];
+                                if (next is not null && !next.IsDisposed && next.IsHandleCreated)
+                                {
+                                    return (HWND)next.Handle;
+                                }
+                            }
+                        }
+                        return HWND.Null;
+
+                    case GET_WINDOW_CMD.GW_HWNDPREV:
+                        if (control.Parent is not null && !control.Parent.IsDisposed)
+                        {
+                            int idx = control.Parent.Controls.IndexOf(control);
+                            if (idx > 0 && idx - 1 < control.Parent.Controls.Count)
+                            {
+                                var prev = control.Parent.Controls[idx - 1];
+                                if (prev is not null && !prev.IsDisposed && prev.IsHandleCreated)
+                                {
+                                    return (HWND)prev.Handle;
+                                }
+                            }
+                        }
+                        return HWND.Null;
+
+                    default:
+                        return HWND.Null;
+                }
+            }
+            catch
+            {
+            }
+
+            return HWND.Null;
+        }
+
+        internal static nint GetWindow(nint hWnd, GET_WINDOW_CMD uCmd) => GetWindow((HWND)hWnd, uCmd).Value;
+
+        internal static BOOL IsChild(HWND hWndParent, HWND hWnd)
+        {
+            if (hWndParent.IsNull || hWnd.IsNull || hWnd.Value == hWndParent.Value)
+            {
+                return (BOOL)false;
+            }
+
+            try
+            {
+                global::System.Windows.Forms.Control? c =
+                    global::System.Windows.Forms.Control.FromHandle((nint)hWnd.Value);
+                int depth = 0;
+                while (c is not null && !c.IsDisposed && depth < 50)
+                {
+                    depth++;
+                    c = c.Parent;
+                    if (c is not null && c.IsHandleCreated && c.Handle == (nint)hWndParent.Value)
+                    {
+                        return (BOOL)true;
+                    }
+                }
+            }
+            catch
+            {
+            }
+
+            return (BOOL)false;
+        }
+
+        internal static bool IsChild(nint hWndParent, nint hWnd) => (bool)IsChild((HWND)hWndParent, (HWND)hWnd);
         internal static uint GetCurrentThreadId() => 1u;
         internal static uint GetThreadLocale() => 0x0409u;
         internal static unsafe uint GetWindowThreadProcessId(HWND hWnd, uint* lpdwProcessId = null) => 1;
@@ -69,8 +260,81 @@ namespace Windows.Win32
                 lpPoints[i].Y += dy;
             }
 
-            return 0;
+            return unchecked((int)(((uint)(ushort)dy << 16) | (uint)(ushort)dx));
         }
+
+        internal static unsafe int MapWindowPoints(nint hWndFrom, nint hWndTo, Point* lpPoints, uint cPoints)
+            => MapWindowPoints((HWND)hWndFrom, (HWND)hWndTo, lpPoints, cPoints);
+
+        internal static unsafe int MapWindowPoints(HWND hWndFrom, HWND hWndTo, ref Point lpPoint)
+        {
+            fixed (Point* p = &lpPoint)
+            {
+                return MapWindowPoints(hWndFrom, hWndTo, p, 1);
+            }
+        }
+
+        internal static unsafe int MapWindowPoints(nint hWndFrom, nint hWndTo, ref Point lpPoint)
+            => MapWindowPoints((HWND)hWndFrom, (HWND)hWndTo, ref lpPoint);
+
+        internal static unsafe int MapWindowPoints(HWND hWndFrom, HWND hWndTo, ref RECT lpRect)
+        {
+            fixed (RECT* pRect = &lpRect)
+            {
+                return MapWindowPoints(hWndFrom, hWndTo, (Point*)pRect, 2);
+            }
+        }
+
+        internal static unsafe int MapWindowPoints(nint hWndFrom, nint hWndTo, ref RECT lpRect)
+            => MapWindowPoints((HWND)hWndFrom, (HWND)hWndTo, ref lpRect);
+
+        internal static BOOL ClientToScreen(HWND hWnd, ref Point lpPoint)
+        {
+            Point origin = WasmScreenMapping.ClientOrigin(hWnd);
+            lpPoint.X += origin.X;
+            lpPoint.Y += origin.Y;
+            return (BOOL)true;
+        }
+
+        internal static bool ClientToScreen(nint hWnd, ref Point lpPoint) => (bool)ClientToScreen((HWND)hWnd, ref lpPoint);
+
+        internal static unsafe BOOL ClientToScreen(HWND hWnd, Point* lpPoint)
+        {
+            if (lpPoint == null)
+            {
+                return (BOOL)false;
+            }
+            Point origin = WasmScreenMapping.ClientOrigin(hWnd);
+            lpPoint->X += origin.X;
+            lpPoint->Y += origin.Y;
+            return (BOOL)true;
+        }
+
+        internal static unsafe bool ClientToScreen(nint hWnd, Point* lpPoint) => (bool)ClientToScreen((HWND)hWnd, lpPoint);
+
+        internal static BOOL ScreenToClient(HWND hWnd, ref Point lpPoint)
+        {
+            Point origin = WasmScreenMapping.ClientOrigin(hWnd);
+            lpPoint.X -= origin.X;
+            lpPoint.Y -= origin.Y;
+            return (BOOL)true;
+        }
+
+        internal static bool ScreenToClient(nint hWnd, ref Point lpPoint) => (bool)ScreenToClient((HWND)hWnd, ref lpPoint);
+
+        internal static unsafe BOOL ScreenToClient(HWND hWnd, Point* lpPoint)
+        {
+            if (lpPoint == null)
+            {
+                return (BOOL)false;
+            }
+            Point origin = WasmScreenMapping.ClientOrigin(hWnd);
+            lpPoint->X -= origin.X;
+            lpPoint->Y -= origin.Y;
+            return (BOOL)true;
+        }
+
+        internal static unsafe bool ScreenToClient(nint hWnd, Point* lpPoint) => (bool)ScreenToClient((HWND)hWnd, lpPoint);
 
         internal static HDC GetDC(HWND hWnd) => (HDC)(nint)1;
         internal static HDC GetDCEx(HWND hWnd, HRGN hrgnClip, GET_DCX_FLAGS flags) => (HDC)(nint)1;
@@ -421,6 +685,66 @@ namespace Windows.Win32
         private sealed class ComboSelection { public int Index = -1; }
         private static readonly global::System.Runtime.CompilerServices.ConditionalWeakTable<global::System.Windows.Forms.Control, ComboSelection> s_comboSelection = new();
         private static readonly object s_comboSelectionLock = new();
+        // No native combo box exists headless, so CB_SHOWDROPDOWN opens
+        // nothing and CB_GETDROPPEDSTATE fell through to default (0):
+        // DroppedDown read back false even right after being set true.
+        // The mirror restores desktop parity (set state reads back until
+        // closed); keyed by control so entries die with the control.
+        private sealed class ComboDropped { public bool Open; }
+        private static readonly global::System.Runtime.CompilerServices.ConditionalWeakTable<global::System.Windows.Forms.Control, ComboDropped> s_comboDropped = new();
+        private static readonly object s_comboDroppedLock = new();
+        // No native list box exists headless, so the framework's
+        // LB_GETCURSEL / LB_SETCURSEL / LB_SETSEL / LB_GETSEL / LB_GETSELCOUNT /
+        // LB_GETSELITEMS / LB_RESETCONTENT / LB_GETTEXT / LB_GETTEXTLEN /
+        // LB_INSERTSTRING / LB_DELETESTRING traffic is answered from managed
+        // state. Desktop returns LB_ERR (-1) when nothing is selected; the old
+        // fall-through returned 0, which made SelectedIndex lie (0) on
+        // handle-created but unselected boxes: SelectedItems.Count read 1 while
+        // the managed ItemArray held zero Selected bits, and the indexer threw
+        // (IndexOutOfRangeException) out of Control.OnHandleDestroyed's text
+        // stash on every destroy. Keyed by control (not HWND) so entries die
+        // with the control; selection set traffic (LB_SETCURSEL/LB_SETSEL),
+        // Clear (LB_RESETCONTENT) and handle-recreate restore (which re-sends
+        // the same selection traffic) keep the mirror in sync; insert/delete
+        // shift tracked indices so they keep pointing at the same items.
+        // Text answers come live from the managed Items via GetItemText, so
+        // they never go stale.
+        private sealed class ListBoxSelection
+        {
+            public int Cursel = -1;
+            public readonly global::System.Collections.Generic.HashSet<int> Selected = new();
+        }
+
+        private static readonly global::System.Runtime.CompilerServices.ConditionalWeakTable<global::System.Windows.Forms.Control, ListBoxSelection> s_listBoxSelection = new();
+        private static readonly object s_listBoxSelectionLock = new();
+
+        private static void ShiftListBoxSelection(ListBoxSelection state, int from, int delta)
+        {
+            if (state.Cursel >= from)
+            {
+                state.Cursel += delta;
+            }
+
+            if (state.Selected.Count == 0)
+            {
+                return;
+            }
+
+            global::System.Collections.Generic.List<int> moved = new(state.Selected.Count);
+            foreach (int i in state.Selected)
+            {
+                moved.Add(i >= from ? i + delta : i);
+            }
+
+            state.Selected.Clear();
+            foreach (int i in moved)
+            {
+                if (i >= 0)
+                {
+                    state.Selected.Add(i);
+                }
+            }
+        }
         // No native edit control exists headless, so the framework's
         // EM_SETSEL / EM_GETSEL / EM_REPLACESEL traffic is answered
         // from managed state. Without this every handle-created
@@ -463,6 +787,171 @@ namespace Windows.Win32
         }
         private static readonly global::System.Runtime.CompilerServices.ConditionalWeakTable<global::System.Windows.Forms.Control, ListViewSelection> s_listViewSelection = new();
         private static readonly object s_listViewSelectionLock = new();
+
+        // No native header control exists headless, so LVM_GETHEADER answers
+        // a stable per-ListView fake handle and HDM_GETITEMCOUNT answers the
+        // managed column count. This keeps the ColumnHeader.Width read path
+        // live: the upstream getter takes the native branch only when the
+        // header is non-null and the index is below the native count.
+        // Audited GETHEADER consumers: Width getter (desired path);
+        // AnnounceColumnHeader (unreachable: UiaClientsAreListening is false
+        // headless, plus the IsAccessibilityObjectCreated guard);
+        // InvalidateColumnHeaders (stub answers TRUE, harmless);
+        // dark-mode SetWindowTheme (stub S_OK); GetListHeaderFont
+        // (owner-draw only; WM_GETFONT still falls through to zero, as
+        // before, so no behavior change there).
+        private sealed class ListViewColumnState
+        {
+            public List<int> Widths = new();
+            public int FakeHeader;
+        }
+        private static readonly global::System.Runtime.CompilerServices.ConditionalWeakTable<global::System.Windows.Forms.Control, ListViewColumnState> s_listViewColumns = new();
+        private static readonly Dictionary<int, WeakReference<global::System.Windows.Forms.ListView>> s_headerLists = new();
+        private static readonly object s_headerListsLock = new();
+        private static int s_nextHeaderId = 0x10000;
+        // Headless approximation of native cell padding applied after a
+        // measured autosize (desktop adds image/padding around text).
+        private const int ListViewColumnPad = 12;
+
+        private static ListViewColumnState GetColumnState(global::System.Windows.Forms.ListView list)
+        {
+            ListViewColumnState state = s_listViewColumns.GetOrCreateValue(list);
+            int count;
+            try { count = list.Columns.Count; }
+            catch { count = 0; }
+            if (state.Widths.Count != count)
+            {
+                // Insert/remove changes the count; preserve surviving
+                // entries by index, seed new slots from managed widths.
+                var next = new List<int>(count);
+                for (int i = 0; i < count; i++)
+                {
+                    int carried = i < state.Widths.Count ? state.Widths[i] : -1;
+                    if (carried < 0)
+                    {
+                        try { carried = list.Columns[i].WidthInternal; }
+                        catch { carried = 60; }
+                    }
+                    next.Add(carried);
+                }
+                state.Widths = next;
+            }
+            if (state.FakeHeader == 0)
+            {
+                state.FakeHeader = Interlocked.Increment(ref s_nextHeaderId);
+                lock (s_headerListsLock)
+                    s_headerLists[state.FakeHeader] = new WeakReference<global::System.Windows.Forms.ListView>(list);
+            }
+            return state;
+        }
+
+        private static HashSet<int> RemapIndexSetById(HashSet<int> set, List<int> oldOrder, Dictionary<int, int> newIndex)
+        {
+            HashSet<int> next = new();
+            foreach (int i in set)
+            {
+                if (i >= 0 && i < oldOrder.Count && newIndex.TryGetValue(oldOrder[i], out int mapped))
+                    next.Add(mapped);
+            }
+            return next;
+        }
+
+        // Documented headless row geometry shared by hit testing and item
+        // rects: row = Font.Height + 2, Details header = Font.Height + 8
+        // when headers show. Matches the regression tests' formulas.
+        private static bool ListRowMetrics(global::System.Windows.Forms.ListView list, out int rowH, out int top)
+        {
+            rowH = 0;
+            top = 0;
+            try
+            {
+                rowH = Math.Max(1, list.Font.Height + 2);
+                if (list.View == global::System.Windows.Forms.View.Details
+                    && list.HeaderStyle != global::System.Windows.Forms.ColumnHeaderStyle.None)
+                    top = list.Font.Height + 8;
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static int HitTestListRow(global::System.Windows.Forms.ListView list, int x, int y, bool subItems, out int sub, out uint flags)
+        {
+            // LVHT_* values from commctrl.h; only NOWHERE / ONITEMLABEL used.
+            const uint LVHT_NOWHERE = 1;
+            const uint LVHT_ONITEMLABEL = 4;
+            sub = 0;
+            flags = LVHT_NOWHERE;
+            int count;
+            try { count = list.Items.Count; }
+            catch { return -1; }
+            if (count <= 0)
+                return -1;
+            if (!ListRowMetrics(list, out int rowH, out int top))
+                return -1;
+            if (x < 0)
+                return -1;
+            int row = (y - top) / rowH;
+            if (row < 0 || row >= count)
+                return -1;
+            if (subItems && list.View == global::System.Windows.Forms.View.Details)
+            {
+                try
+                {
+                    var widths = GetColumnState(list).Widths;
+                    sub = Math.Max(0, widths.Count - 1);
+                    int acc = 0;
+                    for (int i = 0; i < widths.Count; i++)
+                    {
+                        int w = Math.Max(0, widths[i]);
+                        if (x >= acc && x < acc + w) { sub = i; break; }
+                        acc += w;
+                    }
+                }
+                catch { sub = 0; }
+            }
+            flags = LVHT_ONITEMLABEL;
+            return row;
+        }
+
+        private static int MeasureListColumn(global::System.Windows.Forms.ListView list, int index, bool headerOnly)
+        {
+            int best = 0;
+            try
+            {
+                using var g = list.CreateGraphics();
+                var font = list.Font;
+                if (headerOnly)
+                {
+                    string? text = list.Columns.Count > index ? list.Columns[index].Text : null;
+                    if (text is not null)
+                        best = (int)Math.Ceiling(g.MeasureString(text, font).Width);
+                }
+                else
+                {
+                    for (int i = 0; i < list.Items.Count; i++)
+                    {
+                        string? text;
+                        try
+                        {
+                            var item = list.Items[i];
+                            text = index == 0 ? item.Text
+                                : item.SubItems.Count > index ? item.SubItems[index].Text : null;
+                        }
+                        catch { text = null; }
+                        if (text is null)
+                            continue;
+                        best = Math.Max(best, (int)Math.Ceiling(g.MeasureString(text, font).Width));
+                    }
+                }
+            }
+            catch
+            {
+            }
+            return best;
+        }
 
         private static void ApplyListViewState(ListViewSelection selection, int index, uint state, uint mask)
         {
@@ -601,7 +1090,8 @@ namespace Windows.Win32
             {
                 return (LRESULT)1;
             }
-            if (Msg == PInvoke.CB_GETCURSEL || Msg == PInvoke.CB_SETCURSEL || Msg == PInvoke.CB_RESETCONTENT)
+            if (Msg == PInvoke.CB_GETCURSEL || Msg == PInvoke.CB_SETCURSEL || Msg == PInvoke.CB_RESETCONTENT
+                || Msg == PInvoke.CB_SHOWDROPDOWN || Msg == PInvoke.CB_GETDROPPEDSTATE)
             {
                 var combo = global::System.Windows.Forms.Control.FromHandle((nint)hWnd.Value) as global::System.Windows.Forms.ComboBox;
                 if (combo is null)
@@ -611,6 +1101,20 @@ namespace Windows.Win32
                     return default;
                 }
 
+                if (Msg == PInvoke.CB_SHOWDROPDOWN || Msg == PInvoke.CB_GETDROPPEDSTATE)
+                {
+                    lock (s_comboDroppedLock)
+                    {
+                        if (Msg == PInvoke.CB_SHOWDROPDOWN)
+                        {
+                            s_comboDropped.GetOrCreateValue(combo).Open = (int)wParam.Value != 0;
+                            return default;
+                        }
+                        if (s_comboDropped.TryGetValue(combo, out ComboDropped? dropped) && dropped.Open)
+                            return (LRESULT)1;
+                        return default;
+                    }
+                }
                 lock (s_comboSelectionLock)
                 {
                     if (Msg == PInvoke.CB_RESETCONTENT)
@@ -633,6 +1137,195 @@ namespace Windows.Win32
 
                     // Nothing was ever selected: CB_ERR, as on desktop.
                     return (LRESULT)PInvoke.CB_ERR;
+                }
+            }
+            if (Msg == PInvoke.LB_GETCURSEL || Msg == PInvoke.LB_SETCURSEL || Msg == PInvoke.LB_SETSEL
+                || Msg == PInvoke.LB_GETSEL || Msg == PInvoke.LB_GETSELCOUNT || Msg == PInvoke.LB_GETSELITEMS
+                || Msg == PInvoke.LB_RESETCONTENT || Msg == PInvoke.LB_GETTEXT || Msg == PInvoke.LB_GETTEXTLEN
+                || Msg == PInvoke.LB_INSERTSTRING || Msg == PInvoke.LB_DELETESTRING)
+            {
+                var listBox = global::System.Windows.Forms.Control.FromHandle((nint)hWnd.Value) as global::System.Windows.Forms.ListBox;
+                if (listBox is null)
+                {
+                    // No live control behind the handle: the message reaches
+                    // no window, exactly as SendMessage to a destroyed HWND.
+                    return default;
+                }
+
+                lock (s_listBoxSelectionLock)
+                {
+                    if (Msg == PInvoke.LB_RESETCONTENT)
+                    {
+                        s_listBoxSelection.Remove(listBox);
+                        return default;
+                    }
+
+                    if (Msg == PInvoke.LB_SETCURSEL)
+                    {
+                        int selected = (int)wParam.Value;
+                        ListBoxSelection cursel = s_listBoxSelection.GetOrCreateValue(listBox);
+                        cursel.Cursel = selected;
+                        cursel.Selected.Clear();
+                        if (selected >= 0)
+                        {
+                            cursel.Selected.Add(selected);
+                        }
+
+                        return (LRESULT)selected;
+                    }
+
+                    if (Msg == PInvoke.LB_SETSEL)
+                    {
+                        bool select = (int)wParam.Value != 0;
+                        int index = (int)lParam.Value;
+                        ListBoxSelection set = s_listBoxSelection.GetOrCreateValue(listBox);
+                        if (index < 0)
+                        {
+                            set.Selected.Clear();
+                            if (select)
+                            {
+                                for (int i = 0; i < listBox.Items.Count; i++)
+                                {
+                                    set.Selected.Add(i);
+                                }
+                            }
+                        }
+                        else if (select)
+                        {
+                            set.Selected.Add(index);
+                        }
+                        else
+                        {
+                            set.Selected.Remove(index);
+                        }
+
+                        return default;
+                    }
+
+                    if (Msg == PInvoke.LB_INSERTSTRING)
+                    {
+                        int index = (int)wParam.Value;
+                        if (s_listBoxSelection.TryGetValue(listBox, out ListBoxSelection? ins) && ins.Selected.Count != 0)
+                        {
+                            ShiftListBoxSelection(ins, index, +1);
+                        }
+
+                        return (LRESULT)index;
+                    }
+
+                    if (Msg == PInvoke.LB_DELETESTRING)
+                    {
+                        int index = (int)wParam.Value;
+                        if (s_listBoxSelection.TryGetValue(listBox, out ListBoxSelection? del))
+                        {
+                            if (del.Cursel == index)
+                            {
+                                del.Cursel = PInvoke.LB_ERR;
+                            }
+
+                            del.Selected.Remove(index);
+                            ShiftListBoxSelection(del, index + 1, -1);
+                        }
+
+                        return (LRESULT)listBox.Items.Count;
+                    }
+
+                    if (Msg == PInvoke.LB_GETCURSEL)
+                    {
+                        if (s_listBoxSelection.TryGetValue(listBox, out ListBoxSelection? cur) && cur.Cursel >= 0)
+                        {
+                            return (LRESULT)cur.Cursel;
+                        }
+
+                        // Nothing was ever selected: LB_ERR, as on desktop.
+                        return (LRESULT)PInvoke.LB_ERR;
+                    }
+
+                    if (Msg == PInvoke.LB_GETSEL)
+                    {
+                        int index = (int)wParam.Value;
+                        if (s_listBoxSelection.TryGetValue(listBox, out ListBoxSelection? sel) && sel.Selected.Contains(index))
+                        {
+                            return (LRESULT)1;
+                        }
+
+                        return default;
+                    }
+
+                    if (Msg == PInvoke.LB_GETSELCOUNT)
+                    {
+                        if (s_listBoxSelection.TryGetValue(listBox, out ListBoxSelection? count))
+                        {
+                            return (LRESULT)count.Selected.Count;
+                        }
+
+                        return default;
+                    }
+
+                    if (Msg == PInvoke.LB_GETSELITEMS)
+                    {
+                        int capacity = (int)wParam.Value;
+                        if (lParam.Value == 0 || capacity <= 0)
+                        {
+                            return (LRESULT)PInvoke.LB_ERR;
+                        }
+
+                        if (!s_listBoxSelection.TryGetValue(listBox, out ListBoxSelection? items) || items.Selected.Count == 0)
+                        {
+                            return default;
+                        }
+
+                        global::System.Collections.Generic.List<int> ordered = new(items.Selected);
+                        ordered.Sort();
+                        int written = 0;
+                        unsafe
+                        {
+                            int* dest = (int*)lParam.Value;
+                            foreach (int i in ordered)
+                            {
+                                if (written >= capacity)
+                                {
+                                    break;
+                                }
+
+                                dest[written++] = i;
+                            }
+                        }
+
+                        return (LRESULT)written;
+                    }
+
+                    // LB_GETTEXTLEN / LB_GETTEXT answer live from the managed
+                    // Items, so release traffic can never go stale.
+                    int textIndex = (int)wParam.Value;
+                    if (textIndex < 0 || textIndex >= listBox.Items.Count)
+                    {
+                        return (LRESULT)PInvoke.LB_ERR;
+                    }
+
+                    string text = listBox.GetItemText(listBox.Items[textIndex]) ?? string.Empty;
+                    if (Msg == PInvoke.LB_GETTEXTLEN)
+                    {
+                        return (LRESULT)text.Length;
+                    }
+
+                    unsafe
+                    {
+                        char* dest = (char*)lParam.Value;
+                        if (dest == null)
+                        {
+                            return (LRESULT)PInvoke.LB_ERR;
+                        }
+
+                        for (int i = 0; i < text.Length; i++)
+                        {
+                            dest[i] = text[i];
+                        }
+
+                        dest[text.Length] = '\0';
+                    }
+
+                    return (LRESULT)text.Length;
                 }
             }
             if (Msg == PInvoke.TTM_SETDELAYTIME || Msg == PInvoke.TTM_GETDELAYTIME)
@@ -714,7 +1407,11 @@ namespace Windows.Win32
                 || Msg == PInvoke.LVM_GETSELECTEDCOUNT || Msg == PInvoke.LVM_GETNEXTITEM
                 || Msg == PInvoke.LVM_SETSELECTIONMARK || Msg == PInvoke.LVM_FINDITEMW
                 || Msg == PInvoke.LVM_GETITEMW || Msg == PInvoke.LVM_INSERTITEMW
-                || Msg == PInvoke.LVM_DELETEITEM || Msg == PInvoke.LVM_DELETEALLITEMS)
+                || Msg == PInvoke.LVM_DELETEITEM || Msg == PInvoke.LVM_DELETEALLITEMS
+                || Msg == PInvoke.LVM_SETCOLUMNW || Msg == PInvoke.LVM_SETCOLUMNWIDTH
+                || Msg == PInvoke.LVM_GETCOLUMNWIDTH || Msg == PInvoke.LVM_GETHEADER
+                || Msg == PInvoke.LVM_SUBITEMHITTEST || Msg == PInvoke.LVM_HITTEST
+                || Msg == PInvoke.LVM_SORTITEMS || Msg == PInvoke.LVM_GETITEMRECT)
             {
                 if (global::System.Windows.Forms.Control.FromHandle((nint)hWnd.Value) is global::System.Windows.Forms.ListView list)
                 {
@@ -841,13 +1538,281 @@ namespace Windows.Win32
                             return default;
                         }
 
+                        if (Msg == PInvoke.LVM_SUBITEMHITTEST || Msg == PInvoke.LVM_HITTEST)
+                        {
+                            // Managed hit testing for the suggestion/commit
+                            // path: the native control has no rows headless,
+                            // so the fallthrough default (0) made HitTest
+                            // return Items[0] for every click — and threw
+                            // ArgumentOutOfRange on empty lists. Row geometry
+                            // is a documented headless approximation shared
+                            // with the regression tests: row = Font.Height
+                            // + 2, Details header = Font.Height + 8.
+                            try
+                            {
+                                unsafe
+                                {
+                                    if ((void*)lParam.Value != null)
+                                    {
+                                        LVHITTESTINFO* p = (LVHITTESTINFO*)lParam.Value;
+                                        LVHITTESTINFO hi = *p;
+                                        int hit = HitTestListRow(list, hi.pt.X, hi.pt.Y,
+                                            Msg == PInvoke.LVM_SUBITEMHITTEST,
+                                            out int sub, out uint flags);
+                                        hi.iItem = hit;
+                                        hi.iSubItem = sub;
+                                        hi.flags = (LVHITTESTINFO_FLAGS)flags;
+                                        *p = hi;
+                                        return (LRESULT)hit;
+                                    }
+                                }
+                            }
+                            catch
+                            {
+                            }
+                            return default;
+                        }
+
+                        if (Msg == PInvoke.LVM_SORTITEMS)
+                        {
+                            // The native control rearranges rows headless it
+                            // cannot, so the fallthrough left Sort() a silent
+                            // no-op. Emulate with the managed sorter: display
+                            // order lives in the Order mirror (which backs
+                            // Items[i] on created handles), so sorting it is
+                            // sufficient. Selection state is display-indexed,
+                            // hence remapped by id to follow the items, as on
+                            // desktop. The function pointer in lParam is the
+                            // managed CompareFunc thunk; invoking it in wasm
+                            // is unsupported, so the public ListViewItemSorter
+                            // (same comparison, same process) is used instead.
+                            try
+                            {
+                                var sorter = list.ListViewItemSorter;
+                                if (sorter is not null && selection.Order.Count > 1)
+                                {
+                                    var items = new List<global::System.Windows.Forms.ListViewItem>(selection.Order.Count);
+                                    for (int i = 0; i < selection.Order.Count; i++)
+                                    {
+                                        try { items.Add(list.Items[i]); }
+                                        catch { break; }
+                                    }
+                                    if (items.Count == selection.Order.Count)
+                                    {
+                                        items.Sort((a, b) => sorter.Compare(a, b));
+                                        var newOrder = new List<int>(items.Count);
+                                        foreach (var item in items)
+                                            newOrder.Add(item._id);
+                                        var newIndex = new Dictionary<int, int>(newOrder.Count);
+                                        for (int i = 0; i < newOrder.Count; i++)
+                                            newIndex[newOrder[i]] = i;
+                                        selection.Selected = RemapIndexSetById(selection.Selected, selection.Order, newIndex);
+                                        selection.Focused = RemapIndexSetById(selection.Focused, selection.Order, newIndex);
+                                        if (selection.Mark >= 0 && selection.Mark < selection.Order.Count
+                                            && newIndex.TryGetValue(selection.Order[selection.Mark], out int newMark))
+                                            selection.Mark = newMark;
+                                        else if (selection.Mark >= selection.Order.Count)
+                                            selection.Mark = -1;
+                                        selection.Order.Clear();
+                                        selection.Order.AddRange(newOrder);
+                                    }
+                                }
+                                return (LRESULT)1;
+                            }
+                            catch
+                            {
+                            }
+                            return default;
+                        }
+
+                        if (Msg == PInvoke.LVM_GETITEMRECT)
+                        {
+                            // Desktop fills the row rect and returns nonzero; the
+                            // fallthrough default (0) made the upstream wrapper throw
+                            // ArgumentOutOfRangeException for every valid index.
+                            // Only LVIR_BOUNDS (0) and LVIR_SELECTBOUNDS (3) are
+                            // answered, Details view only; icon/label portions
+                            // keep the old behavior. Width is the managed
+                            // column total, matching the autosize mirror.
+                            try
+                            {
+                                unsafe
+                                {
+                                    RECT* p = (RECT*)lParam.Value;
+                                    if (p is null)
+                                        return default;
+                                    int portion = p->left;
+                                    if ((portion != 0 && portion != 3)
+                                        || list.View != global::System.Windows.Forms.View.Details)
+                                        return default;
+                                    int row = (int)wParam.Value;
+                                    int count;
+                                    try { count = list.Items.Count; }
+                                    catch { return default; }
+                                    if (row < 0 || row >= count)
+                                        return default;
+                                    if (!ListRowMetrics(list, out int rowH, out int top))
+                                        return default;
+                                    int width = 0;
+                                    try
+                                    {
+                                        foreach (int w in GetColumnState(list).Widths)
+                                            width += Math.Max(0, w);
+                                    }
+                                    catch { }
+                                    p->left = 0;
+                                    p->top = top + row * rowH;
+                                    p->right = width;
+                                    p->bottom = top + (row + 1) * rowH;
+                                    return (LRESULT)1;
+                                }
+                            }
+                            catch
+                            {
+                            }
+                            return default;
+                        }
+
+                        if (Msg == PInvoke.LVM_GETHEADER)
+                        {
+                            return (LRESULT)GetColumnState(list).FakeHeader;
+                        }
+
+                        if (Msg == PInvoke.LVM_GETCOLUMNWIDTH)
+                        {
+                            ListViewColumnState columns = GetColumnState(list);
+                            int column = (int)wParam.Value;
+                            if (column >= 0 && column < columns.Widths.Count)
+                                return (LRESULT)columns.Widths[column];
+                            return default;
+                        }
+
+                        if (Msg == PInvoke.LVM_SETCOLUMNWIDTH)
+                        {
+                            // Desktop LVM_SETCOLUMNWIDTH returns void; the
+                            // managed column already holds explicit widths.
+                            // Autosize modes are measured from managed text
+                            // so later GETCOLUMNWIDTH reads fit content.
+                            ListViewColumnState columns = GetColumnState(list);
+                            int column = (int)wParam.Value;
+                            int width = unchecked((int)lParam.Value);
+                            if (column >= 0 && column < columns.Widths.Count)
+                            {
+                                if (width == PInvoke.LVSCW_AUTOSIZE)
+                                    columns.Widths[column] = MeasureListColumn(list, column, headerOnly: false) + ListViewColumnPad;
+                                else if (width == PInvoke.LVSCW_AUTOSIZE_USEHEADER)
+                                    columns.Widths[column] = MeasureListColumn(list, column, headerOnly: true) + ListViewColumnPad;
+                                else if (width >= 0)
+                                    columns.Widths[column] = width;
+                            }
+                            return default;
+                        }
+
+                        if (Msg == PInvoke.LVM_SETCOLUMNW)
+                        {
+                            // No native header control exists headless; the
+                            // managed ColumnHeader already holds the new
+                            // text/image/format (setters assign before the
+                            // native call), so desktop-TRUE success needs no
+                            // mirror. Answer FALSE for an unknown index, as
+                            // LVM_SETCOLUMNW does, preserving the throw path
+                            // for genuinely bad callers.
+                            int index = (int)wParam.Value;
+                            int count;
+                            try { count = list.Columns.Count; }
+                            catch { count = 0; }
+                            if (index >= 0 && index < count)
+                                return (LRESULT)1;
+                            return default;
+                        }
+
                         if (Msg == PInvoke.LVM_INSERTITEMW)
                         {
+                            // Handle recreation re-inserts every item through this
+                            // path while the native control starts empty; the
+                            // mirror is keyed by control and survives, so a
+                            // re-inserted id that is already mirrored (with a
+                            // full mirror) starts a fresh realization pass.
+                            // Rebuild instead of appending duplicates, which
+                            // corrupt display order reads and block sorting
+                            // (Order.Count must match Items.Count). Gated on
+                            // fullness so a pathological same-instance
+                            // double-add (Order shorter than Items) still
+                            // appends instead of wiping.
+                            int realizedCount;
+                            try { realizedCount = list.Items.Count; }
+                            catch { realizedCount = -1; }
+                            int insertId;
+                            try { insertId = PARAM.ToInt(ReadLvItem(lParam).lParam); }
+                            catch { insertId = -1; }
+                            if (insertId >= 0 && realizedCount >= 0
+                                && selection.Order.Count >= realizedCount
+                                && selection.Order.Contains(insertId))
+                            {
+                                selection.Order.Clear();
+                            }
                             LVITEMW lv = ReadLvItem(lParam);
                             int id;
                             try { id = PARAM.ToInt(lv.lParam); }
                             catch { id = -1; }
                             int at = lv.iItem;
+                            global::System.Windows.Forms.SortOrder style = global::System.Windows.Forms.SortOrder.None;
+                            global::System.Collections.IComparer? activeSorter = null;
+                            bool virtualMode = false;
+                            try
+                            {
+                                style = list.Sorting;
+                                activeSorter = list.ListViewItemSorter;
+                                virtualMode = list.VirtualMode;
+                            }
+                            catch { }
+                            if (activeSorter is null && !virtualMode && style != global::System.Windows.Forms.SortOrder.None)
+                            {
+                                // LVS_SORT* style with no custom sorter: desktop inserts
+                                // each item at its sorted position instead of appending.
+                                // Comparison matches the sibling IconComparer (CurrentCulture,
+                                // case-sensitive): a documented headless choice.
+                                try
+                                {
+                                    var texts = new Dictionary<int, string>();
+                                    for (int i = 0; i < selection.Order.Count; i++)
+                                    {
+                                        try
+                                        {
+                                            var candidate = list.Items[i];
+                                            texts[candidate._id] = candidate.Text ?? "";
+                                        }
+                                        catch { break; }
+                                    }
+                                    string? incoming = null;
+                                    try
+                                    {
+                                        unsafe
+                                        {
+                                            char* text = lv.pszText;
+                                            if (text is not null && (nint)text != -1)
+                                                incoming = new string(text);
+                                            else if (text is null)
+                                                incoming = "";
+                                        }
+                                    }
+                                    catch { incoming = null; }
+                                    if (incoming is not null)
+                                    {
+                                        int pos = 0;
+                                        while (pos < selection.Order.Count)
+                                        {
+                                            string current = texts.TryGetValue(selection.Order[pos], out string? c) ? c : "";
+                                            int cmp = string.Compare(incoming, current, StringComparison.CurrentCulture);
+                                            if (style == global::System.Windows.Forms.SortOrder.Ascending ? cmp < 0 : cmp > 0)
+                                                break;
+                                            pos++;
+                                        }
+                                        at = pos;
+                                    }
+                                }
+                                catch { }
+                            }
                             if (at < 0)
                                 at = 0;
                             if (at > selection.Order.Count)
@@ -884,6 +1849,42 @@ namespace Windows.Win32
                     }
                 }
             }
+            if (Msg == PInvoke.HDM_GETITEMCOUNT)
+            {
+                // Answered only for fake headers minted by LVM_GETHEADER
+                // above; real header handles keep the old fallthrough.
+                int key = unchecked((int)hWnd.Value);
+                lock (s_headerListsLock)
+                {
+                    if (s_headerLists.TryGetValue(key, out WeakReference<global::System.Windows.Forms.ListView>? weak)
+                        && weak is not null
+                        && weak.TryGetTarget(out global::System.Windows.Forms.ListView? owner))
+                    {
+                        try { return (LRESULT)owner.Columns.Count; }
+                        catch { }
+                    }
+                }
+                return default;
+            }
+            // No native RichEdit exists headless, so the framework's
+            // EM_GETTEXTLENGTHEX traffic falls through to zero. That zero
+            // is load-bearing: RichTextBox.TextLength sends this message
+            // unconditionally (no handle check), and Select() clamps by
+            // TextLength, so a zero length collapses every selection to
+            // (0,0) -- the caret never advances and typed chars replace
+            // the whole doc (gen19 typed "Hello World" showed a lone
+            // "d"). Answer from the same WindowText storage the text
+            // getters read; non-edits keep the old zero.
+            if (Msg == EM_GETTEXTLENGTHEX)
+            {
+                if (global::System.Windows.Forms.Control.FromHandle((nint)hWnd.Value) is global::System.Windows.Forms.TextBoxBase)
+                {
+                    return (LRESULT)WindowTextStorage.GetLength(hWnd);
+                }
+
+                return default;
+            }
+
             if (Msg == EM_SETSEL || Msg == EM_GETSEL || Msg == EM_REPLACESEL)
             {
                 if (global::System.Windows.Forms.Control.FromHandle((nint)hWnd.Value) is global::System.Windows.Forms.TextBoxBase edit)
@@ -892,7 +1893,19 @@ namespace Windows.Win32
                     {
                         EditSelection selection = s_editSelection.GetOrCreateValue(edit);
                         int textLength;
-                        try { textLength = Math.Max(0, edit.TextLength); }
+                        try
+                        {
+                            // RichTextBox.TextLength sends EM_GETTEXTLENGTHEX,
+                            // stubbed to 0 headless, so the mirror clamps every
+                            // rich selection to 0/0 (caret never advances and
+                            // typed chars would pile at offset 0). The window-
+                            // text storage both getters read is the same text,
+                            // so use its length for rich boxes; plain boxes
+                            // keep the virtual read (identical value there).
+                            textLength = Math.Max(0, edit is global::System.Windows.Forms.RichTextBox
+                                ? WindowTextStorage.GetLength(hWnd)
+                                : edit.TextLength);
+                        }
                         catch { textLength = 0; }
 
                         if (Msg == EM_SETSEL)
@@ -1010,7 +2023,29 @@ namespace Windows.Win32
         internal static BOOL GetWindowRect(HWND hWnd, out RECT lpRect)
         {
             var r = WindowBoundsStorage.Get(hWnd);
-            lpRect = new RECT(r.Left, r.Top, r.Right, r.Bottom);
+            // Win32 contract: screen coordinates. Storage holds the
+            // parent-relative bounds SetWindowPos receives, so translate
+            // by the parent client origin — the same origin
+            // MapWindowPoints/ClientToScreen subtract/add (see
+            // WasmScreenMapping). Top-level windows have no parent: their
+            // stored bounds already are screen coordinates. Without this,
+            // UpdateBounds() maps relative values as screen and writes
+            // back own-minus-parent (child set Left=4 on a form at 350
+            // reads back -346, so host clipping skips it and it never
+            // paints: the readback-exposed suite failures).
+            Point origin = Point.Empty;
+            try
+            {
+                HWND parent = GetParent(hWnd);
+                if (!parent.IsNull)
+                {
+                    origin = WasmScreenMapping.ClientOrigin(parent);
+                }
+            }
+            catch
+            {
+            }
+            lpRect = new RECT(r.Left + origin.X, r.Top + origin.Y, r.Right + origin.X, r.Bottom + origin.Y);
             return (BOOL)true;
         }
         internal static int GetWindowTextLength(HWND hWnd) => WindowTextStorage.GetLength(hWnd);

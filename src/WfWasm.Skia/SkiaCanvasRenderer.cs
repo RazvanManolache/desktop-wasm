@@ -115,7 +115,8 @@ public sealed class SkiaCanvasRenderer : ICanvasRenderer, IDisposable
 
     public void DrawTextAligned(
         string text, float x, float y, string fontCss, uint rgba,
-        TextHAlign hAlign, TextVAlign vAlign, int mnemonicIndex = -1)
+        TextHAlign hAlign, TextVAlign vAlign, int mnemonicIndex = -1,
+        float clipX = 0, float clipY = 0, float clipWidth = 0, float clipHeight = 0)
     {
         RequireOpen();
         ArgumentNullException.ThrowIfNull(text);
@@ -150,6 +151,12 @@ public sealed class SkiaCanvasRenderer : ICanvasRenderer, IDisposable
             };
         }
 
+        bool clip = clipWidth > 0f && clipHeight > 0f;
+        if (clip)
+        {
+            Canvas.Save();
+            Canvas.ClipRect(new SKRect(clipX, clipY, clipX + clipWidth, clipY + clipHeight));
+        }
         Canvas.DrawText(text, x, baseline, align, font, paint);
 
         if ((uint)mnemonicIndex < (uint)text.Length)
@@ -166,6 +173,7 @@ public sealed class SkiaCanvasRenderer : ICanvasRenderer, IDisposable
             };
             Canvas.DrawRect(start, baseline + 1, glyph, 1, paint);
         }
+        if (clip) Canvas.Restore();
     }
 
     public void DrawImage(byte[] rgba, int width, int height, float x, float y, float dw, float dh)

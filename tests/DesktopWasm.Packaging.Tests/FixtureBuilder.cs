@@ -73,6 +73,24 @@ internal static class FixtureBuilder
         type.Fields.Add(field);
     }
 
+    /// <summary>Mixed assembly entirely in memory: one WinForms control plus
+    /// one WPF visual, with a SystemEvents subscription both maps claim.</summary>
+    internal static AssemblyDefinition CreateMixedModule()
+    {
+        var name = new AssemblyNameDefinition("MixedApp", new Version(1, 0, 0, 0));
+        var assembly = AssemblyDefinition.CreateAssembly(name, "MixedApp", ModuleKind.Dll);
+        var module = assembly.MainModule;
+        module.AssemblyReferences.Add(Ref("System.Windows.Forms"));
+        module.AssemblyReferences.Add(Ref("PresentationFramework"));
+        module.AssemblyReferences.Add(Ref("Microsoft.Win32.SystemEvents"));
+        DefineWinFormsControl(module);
+        DefineWpfVisual(module);
+        var handler = TypeRef(module, "Microsoft.Win32.SystemEvents", "Microsoft.Win32", "UserPreferenceChangedEventHandler");
+        var control = module.Types.First(t => t.Name == "MixedForm");
+        control.Events.Add(new EventDefinition("PrefChanged", EventAttributes.None, handler));
+        return assembly;
+    }
+
     internal static string TempDir(string name)
     {
         var dir = Path.Combine(Path.GetTempPath(), "dw-packaging", name + "-" + Guid.NewGuid().ToString("N"));

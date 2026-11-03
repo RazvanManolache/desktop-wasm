@@ -8,11 +8,12 @@ param(
     [ValidateSet('', 'v4.8', 'v4.8.1')][string]$LegacyFramework = ''
 )
 $ErrorActionPreference = 'Stop'
-$repoRoot = Split-Path $PSScriptRoot -Parent
+$repoRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 if (!$SourceRoot) { $SourceRoot = Join-Path $repoRoot 'external-apps/benchmark-sources' }
 if (!$OutputRoot) { $OutputRoot = Join-Path $repoRoot '.artifacts/benchmark-apps' }
 if (!$EvidenceRoot) { $EvidenceRoot = Join-Path $repoRoot '.artifacts/benchmark-evidence' }
-$catalog = @(Get-Content -LiteralPath (Join-Path $repoRoot 'src/WfWasm.CanvasHost/DesktopBenchmarks.json') -Raw | ConvertFrom-Json)
+$catalog = Get-Content -LiteralPath (Join-Path $repoRoot 'src/WfWasm.CanvasHost/DesktopBenchmarks.json') -Raw | ConvertFrom-Json
+if ($catalog -isnot [array]) { $catalog = @($catalog) }
 foreach ($name in $Apps) {
     if (!($catalog | Where-Object { $_.slug -eq $name -or $_.sourceFolder -eq $name })) { throw "Unknown benchmark: $name" }
 }
@@ -92,6 +93,11 @@ foreach ($benchmark in $catalog) {
                         }
                         if (!$MsBuildPath) { throw 'Visual Studio MSBuild and the upstream .NET Framework targeting packs are required.' }
                         $legacyArguments = @()
+                        if ($benchmark.sourceFolder -eq 'openpdn') {
+                            $brandingOverlay = Join-Path $PSScriptRoot 'benchmark-overlays/openpdn.targets'
+                            $legacyArguments += "/p:CustomBeforeMicrosoftCSharpTargets=$brandingOverlay"
+                            if (!$LegacyFramework) { $legacyArguments += '/p:TargetFrameworkVersion=v4.8' }
+                        }
                         if ($LegacyFramework) {
                             $legacyArguments += "/p:TargetFrameworkVersion=$LegacyFramework", '/p:TargetFrameworkProfile='
                             if ($benchmark.sourceFolder -eq 'dockpanel') {
@@ -124,6 +130,15 @@ foreach ($benchmark in $catalog) {
             }
         }
         if (!(Test-Path -LiteralPath $entry)) { throw "Build/package did not provide the declared managed entry: $($benchmark.entryFile)" }
+        if ($benchmark.slug -eq 'benchmark-openpdn') {
+            $resgen = Join-Path ${env:ProgramFiles(x86)} 'Microsoft SDKs/Windows/v10.0A/bin/NETFX 4.8 Tools/ResGen.exe'
+            if (!(Test-Path -LiteralPath $resgen)) { throw 'The .NET Framework resource generator is required for OpenPDN strings.' }
+            & $resgen (Join-Path $source 'src/Strings/Strings.resx') (Join-Path $output 'PaintDotNet.Strings.3.resources') *>> $log
+            if ($LASTEXITCODE -ne 0) { throw 'OpenPDN string resource generation failed; see the build log.' }
+        }
+        if ($benchmark.slug -eq 'benchmark-linqpad5') {
+            & (Join-Path $PSScriptRoot 'extract-linqpad-dependencies.ps1') -AppFolder $output
+        }
         foreach ($required in @($benchmark.requiredFiles)) {
             if (!$required) { continue }
             if ($required -ne [IO.Path]::GetFileName($required) -or !(Test-Path -LiteralPath (Join-Path $output $required))) {
@@ -138,6 +153,7 @@ foreach ($benchmark in $catalog) {
         slug=$benchmark.slug; source=$benchmark.sourceUrl; revision=$benchmark.revision
         exitCode=$code; prepared=($code -eq 0); entryExists=(Test-Path -LiteralPath $entry)
         browserCompatibility='unverified'; legacyFrameworkOverride=$LegacyFramework; failure=$failure; log=$log
+        buildAdaptation=$(if ($benchmark.sourceFolder -eq 'openpdn') { 'Generated required upstream branding; pinned source unchanged' } else { $null })
     }
     $results[-1] | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $output 'preparation.json') -Encoding utf8
     $results | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $EvidenceRoot 'build-results.json') -Encoding utf8

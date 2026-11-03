@@ -17,17 +17,19 @@
 # Usage: ensure-windowsbase-full.ps1 [-IntermediateDir <obj/Debug/net9.0>] [-Optional]
 # -Optional honors an absent pristine input (warn + exit 0) instead of
 # throwing; strict (default) preserves the gate when the path is opted in.
+# The local configured build stays strict: targets/paint.net is the canonical
+# test-expected pristine root (see docs/migration/portability-diffs/DIFFS.md).
 param([string]$IntermediateDir = "obj/Debug/net9.0", [switch]$Optional)
 $ErrorActionPreference = 'Stop'
 $ws = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $IntermediateDir = $IntermediateDir.TrimEnd('\', '/', '"')
 if (![IO.Path]::IsPathRooted($IntermediateDir)) { $IntermediateDir = Join-Path (Get-Location) $IntermediateDir }
 
-$pristineDir = Join-Path $ws 'inputs/winforms/targets/paint.net'
+$pristineDir = Join-Path $ws 'targets/paint.net'
 $pristine = Join-Path $pristineDir 'WindowsBase.dll'
 if (!(Test-Path $pristine)) {
-    if ($Optional -or $env:DESKTOPWASM_STRICT_INPUTS -ne '1') {
-        Write-Host "WindowsBase optional input absent, skipping full-copy staging: $pristine"
+    if ($Optional) {
+        Write-Warning "WindowsBase optional input absent, skipping full-copy staging: $pristine"
         return
     }
     throw "pristine WindowsBase not found: $pristine"
@@ -56,10 +58,7 @@ $tool = Join-Path $ws 'src/WfWasm.Rewrite.Tool/bin/Debug/net9.0/WfWasm.Rewrite.T
 # AppTransform.StubbedCopy: the stub resolver searches the file's own
 # directory, and the file itself is a byte copy (never a link — the passes
 # overwrite it in place, which through a link would corrupt pristine).
-# Publication portability: scratch space under the system temp dir (was a
-# machine-specific drive). Same-volume hardlinks still win when the temp
-# dir shares the input volume; otherwise the script falls back to plain copy.
-$tmpDir = Join-Path ([IO.Path]::GetTempPath()) ('wasm-cache/tmp/stub-build-' + [Guid]::NewGuid().ToString('N'))
+$tmpDir = Join-Path 'E:/tmp/wasm-cache/tmp' ('stub-build-' + [Guid]::NewGuid().ToString('N'))
 try {
     New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null
     foreach ($sib in Get-ChildItem (Join-Path $pristineDir '*.dll')) {

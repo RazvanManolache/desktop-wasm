@@ -10,11 +10,15 @@
          neutralization tests). The scan cannot model user32 signatures by
          design, so the warning carries no signal for this project. -->
     <NoWarn>$(NoWarn);WASM0001</NoWarn>
+    <!-- dw-runtime bridge region: block transitive project references so the
+         fork engine payload never enters the host global scope (see the
+         reference list below). -->
+    <DisableTransitiveProjectReferences>true</DisableTransitiveProjectReferences>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="9.0.20" />
-    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="9.0.20" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="9.0.21" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="9.0.21" PrivateAssets="all" />
     <!-- Integrated application renderer: pinned Skia browser bindings. The SkiaSharp
          version here must match DesktopWasm.Graphics exactly (one
          libSkiaSharp per process). -->
@@ -25,6 +29,28 @@
 
   <ItemGroup>
     <ProjectReference Include="..\DesktopWasm.Wpf\DesktopWasm.Wpf.csproj" />
+    <!-- dw-runtime bridge region: BrowserHost may depend on Interop; neither
+         engine references this host or the adapter (acyclic boundary).
+         Transitive project references are disabled here so the real fork
+         engine payload (WfWasm.WinForms, WfWasm.Drawing, SystemEvents)
+         never lands in the host's global scope and collides with the WPF
+         platform shims (Timer, UserPreferenceChangedEventArgs, ...): every
+         previously-transitive assembly is referenced explicitly, fork
+         payload only under extern aliases. -->
+    <ProjectReference Include="..\DesktopWasm.Core\DesktopWasm.Core.csproj" />
+    <ProjectReference Include="..\DesktopWasm.Graphics\DesktopWasm.Graphics.csproj" />
+    <ProjectReference Include="..\DesktopWasm.Interop\DesktopWasm.Interop.csproj">
+      <Aliases>WfiBridge</Aliases>
+    </ProjectReference>
+    <ProjectReference Include="..\WfWasm.WinForms\WfWasm.WinForms.csproj">
+      <Aliases>Fork</Aliases>
+    </ProjectReference>
+    <ProjectReference Include="..\WfWasm.Drawing\WfWasm.Drawing.csproj">
+      <Aliases>WasmDraw</Aliases>
+    </ProjectReference>
+    <ProjectReference Include="..\Microsoft.Win32.SystemEvents\Microsoft.Win32.SystemEvents.csproj">
+      <Aliases>Win32Events</Aliases>
+    </ProjectReference>
   </ItemGroup>
 
   <!-- On-demand local converted inputs. Stage physically under the static
@@ -35,10 +61,10 @@
     <Content Include="wwwroot\apps\**\*.json" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
-  <!-- Publication portability: converted-app staging is optional. Each copy
-       is skipped when its ConvertedApps input is absent (excluded from this
-       repo); the catalog already reports those entries missing-input, so no
-       stub files and no false ready claims. -->
+  <!-- Converted-app staging is optional. Each copy is skipped when its
+       ConvertedApps input is absent; the catalog already reports those
+       entries missing-input, so no stub files and no false ready claims.
+       Local configured inputs exist, so local behavior is unchanged. -->
   <Target Name="StageConvertedPreviewApps" BeforeTargets="PrepareForBuild">
     <MakeDir Directories="$(MSBuildProjectDirectory)\wwwroot\apps\hello-real" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\ConvertedApps\HelloWorld\HelloWorld.dll" DestinationFiles="$(MSBuildProjectDirectory)\wwwroot\apps\hello-real\HelloWorld.bin" SkipUnchangedFiles="true" Condition="Exists('$(MSBuildProjectDirectory)\ConvertedApps\HelloWorld\HelloWorld.dll')" />

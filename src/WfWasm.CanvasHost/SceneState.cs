@@ -129,6 +129,12 @@ public sealed class SceneState
         scene = AppScene.Smoke;
         if (string.IsNullOrWhiteSpace(slug))
             return false;
+        if (string.Equals(slug, "photo-album", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(slug, "photoalbum", StringComparison.OrdinalIgnoreCase))
+        {
+            scene = AppScene.TelerikPhoto;
+            return true;
+        }
         foreach (var entry in Enum.GetValues<AppScene>())
         {
             if (string.Equals(slug, ToSlug(entry), StringComparison.OrdinalIgnoreCase))

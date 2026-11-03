@@ -10,9 +10,12 @@ internal static class DemandAssemblyPayload
     {
         if (packet.Length == 0) return null;
         if (packet.Length <= 32) throw new InvalidDataException("Truncated assembly response.");
-        byte[] bytes = packet.AsSpan(32).ToArray();
-        if (!CryptographicOperations.FixedTimeEquals(packet.AsSpan(0, 32), SHA256.HashData(bytes)))
+        ReadOnlySpan<byte> expectedSha = packet.AsSpan(0, 32);
+        ReadOnlySpan<byte> payload = packet.AsSpan(32);
+        Span<byte> actualSha = stackalloc byte[32];
+        SHA256.HashData(payload, actualSha);
+        if (!CryptographicOperations.FixedTimeEquals(expectedSha, actualSha))
             throw new InvalidDataException("Runtime assembly integrity check failed.");
-        return bytes;
+        return payload.ToArray();
     }
 }

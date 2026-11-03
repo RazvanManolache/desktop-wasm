@@ -711,11 +711,7 @@ namespace System.Drawing
         {
             byte[] rgba = new byte[_width * _height * 4];
             var dst = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, int>(rgba);
-            for (int i = 0; i < _pixels.Length; i++)
-            {
-                uint v = (uint)_pixels[i];
-                dst[i] = (int)((v & 0xFF00FF00u) | ((v & 0xFFu) << 16) | ((v >> 16) & 0xFFu));
-            }
+            SwizzleToRgba(_pixels, dst);
 
             return rgba;
         }
@@ -731,18 +727,32 @@ namespace System.Drawing
                 return Array.Empty<byte>();
             byte[] rgba = new byte[crop.Width * crop.Height * 4];
             var dst = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, int>(rgba);
-            int o = 0;
-            for (int y = crop.Y; y < crop.Y + crop.Height; y++)
-            {
-                int row = y * _width + crop.X;
-                for (int x = 0; x < crop.Width; x++)
-                {
-                    uint v = (uint)_pixels[row + x];
-                    dst[o++] = (int)((v & 0xFF00FF00u) | ((v & 0xFFu) << 16) | ((v >> 16) & 0xFFu));
-                }
-            }
+            for (int y = 0; y < crop.Height; y++)
+                SwizzleToRgba(_pixels.AsSpan((crop.Y + y) * _width + crop.X, crop.Width), dst.Slice(y * crop.Width, crop.Width));
 
             return rgba;
+        }
+
+        private static void SwizzleToRgba(ReadOnlySpan<int> source, Span<int> destination)
+        {
+            if (destination.Length < source.Length) throw new ArgumentException("Pixel destination is smaller than its source.");
+            int i = 0;
+            if (System.Runtime.Intrinsics.Vector128.IsHardwareAccelerated)
+            {
+                var keep = System.Runtime.Intrinsics.Vector128.Create(0xFF00FF00u);
+                var low = System.Runtime.Intrinsics.Vector128.Create(0xFFu);
+                for (; i <= source.Length - 4; i += 4)
+                {
+                    var v = System.Runtime.Intrinsics.Vector128.LoadUnsafe(ref System.Runtime.CompilerServices.Unsafe.As<int, uint>(ref System.Runtime.InteropServices.MemoryMarshal.GetReference(source)), (nuint)i);
+                    var swapped = (v & keep) | System.Runtime.Intrinsics.Vector128.ShiftLeft(v & low, 16) | (System.Runtime.Intrinsics.Vector128.ShiftRightLogical(v, 16) & low);
+                    System.Runtime.Intrinsics.Vector128.StoreUnsafe(swapped, ref System.Runtime.CompilerServices.Unsafe.As<int, uint>(ref System.Runtime.InteropServices.MemoryMarshal.GetReference(destination)), (nuint)i);
+                }
+            }
+            for (; i < source.Length; i++)
+            {
+                uint v = (uint)source[i];
+                destination[i] = (int)((v & 0xFF00FF00u) | ((v & 0xFFu) << 16) | ((v >> 16) & 0xFFu));
+            }
         }
 
         public void SetResolution(float xDpi, float yDpi)

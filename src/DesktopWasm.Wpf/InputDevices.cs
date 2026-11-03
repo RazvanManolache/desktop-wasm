@@ -404,6 +404,23 @@ public class MouseEventArgs : InputEventArgs
 /// <summary>Button press data (matches System.Windows.Input.MouseButtonEventArgs).</summary>
 public class MouseButtonEventArgs : MouseEventArgs
 {
+    /// <summary>
+    /// Live (MouseDevice, int, MouseButton) shape (matches the converted
+    /// ListBoxAssist re-raise construction and the native public overload).
+    /// Down-shaped like native construction: the changed button reads
+    /// Pressed with ClickCount 1, all other buttons Released.
+    /// </summary>
+    public MouseButtonEventArgs(MouseDevice? mouseDevice, int timestamp, MouseButton button)
+        : this(mouseDevice, timestamp,
+            button == MouseButton.Left ? MouseButtonState.Pressed : MouseButtonState.Released,
+            button == MouseButton.Middle ? MouseButtonState.Pressed : MouseButtonState.Released,
+            button == MouseButton.Right ? MouseButtonState.Pressed : MouseButtonState.Released,
+            button == MouseButton.XButton1 ? MouseButtonState.Pressed : MouseButtonState.Released,
+            button == MouseButton.XButton2 ? MouseButtonState.Pressed : MouseButtonState.Released,
+            button, MouseButtonState.Pressed, 1)
+    {
+    }
+
     internal MouseButtonEventArgs(
         MouseDevice? mouseDevice,
         int timestamp,

@@ -7,12 +7,16 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <EnableUnsafeBinaryFormatterSerialization>true</EnableUnsafeBinaryFormatterSerialization>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Browser demos run without debugger instrumentation. Opt in with
+         -p:WasmDebugLevel=-1 when attaching a managed debugger. Keep the
+         untrimmed dynamic app closure; this is independent of publishing. -->
+    <WasmDebugLevel Condition="'$(WasmDebugLevel)' == ''">0</WasmDebugLevel>
     <NoWarn>$(NoWarn);0436</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="9.0.20" />
-    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="9.0.20" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="9.0.21" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="9.0.21" PrivateAssets="all" />
     <PackageReference Include="System.Resources.Extensions" Version="9.0.0" />
     <!-- Full System.Configuration impl (app settings + AppSettings):
          the fork's own package reference does not flow through the
@@ -39,6 +43,11 @@
     <ProjectReference Include="..\WfWasm.IsolatedStorage\WfWasm.IsolatedStorage.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <!-- EXPORT-ONLY portable repair (PUBPROGRESS-20261103-SHELL): regenerate the
+         migrated fork from in-repo source via EnsureRewrittenFork.targets
+         (exact publication form from origin/main 080210a). The live pinned
+         inputs/winforms/rewritten-small reference is not redistributable.
+         Live tree intentionally keeps the pinned ref; this file is NOT live. -->
     <Reference Include="$(RewrittenForkDll)" />
     <!-- Paint.NET ships on demand via /api/appmanifest?app=paintnet
          (see AppTransform): no bundled paint references remain. -->
@@ -63,19 +72,17 @@
        facade). Stage the full stub-transformed copy before references
        resolve, then swap it in so the pipeline's own WebCIL conversion,
        fingerprinting and boot.json integrity cover the real bytes. -->
-  <!-- Publication portability: the full-WindowsBase path is OPT-IN
-       (-p:DesktopWasmFullWindowsBase=true). Default builds honor absent
-       optional inputs (Paint.NET closure lives outside this repo); enabled
-       builds keep the strict gate (script throws when the input is missing).
-       UseFullWindowsBase below already Exists-guards the swap. -->
+  <!-- EXPORT-ONLY portable repair (PUBPROGRESS-20261103-SHELL): full-WindowsBase
+       path is OPT-IN (-p:DesktopWasmFullWindowsBase=true), exact publication
+       form from origin/main 080210a. Default clean-clone builds honor absent
+       optional inputs (Paint.NET pristine closure lives outside this repo);
+       enabled builds keep the strict gate. Live tree intentionally keeps the
+       unconditional strict targets (DIFFS item 17); this file is NOT live. -->
   <Target Name="PrepareFullWindowsBase" BeforeTargets="ResolveAssemblyReferences"
           Condition="'$(DesktopWasmFullWindowsBase)' == 'true'">
     <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)/../../scripts/winforms/ensure-windowsbase-full.ps1&quot; -IntermediateDir &quot;$(IntermediateOutputPath)&quot;" />
   </Target>
 
-  <!-- Publication portability: the swap/error below only apply when the
-       full-copy path is opted in. Default builds keep the runtime-pack
-       facade with a warning (Paint.NET bootstrap needs the opt-in path). -->
   <Target Name="UseFullWindowsBase" AfterTargets="ResolveAssemblyReferences"
           Condition="'$(DesktopWasmFullWindowsBase)' == 'true'">
     <ItemGroup>

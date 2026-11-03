@@ -36,7 +36,7 @@ public static class ShellErrorLog
         int logged = 0;
         foreach (var report in reports)
         {
-            string app = string.IsNullOrWhiteSpace(report.App) ? "unknown" : CatalogVocabulary.Normalize(report.App);
+            string app = string.IsNullOrWhiteSpace(report.App) ? "unknown" : ShellIds.Normalize(report.App);
             string session = string.IsNullOrWhiteSpace(report.Session) ? "-" : report.Session.Trim();
             string kind = string.IsNullOrWhiteSpace(report.Kind) ? "error" : report.Kind.Trim();
             string message = (report.Message ?? "").Split('\n')[0];
@@ -64,7 +64,7 @@ public static class ShellErrorLog
         string path = Path.Combine(logDir, "shell-errors.jsonl");
         if (!File.Exists(path))
             return [];
-        string? filter = string.IsNullOrWhiteSpace(app) ? null : CatalogVocabulary.Normalize(app);
+        string? filter = string.IsNullOrWhiteSpace(app) ? null : ShellIds.Normalize(app);
         var fixedBy = ReadFixed(Path.Combine(logDir, "shell-fixed.json"));
         var latest = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
         foreach (string line in File.ReadLines(path))

@@ -130,6 +130,11 @@ public sealed class RichTextScrollWatch
                 return false;
             if (editor.IsDisposed)
                 return false;
+            lock (_sync)
+            {
+                if (_watches.TryGetValue(editor, out _))
+                    return true;
+            }
             if (!_source.TryGetState(editor, out ScrollSnapshot state))
                 return false;
             lock (_sync)

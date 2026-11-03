@@ -14,6 +14,61 @@ using System.Runtime.Loader;
 // stale handle otherwise recycles and kills the finalizer thread.
 public sealed class CpuOwnershipTests
 {
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static (object Bitmap, WeakReference Effect) RetainTwoInputs(Assembly core, Assembly cpu)
+    {
+        Type paint = cpu.GetType("WfWasm.PdnCpu.CpuPaint")!;
+        long handle = (long)paint.GetMethod("CreateBitmapEmpty")!.Invoke(null, new object[] { 16, 16 })!;
+        Type bitmapType = core.GetType("PaintDotNet.Direct2D1.CpuDeviceBitmap")!;
+        object bitmap = Activator.CreateInstance(bitmapType, handle, 16, 16)!;
+        object effect = Activator.CreateInstance(core.GetType("PaintDotNet.Direct2D1.CpuDeviceEffect")!)!;
+        var set = effect.GetType().GetMethod("SetInput")!;
+        set.Invoke(effect, new object[] { 0, bitmap, true });
+        set.Invoke(effect, new object[] { 1, bitmap, true });
+        ((IDisposable)effect).Dispose(); // borrowed release must keep inputs alive
+        ((IDisposable)bitmap).Dispose(); // release the original owner, retain two grants
+        Assert.Equal(2, bitmapType.GetField("_refs")!.GetValue(bitmap));
+        Assert.NotEqual(0L, bitmapType.GetField("_handle")!.GetValue(bitmap));
+        return (bitmap, new WeakReference(effect));
+    }
+
+    [Fact]
+    public void Collected_Effect_Releases_All_Retained_Bitmap_Grants()
+    {
+        string paintDir = PaintDir();
+        string cpuDll = BinDll("WfWasm.PdnCpu", "net9.0", "WfWasm.PdnCpu");
+        string drawingDll = BinDll("WfWasm.Drawing", "net9.0", "WfWasm.Drawing");
+        string tempOut = Path.Combine(Path.GetTempPath(), $"CpuEffectGc_{Guid.NewGuid():N}.dll");
+        WfWasm.Rewrite.AssemblyRewriter.Rewrite(Path.Combine(paintDir, "PaintDotNet.Windows.Core.dll"), tempOut,
+            new Dictionary<string, string>(), new Dictionary<string, (string Assembly, string Type)>(), cpuDll);
+        var alc = new AssemblyLoadContext($"CpuEffectGc_{Guid.NewGuid()}", true);
+        try
+        {
+            alc.Resolving += (context, name) =>
+            {
+                foreach (string dir in new[] { paintDir, Path.GetDirectoryName(cpuDll)!, Path.GetDirectoryName(drawingDll)!, @"E:\AI\Code\DesktopWasm\inputs\winforms\rewritten-small" })
+                {
+                    string path = Path.Combine(dir, name.Name + ".dll");
+                    if (File.Exists(path)) return context.LoadFromAssemblyPath(path);
+                }
+                return null;
+            };
+            var core = alc.LoadFromStream(new MemoryStream(File.ReadAllBytes(tempOut)));
+            var cpu = alc.LoadFromAssemblyPath(cpuDll);
+            var refs = RetainTwoInputs(core, cpu);
+            GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
+            Assert.False(refs.Effect.IsAlive);
+            Assert.Equal(0L, refs.Bitmap.GetType().GetField("_handle")!.GetValue(refs.Bitmap));
+            Assert.Equal(0, refs.Bitmap.GetType().GetField("_refs")!.GetValue(refs.Bitmap));
+        }
+        finally
+        {
+            GC.Collect(); GC.WaitForPendingFinalizers();
+            alc.Unload();
+            File.Delete(tempOut);
+        }
+    }
+
     private static string PaintDir()
     {
         string dir = @"E:\AI\Code\WindowsForms\targets\paint.net";

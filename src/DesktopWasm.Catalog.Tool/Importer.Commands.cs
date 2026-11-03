@@ -88,6 +88,27 @@ internal static partial class Importer
             }, utc);
 
         var apps = BuildRegistry(s);
+        // Regeneration preservation (RVW0900-CATALOG): pure-source rebuilds
+        // must not drop the producer-owned joint record or digest-verified
+        // staging. The joint record rebuilds from the packaging producer's
+        // staged bytes; other availability re-verifies from the prior
+        // registry's local evidence (digest-trust: changed bytes demote
+        // honestly, never restore stale flags).
+        var repoRoot = ResolveRepoRoot(outDir);
+        var joint = TryBuildJointFromPackageDir(
+            Path.Combine(repoRoot, JointPackageDir), JointPackageDir);
+        if (joint is not null)
+        {
+            apps.RemoveAll(a => string.Equals(a.Id, joint.Id, StringComparison.OrdinalIgnoreCase));
+            apps.Add(joint);
+        }
+        var priorPath = Path.Combine(outDir, "apps.json");
+        if (File.Exists(priorPath))
+        {
+            var prior = CatalogSerializer.Deserialize(File.ReadAllText(priorPath));
+            static bool Exists(string p) => Directory.Exists(p) || File.Exists(p);
+            apps = ReconcileWithPrior(apps, prior.Apps, Exists);
+        }
         var conflicts = CatalogValidator.FindConflicts(apps);
         var registry = new AppRegistry(apps);
         File.WriteAllText(Path.Combine(outDir, "apps.json"), CatalogSerializer.Serialize(apps));
@@ -184,6 +205,7 @@ internal static partial class Importer
             foreach (var e in liveSources.Benchmarks.RootElement.EnumerateArray()) expected.Add(SlugOf(e));
             foreach (var lib in liveSources.Library) expected.Add(lib.Slug);
             expected.Add("mixed-session-pilot");
+            expected.Add("testapp-joint"); // permanent joint record (packaging producer + catalog receipt), like the pilot
             var actual = registry.Apps.Select(a => a.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
             foreach (var missing in expected.OrderBy(x => x, StringComparer.Ordinal).Where(x => !actual.Contains(x)))
                 failures.Add($"apps.json missing live entry '{missing}'");
@@ -204,25 +226,57 @@ internal static partial class Importer
         return 0;
     }
 
-    public static int Refresh(string catalogDir, string receiptsPath)
+    /// <summary>Cumulative refresh: the union of all --receipts files is the
+    /// new batch, and still-present earlier staging is carried forward from
+    /// its own local: evidence (bytes re-verified against the disk per
+    /// <see cref="ReceiptVerifier"/>: files by content hash, manifest
+    /// directories by manifest digest plus manifest-claimed closure,
+    /// manifest-less directories as asserted existence-only provenance), so
+    /// a partial batch never silently demotes earlier inputs and never
+    /// silently carries stale verified claims for changed bytes. A receipt
+    /// naming a missing path, a mismatching digest, or a vanished/changed
+    /// staged path, fails or demotes honestly; nothing is written when any
+    /// fresh receipt is invalid.</summary>
+    public static int Refresh(string catalogDir, string receiptsPath) =>
+        Refresh(catalogDir, new[] { receiptsPath });
+
+    public static int Refresh(string catalogDir, IReadOnlyList<string> receiptsPaths)
     {
         var appsPath = Path.Combine(catalogDir, "apps.json");
         var registry = CatalogSerializer.Deserialize(File.ReadAllText(appsPath));
-        using var doc = JsonDocument.Parse(File.ReadAllText(receiptsPath));
-        var receipts = doc.RootElement.EnumerateArray()
-            .Select(e => new LocalInputMapper.StagedReceipt(
-                e.GetProperty("id").GetString()!,
-                e.GetProperty("localPath").GetString()!,
-                e.GetProperty("sha256").GetString()!,
-                e.TryGetProperty("stagedUtc", out var u) ? u.GetString()! : ""))
-            .ToDictionary(r => r.Id, StringComparer.OrdinalIgnoreCase);
-        var refreshed = registry.Apps.Select(a => LocalInputMapper.Refresh(a, receipts)).ToList();
+        var fresh = new Dictionary<string, LocalInputMapper.StagedReceipt>(StringComparer.OrdinalIgnoreCase);
+        foreach (var rp in receiptsPaths)
+        {
+            if (!File.Exists(rp)) throw new ArgumentException($"Receipts file not found: '{rp}'.");
+            using var doc = JsonDocument.Parse(File.ReadAllText(rp));
+            if (doc.RootElement.ValueKind != JsonValueKind.Array)
+                throw new InvalidDataException($"Receipts file '{rp}' must be a JSON array.");
+            foreach (var e in doc.RootElement.EnumerateArray())
+            {
+                var r = new LocalInputMapper.StagedReceipt(
+                    e.TryGetProperty("id", out var id) ? id.GetString() ?? "" : "",
+                    e.TryGetProperty("localPath", out var lp) ? lp.GetString() ?? "" : "",
+                    e.TryGetProperty("sha256", out var sh) ? sh.GetString() ?? "" : "",
+                    e.TryGetProperty("stagedUtc", out var u) ? u.GetString()! : "");
+                if (string.IsNullOrWhiteSpace(r.Id) || string.IsNullOrWhiteSpace(r.LocalPath) ||
+                    string.IsNullOrWhiteSpace(r.Sha256))
+                    throw new InvalidDataException($"Invalid receipt entry in '{rp}': id/localPath/sha256 required.");
+                if (!Directory.Exists(r.LocalPath) && !File.Exists(r.LocalPath))
+                    throw new InvalidDataException($"Staged input missing for '{r.Id}': '{r.LocalPath}'.");
+                ReceiptVerifier.ThrowIfDigestMismatch(r);
+                fresh[r.Id] = r;
+            }
+        }
+        static bool Exists(string p) => Directory.Exists(p) || File.Exists(p);
+        var carried = LocalInputMapper.CarryForwardReceipts(registry.Apps, fresh, Exists);
+        foreach (var (k, v) in carried) fresh[k] = v;
+        var refreshed = registry.Apps.Select(a => LocalInputMapper.Refresh(a, fresh)).ToList();
         foreach (var app in refreshed)
             CatalogValidator.ValidateDescriptor(app);
         var next = new AppRegistry(refreshed);
         File.WriteAllText(appsPath, CatalogSerializer.Serialize(refreshed));
         var avail = refreshed.Count(a => a.Availability == AppAvailability.Available);
-        Console.WriteLine($"refresh: {next.Count} entries, available={avail}");
+        Console.WriteLine($"refresh: {next.Count} entries, available={avail} (fresh={fresh.Count - carried.Count} carried={carried.Count})");
         return 0;
     }
 }

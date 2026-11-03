@@ -713,15 +713,70 @@ public class ScrollContentPresenter : ContentPresenter
 /// </summary>
 public class Span : Inline
 {
+    private readonly InlineCollection _inlines;
+    private readonly List<(int At, string Text)> _literals = new();
     private string _text = string.Empty;
+
+    public Span()
+    {
+        _inlines = new InlineCollection(this);
+        _inlines.ContentsChanged += RefoldChildren;
+    }
+
+    public Span(Inline childInline)
+        : this()
+    {
+        ArgumentNullException.ThrowIfNull(childInline);
+        _inlines.Add(childInline);
+    }
+
+    public InlineCollection Inlines => _inlines;
+    internal IReadOnlyList<(int At, string Text)> Literals => _literals;
+
+    internal void AddInline(Inline inline)
+    {
+        ArgumentNullException.ThrowIfNull(inline);
+        _inlines.Add(inline);
+        RefoldChildren();
+    }
+
+    internal void AppendLiteral(string chunk)
+    {
+        _literals.Add((_inlines.Count, chunk));
+        RefoldChildren();
+    }
+
+    internal void TrimTrailingLiteralWhitespace()
+    {
+        if (_literals.Count == 0 && _inlines.Count == 0)
+        {
+            _text = _text.TrimEnd();
+            RefoldChildren();
+            return;
+        }
+        var text = Text;
+        var trimmed = text.TrimEnd();
+        var excess = text.Length - trimmed.Length;
+        if (excess <= 0) return;
+        for (var i = _literals.Count - 1; i >= 0 && excess > 0; i--)
+        {
+            var take = Math.Min(excess, _literals[i].Text.Length);
+            _literals[i] = (_literals[i].At, _literals[i].Text[..^take]);
+            excess -= take;
+        }
+        RefoldChildren();
+    }
 
     /// <summary>Inline text (hosts fold it into their text).</summary>
     public virtual string Text
     {
-        get => _text;
+        get => (_inlines.Count > 0 || _literals.Count > 0) ? FoldChildren() : _text;
         set
         {
-            if (_text == value) return;
+            value ??= string.Empty;
+            if (_text == value && _inlines.Count == 0 && _literals.Count == 0) return;
+            if (_inlines.Count > 0) _inlines.Clear();
+            _literals.Clear();
             _text = value;
             InvalidateMeasure();
             InlineTextChanged?.Invoke();
@@ -733,6 +788,38 @@ public class Span : Inline
 
     /// <summary>Raises the text-changed hook after a DP-backed text change.</summary>
     protected void RaiseInlineTextChanged()
+    {
+        InvalidateMeasure();
+        InlineTextChanged?.Invoke();
+    }
+
+    private string FoldChildren()
+    {
+        var folded = new System.Text.StringBuilder();
+        var nextLiteral = 0;
+        for (var i = 0; i < _inlines.Count; i++)
+        {
+            while (nextLiteral < _literals.Count && _literals[nextLiteral].At <= i)
+            {
+                folded.Append(_literals[nextLiteral].Text);
+                nextLiteral++;
+            }
+            folded.Append(_inlines[i] switch
+            {
+                LineBreak => "\n",
+                Span span => span.Text,
+                _ => string.Empty,
+            });
+        }
+        while (nextLiteral < _literals.Count)
+        {
+            folded.Append(_literals[nextLiteral].Text);
+            nextLiteral++;
+        }
+        return folded.ToString();
+    }
+
+    private void RefoldChildren()
     {
         InvalidateMeasure();
         InlineTextChanged?.Invoke();
@@ -820,41 +907,16 @@ public sealed class Hyperlink : Span
         DependencyProperty.Register("TargetName", typeof(string), typeof(Hyperlink),
             new FrameworkPropertyMetadata(string.Empty));
 
-    private readonly InlineCollection _inlines;
-
     /// <summary>Empty link (children arrive through <see cref="Inlines"/>).</summary>
     public Hyperlink()
     {
-        _inlines = new InlineCollection(this);
-        _inlines.ContentsChanged += RefoldChildren;
     }
 
     /// <summary>Link wrapping one inline (matches Hyperlink(Inline)).</summary>
     public Hyperlink(Inline childInline)
-        : this()
+        : base(childInline)
     {
-        ArgumentNullException.ThrowIfNull(childInline);
-        _inlines.Add(childInline);
     }
-
-    /// <summary>Hosted children (their text folds into <see cref="Text"/>).</summary>
-    public InlineCollection Inlines => _inlines;
-
-    /// <summary>Link text: folded children when hosted, else the direct text.</summary>
-    public override string Text
-    {
-        get => _inlines.Count > 0 ? FoldChildren() : base.Text;
-        set => base.Text = value;
-    }
-
-    private string FoldChildren() => string.Concat(_inlines.Select(static child => child switch
-    {
-        LineBreak => "\n",
-        Span span => span.Text,
-        _ => string.Empty,
-    }));
-
-    private void RefoldChildren() => base.Text = FoldChildren();
 
     private Uri? _navigateUri;
 

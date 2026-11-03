@@ -11,7 +11,7 @@ using System.Runtime.InteropServices;
 
 namespace WfWasm.PdnCpu;
 
-public static unsafe class CpuPaint
+public static unsafe partial class CpuPaint
 {
     private sealed class Target
     {
@@ -22,7 +22,7 @@ public static unsafe class CpuPaint
         // Bytes per pixel: 1 = coverage mask (alpha only), 4 = BGRA.
         public int Bpp = 1;
         // Scratch surfaces pin their managed pixel buffer; only
-        // FreeScratchTarget releases the pin (FreeContext would leak it).
+        // The owning scratch/context release also releases this pin.
         public GCHandle Pin;
         public bool IsPinned;
         public float M11 = 1f;
@@ -42,7 +42,26 @@ public static unsafe class CpuPaint
         public bool IsPinned;
     }
 
-    private static long ToHandle(object o) => (long)GCHandle.ToIntPtr(GCHandle.Alloc(o));
+    private static long s_bitmapBytes, s_bitmapCount, s_targetCount;
+    public static object ResourceStats() => new
+    {
+        bitmapBytes = System.Threading.Interlocked.Read(ref s_bitmapBytes),
+        bitmapCount = System.Threading.Interlocked.Read(ref s_bitmapCount),
+        targetCount = System.Threading.Interlocked.Read(ref s_targetCount),
+        scratchCount = s_scratchMap.Count,
+    };
+
+    private static long ToHandle(object o)
+    {
+        long handle = (long)GCHandle.ToIntPtr(GCHandle.Alloc(o));
+        if (o is Bitmap bitmap)
+        {
+            System.Threading.Interlocked.Add(ref s_bitmapBytes, bitmap.Pixels.LongLength * 4);
+            System.Threading.Interlocked.Increment(ref s_bitmapCount);
+        }
+        if (o is Target) System.Threading.Interlocked.Increment(ref s_targetCount);
+        return handle;
+    }
 
     private static T FromHandle<T>(long handle) where T : class
         => (T)GCHandle.FromIntPtr((IntPtr)handle).Target!;
@@ -77,7 +96,18 @@ public static unsafe class CpuPaint
             return;
         // Fail-closed (planter hunt Hole B): a double-free must skip, never
         // throw — a throw on the finalizer thread is a fatal exit.
-        try { GCHandle.FromIntPtr((IntPtr)handle).Free(); }
+        try
+        {
+            var gc = GCHandle.FromIntPtr((IntPtr)handle);
+            object? target = gc.Target;
+            gc.Free();
+            if (target is Bitmap bitmap)
+            {
+                System.Threading.Interlocked.Add(ref s_bitmapBytes, -bitmap.Pixels.LongLength * 4);
+                System.Threading.Interlocked.Decrement(ref s_bitmapCount);
+            }
+            if (target is Target) System.Threading.Interlocked.Decrement(ref s_targetCount);
+        }
         catch { return; }
     }
 
@@ -118,7 +148,67 @@ public static unsafe class CpuPaint
         return ToHandle(t);
     }
 
-    public static void FreeContext(long ctx) => FreeHandle(ctx);
+    public static void FreeContext(long ctx)
+    {
+        // Redirect IDs belong to command lists, never to context teardown.
+        if (ctx <= 0) return;
+        var target = TryFromHandle<Target>(ctx);
+        if (target is { IsPinned: true })
+        {
+            try { target.Pin.Free(); } catch { }
+            target.IsPinned = false;
+        }
+        FreeHandle(ctx);
+    }
+
+    // The synthesized context owns the initial reference of each cached
+    // resource. Device refs retained by effects remain separately counted.
+    public static void SetCpuCacheEntry(object cache, object key, object entry)
+    {
+        var table = (System.Collections.IDictionary)cache;
+        object? previous = (table[key] as object[])?.ElementAtOrDefault(1);
+        table[key] = entry;
+        object? current = (entry as object[])?.ElementAtOrDefault(1);
+        if (previous is null || ReferenceEquals(previous, current)) return;
+        foreach (object? value in table.Values)
+            if (value is object[] { Length: >= 2 } row && ReferenceEquals(row[1], previous)) return;
+        DisposeCpuCachedResource(previous);
+    }
+
+    public static void ReleaseCpuCache(object? cache)
+    {
+        if (cache is not System.Collections.IDictionary table) return;
+        var resources = new List<object>();
+        foreach (object? value in table.Values)
+            if (value is object[] { Length: >= 2 } row && row[1] is object resource
+                && !resources.Any(r => ReferenceEquals(r, resource))) resources.Add(resource);
+        table.Clear();
+        foreach (object resource in resources) DisposeCpuCachedResource(resource);
+    }
+
+    private static void DisposeCpuCachedResource(object resource)
+    {
+        try { (resource as IDisposable)?.Dispose(); }
+        catch (Exception ex) { Console.WriteLine("[CPU-CACHE] release failed: " + ex.GetType().Name); }
+    }
+
+    // Effect.Dispose is a borrowed-reference release in this adapter.
+    // Only managed death ends the effect's retained input grants. Slots
+    // each own a grant, including two slots naming the same bitmap.
+    public static void ReleaseCpuRetainedInputs(object? inputs)
+    {
+        try
+        {
+            if (inputs is not System.Collections.IDictionary table) return;
+            foreach (object? value in table.Values)
+            {
+                try { (value as IDisposable)?.Dispose(); }
+                catch { } // A finalizer must not exit the browser runtime.
+            }
+            table.Clear();
+        }
+        catch { }
+    }
 
     // Target dimension probes for the synthesized CPU device context
     // (get_PixelSize/get_Size/get_PixelFormat). Primitives only, like the
@@ -1044,6 +1134,1032 @@ public static unsafe class CpuPaint
         {
             return true;
         }
+    }
+
+    // Twist/Quantize/Bulge/Clouds invalid-IL (SF1120-TWISTGATE-1032):
+    // the browser interpreter throws InvalidProgramException (empty
+    // frames) on generic value reads along the effect paths: direct
+    // callvirt on Property<TValue>/ISetting<TValue>/
+    // IScalarAppSetting<TValue>/VectorProperty<TValue>/Result<TValue>
+    // getters (TwistGpuEffect.OnCreatePropertyCollection dies on the
+    // ISetting<int> trio; Quantize dies further down the same family),
+    // the generic PropertyBasedEffectConfigToken.GetProperty<T> factory,
+    // and the static generic factories on the Quantize path
+    // (LazyResult.New<T>, GetSourceBitmap<T>, Values<TKey,TValue>).
+    // Every helper below carries only objects (plus System.Type tokens
+    // via ldtoken, which is interpreter-safe) and performs the exact
+    // member lookup the pristine call would have dispatched to, so
+    // values read identically. Unlike the validators there is no safe
+    // default for a READ: failures throw a descriptive
+    // InvalidOperationException (strictly better than the empty IPE),
+    // and a getter's own exception is unwrapped and rethrown intact.
+    private static readonly System.Collections.Generic.Dictionary<(System.Type, string, System.Type?), System.Reflection.MethodInfo> s_effectGetterCache
+        = new();
+    private static readonly System.Collections.Generic.Dictionary<(System.Type, System.Type), System.Reflection.MethodInfo> s_effectTokenCache
+        = new();
+    private static readonly System.Collections.Generic.Dictionary<string, System.Reflection.MethodInfo> s_effectStaticCache
+        = new();
+
+    private static string EffectGetterName(int which) => which switch
+    {
+        0 => "Value",
+        1 => "MinValue",
+        2 => "MaxValue",
+        3 => "IsValue",
+        5 => "ValueX",
+        6 => "ValueY",
+        _ => throw new System.ArgumentOutOfRangeException(nameof(which), which, "CpuPaint: unknown effect-setting selector"),
+    };
+
+    private static System.Reflection.MethodInfo? PickDeclaredCandidate(
+        System.Collections.Generic.List<System.Reflection.MethodInfo> cands, string what, string level)
+    {
+        if (cands.Count == 0)
+            return null;
+        if (cands.Count == 1)
+            return cands[0];
+        System.Reflection.MethodInfo? pub = null;
+        int publics = 0;
+        foreach (System.Reflection.MethodInfo c in cands)
+        {
+            if (c.IsPublic)
+            {
+                pub = c;
+                publics++;
+            }
+        }
+        if (publics == 1)
+            return pub;
+        throw new System.InvalidOperationException(
+            "CpuPaint: " + level + " declares multiple readable '" + what + "' members");
+    }
+
+    private static System.Reflection.MethodInfo? FindDeclaredGetter(System.Type level, string name)
+    {
+        const System.Reflection.BindingFlags bf =
+            System.Reflection.BindingFlags.Instance
+            | System.Reflection.BindingFlags.Public
+            | System.Reflection.BindingFlags.NonPublic
+            | System.Reflection.BindingFlags.DeclaredOnly;
+        System.Collections.Generic.List<System.Reflection.MethodInfo> props = new();
+        System.Collections.Generic.List<System.Reflection.MethodInfo> methods = new();
+        foreach (System.Reflection.PropertyInfo p in level.GetProperties(bf))
+        {
+            if (p.Name != name)
+                continue;
+            System.Reflection.MethodInfo? gm = p.GetGetMethod(true);
+            if (gm is not null)
+                props.Add(gm);
+        }
+        System.Reflection.MethodInfo? prop = PickDeclaredCandidate(props, name, level.FullName ?? level.Name);
+        if (prop is not null)
+            return prop;
+        foreach (System.Reflection.MethodInfo m in level.GetMethods(bf))
+        {
+            if (m.Name == "get_" + name && m.GetParameters().Length == 0)
+                methods.Add(m);
+        }
+        return PickDeclaredCandidate(methods, "get_" + name, level.FullName ?? level.Name);
+    }
+
+    private static System.Reflection.MethodInfo ResolveEffectGetter(System.Type t, string name)
+    {
+        // Legacy precedence (pre-siteType call sites): most-derived
+        // property, then most-derived get_ method, then the first
+        // interface declaring the member. Per-level DeclaredOnly scans
+        // make hide-by-name shapes deterministic instead of throwing
+        // AmbiguousMatchException; genuinely unresolvable shapes still
+        // fail loud via InvalidOperationException.
+        const System.Reflection.BindingFlags pubInst =
+            System.Reflection.BindingFlags.Instance
+            | System.Reflection.BindingFlags.Public;
+        const System.Reflection.BindingFlags declared =
+            System.Reflection.BindingFlags.DeclaredOnly;
+        for (System.Type? c = t; c is not null; c = c.BaseType)
+        {
+            System.Collections.Generic.List<System.Reflection.MethodInfo> cands = new();
+            foreach (System.Reflection.PropertyInfo p in c.GetProperties(pubInst | declared))
+            {
+                if (p.Name == name && p.CanRead && p.GetGetMethod() is not null)
+                    cands.Add(p.GetGetMethod()!);
+            }
+            System.Reflection.MethodInfo? pick = PickDeclaredCandidate(
+                cands, name, c.FullName ?? c.Name);
+            if (pick is not null)
+                return pick;
+        }
+        for (System.Type? c2 = t; c2 is not null; c2 = c2.BaseType)
+        {
+            System.Collections.Generic.List<System.Reflection.MethodInfo> cands = new();
+            foreach (System.Reflection.MethodInfo m in c2.GetMethods(
+                pubInst | System.Reflection.BindingFlags.NonPublic | declared))
+            {
+                if (m.Name == "get_" + name && m.GetParameters().Length == 0)
+                    cands.Add(m);
+            }
+            System.Reflection.MethodInfo? pick = PickDeclaredCandidate(
+                cands, "get_" + name, c2.FullName ?? c2.Name);
+            if (pick is not null)
+                return pick;
+        }
+        foreach (System.Type iface in t.GetInterfaces())
+        {
+            System.Reflection.MethodInfo? m = iface.GetProperty(name, pubInst)?.GetGetMethod()
+                ?? iface.GetMethod("get_" + name, pubInst, null, System.Type.EmptyTypes, null);
+            if (m is not null)
+                return m;
+        }
+        throw new System.InvalidOperationException(
+            "CpuPaint: " + t.FullName + " has no readable member '" + name + "'");
+    }
+
+    private static System.Reflection.MethodInfo ResolveEffectGetter(
+        System.Type t, string name, System.Type? siteType)
+    {
+        // Precise path: the rewrite site passes the call's declaring
+        // type, so resolution replicates runtime dispatch exactly and no
+        // name search can go ambiguous.
+        if (siteType is null)
+            return ResolveEffectGetter(t, name);
+        if (siteType.IsInterface)
+        {
+            if (!siteType.IsAssignableFrom(t))
+                throw new System.InvalidOperationException(
+                    "CpuPaint: " + t.FullName + " does not implement site interface " + siteType.FullName);
+            const System.Reflection.BindingFlags pubInst =
+                System.Reflection.BindingFlags.Instance
+                | System.Reflection.BindingFlags.Public;
+            // Two rewrite sites share this resolver with different name
+            // conventions: the setting helper passes the property name
+            // ("Value"), the interface bridge passes the member name as
+            // written at the call ("get_Value", "GetEnumerator",
+            // "get_Count"). Try property, then get_-prefixed method (for
+            // method-only interface declarations), then the exact name.
+            System.Reflection.MethodInfo? im = siteType.GetProperty(name, pubInst)?.GetGetMethod()
+                ?? siteType.GetMethod("get_" + name, pubInst, null, System.Type.EmptyTypes, null)
+                ?? siteType.GetMethod(name, pubInst, null, System.Type.EmptyTypes, null);
+            if (im is null)
+                throw new System.InvalidOperationException(
+                    "CpuPaint: site interface " + siteType.FullName + " has no readable member '" + name + "'");
+            System.Reflection.InterfaceMapping map;
+            try
+            {
+                map = t.GetInterfaceMap(siteType);
+            }
+            catch (System.Exception ex)
+            {
+                throw new System.InvalidOperationException(
+                    "CpuPaint: cannot map " + t.FullName + " to " + siteType.FullName, ex);
+            }
+            int idx = System.Array.IndexOf(map.InterfaceMethods, im);
+            if (idx < 0)
+                throw new System.InvalidOperationException(
+                    "CpuPaint: interface method missing from map for " + t.FullName);
+            return map.TargetMethods[idx];
+        }
+        // Class declarer: find the declarer's own definition (walk up),
+        // then honor virtual dispatch (most-derived override of that
+        // slot, matched by base definition) or exact dispatch for
+        // non-virtual members.
+        System.Reflection.MethodInfo? siteDef = null;
+        for (System.Type? c = siteType; c is not null; c = c.BaseType)
+        {
+            siteDef = FindDeclaredGetter(c, name);
+            if (siteDef is not null)
+                break;
+        }
+        if (siteDef is null)
+            throw new System.InvalidOperationException(
+                "CpuPaint: " + siteType.FullName + " has no readable member '" + name + "'");
+        if (!siteDef.IsVirtual)
+            return siteDef;
+        for (System.Type? c2 = t; c2 is not null && c2 != siteType; c2 = c2.BaseType)
+        {
+            System.Reflection.MethodInfo? cand = FindDeclaredGetter(c2, name);
+            if (cand is not null && cand.IsVirtual && IsOverrideOf(cand, siteDef))
+                return cand;
+        }
+        return siteDef;
+    }
+
+    private static bool IsOverrideOf(System.Reflection.MethodInfo cand, System.Reflection.MethodInfo siteDef)
+    {
+        System.Reflection.MethodInfo b = cand.GetBaseDefinition();
+        return b.MetadataToken == siteDef.MetadataToken && b.Module == siteDef.Module;
+    }
+
+    private static System.Reflection.MethodInfo ResolveCachedEffectGetter(
+        System.Type t, string name, System.Type? siteType)
+    {
+        lock (s_effectGetterCache)
+        {
+            if (s_effectGetterCache.TryGetValue((t, name, siteType), out var cached))
+                return cached;
+        }
+        System.Reflection.MethodInfo m = ResolveEffectGetter(t, name, siteType);
+        lock (s_effectGetterCache)
+            s_effectGetterCache[(t, name, siteType)] = m;
+        return m;
+    }
+    private static object InvokeEffectMember(System.Reflection.MethodInfo m, object? target, object?[]? args)
+    {
+        try
+        {
+            return m.Invoke(target, args)!;
+        }
+        catch (System.Reflection.TargetInvocationException tie) when (tie.InnerException is not null)
+        {
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(tie.InnerException).Throw();
+            throw;
+        }
+    }
+
+    public static object GetEffectSettingValue(object setting, int which)
+    {
+        return GetEffectSettingValue(setting, which, null);
+    }
+
+    public static object GetEffectSettingValue(object setting, int which, System.Type? siteType)
+    {
+        TraceBridgeSite("V:GetEffectSettingValue");
+        if (setting is null)
+            throw new System.InvalidOperationException("CpuPaint: null setting (token property missing?)");
+        System.Type t = setting.GetType();
+        System.Reflection.MethodInfo m = ResolveCachedEffectGetter(t, EffectGetterName(which), siteType);
+        return InvokeEffectMember(m, setting, null);
+    }
+
+    public static object GetEffectTokenProperty(object token, object name)
+    {
+        TraceBridgeSite("V:GetEffectTokenProperty");
+        System.Type t = token.GetType();
+        System.Type? nt = name?.GetType();
+        lock (s_effectTokenCache)
+        {
+            if (s_effectTokenCache.TryGetValue((t, nt!), out var cached))
+                return InvokeEffectMember(cached, token, new object?[] { name });
+        }
+        foreach (System.Reflection.MethodInfo cand in t.GetMethods(
+            System.Reflection.BindingFlags.Instance
+            | System.Reflection.BindingFlags.Public
+            | System.Reflection.BindingFlags.NonPublic))
+        {
+            if (cand.Name != "GetProperty" || cand.IsGenericMethod
+                || cand.GetParameters().Length != 1)
+                continue;
+            System.Type pt = cand.GetParameters()[0].ParameterType;
+            if (name is null ? !pt.IsValueType : pt.IsInstanceOfType(name))
+            {
+                lock (s_effectTokenCache)
+                    s_effectTokenCache[(t, nt!)] = cand;
+                return InvokeEffectMember(cand, token, new object?[] { name });
+            }
+        }
+        throw new System.InvalidOperationException(
+            "CpuPaint: " + t.FullName + " has no GetProperty overload accepting '"
+            + (nt?.FullName ?? "null") + "'");
+    }
+
+    public static int IsWindowIntPtr(System.IntPtr hwnd)
+    {
+        // Truthful headless IsWindow over fork-minted handles. Semantics
+        // mirror the fork shim Windows.Win32.PInvoke.IsWindow(HWND), which
+        // answers !hWnd.IsNull (nonzero handle): the rewriter retargets
+        // vendor IsWindow externs here (MEMBERREF-CONSTRAIN) instead of
+        // emitting cross-assembly calls typed on the custom valuetypes
+        // HWND/BOOL, whose member refs the browser interpreter rejects
+        // with TypeLoadException kind-17 ("Expected reference type but
+        // got type kind 17") at NativeMessageHandler.Assign. This
+        // signature uses only runtime-known types (same kind as the
+        // proven CpuPaint helper family), so the member ref always binds.
+        return hwnd != System.IntPtr.Zero ? 1 : 0;
+    }
+    public static object GetInterfaceMemberValue(object target, System.Type iface, string name)
+    {
+        TraceBridgeSite("V:GetInterfaceMemberValue");
+        // Uniform bridge for 0-parameter callvirt on generic-instantiated
+        // interfaces (IEnumerable<T>.GetEnumerator,
+        // IEnumerator<T>.get_Current, IReadOnlyCollection<T>.get_Count):
+        // the browser interpreter rejects that dispatch family with an
+        // empty InvalidProgramException (Quantize OnSetToken), while the
+        // reflection Invoke path executes in vivo (Clouds token/setting
+        // reads). Resolution replicates runtime dispatch exactly via the
+        // interface map (see ResolveEffectGetter); the member itself runs
+        // unwrapped through InvokeEffectMember.
+        if (target is null)
+            throw new System.InvalidOperationException("CpuPaint: null target for interface member");
+        if (iface is null)
+            throw new System.InvalidOperationException("CpuPaint: null interface for member");
+        if (string.IsNullOrEmpty(name))
+            throw new System.InvalidOperationException("CpuPaint: empty member name");
+        System.Type t = target.GetType();
+        System.Reflection.MethodInfo m = ResolveCachedEffectGetter(t, name, iface);
+        return InvokeEffectMember(m, target, null);
+    }
+
+    public static object NewEffectLazyResult(object func, System.Type lazyType)
+    {
+        TraceBridgeSite("V:NewEffectLazyResult");
+        return System.Activator.CreateInstance(lazyType, new object?[] { func })!;
+    }
+
+    // QUANTIZE-RESIDUAL-SLICE2: generic unwrapper for bridge post-ops whose
+    // target is a closed generic instantiation (LazyResult'1,
+    // IEnumerable'1, IEffectInputBitmap'1, ...). The browser interpreter
+    // rejects castclass/unbox directly on those targets with an empty
+    // InvalidProgramException (Quantize OnSetToken wall); the call itself
+    // uses only the proven helper shape (static call on a non-generic
+    // class, closed type argument only as a generic parameter), and the
+    // in-helper conversion is a plain reference cast. Class-constrained so
+    // the C# emit is castclass !!T, never unbox (value types keep the
+    // inline Unbox_Any, which executes in vivo).
+    public static T Unwrap<T>(object? value) where T : class => (T)value!;
+
+    private static System.Reflection.MethodInfo ResolveEffectStaticGeneric(
+        string typeName, string methodName, System.Type[] typeArgs, System.Type[] argTypes)
+    {
+        string key = typeName + "::" + methodName + "<" + string.Join(",", (object[])typeArgs) + ">";
+        lock (s_effectStaticCache)
+        {
+            if (s_effectStaticCache.TryGetValue(key, out var cached))
+                return cached;
+        }
+        foreach (System.Reflection.Assembly asm in System.AppDomain.CurrentDomain.GetAssemblies())
+        {
+            System.Type? host;
+            try { host = asm.GetType(typeName, false); }
+            catch { continue; }
+            if (host is null)
+                continue;
+            foreach (System.Reflection.MethodInfo cand in host.GetMethods(
+                System.Reflection.BindingFlags.Static
+                | System.Reflection.BindingFlags.Public
+                | System.Reflection.BindingFlags.NonPublic))
+            {
+                if (cand.Name != methodName || !cand.IsGenericMethodDefinition
+                    || cand.GetGenericArguments().Length != typeArgs.Length)
+                    continue;
+                System.Reflection.MethodInfo closed;
+                try { closed = cand.MakeGenericMethod(typeArgs); }
+                catch (System.Exception exMake)
+                { TraceBridge("MAKENO " + key + " :: " + exMake.GetType().Name, false); continue; }
+                System.Reflection.ParameterInfo[] ps = closed.GetParameters();
+                if (ps.Length != argTypes.Length)
+                    continue;
+                bool ok = true;
+                for (int i = 0; i < ps.Length; i++)
+                {
+                    if (!ps[i].ParameterType.IsAssignableFrom(argTypes[i]))
+                    { ok = false; break; }
+                }
+                if (!ok)
+                    continue;
+                lock (s_effectStaticCache)
+                    s_effectStaticCache[key] = closed;
+                return closed;
+            }
+        }
+        throw new System.InvalidOperationException(
+            "CpuPaint: static " + key + " not found in loaded assemblies");
+    }
+
+    public static object GetEffectSourceBitmap(object env, System.Type pixelType)
+    {
+        TraceBridgeSite("V:GetEffectSourceBitmap");
+        System.Reflection.MethodInfo m = ResolveEffectStaticGeneric(
+            "PaintDotNet.Effects.EffectEnvironmentExtensions", "GetSourceBitmap",
+            new[] { pixelType }, new[] { env.GetType() });
+        return InvokeEffectMember(m, null, new object?[] { env });
+    }
+
+    // TRIO-METHOD-BRIDGE: uniform bridge for closed generic-method-instantiation
+    // calls whose value-type arguments the browser interpreter rejects with an
+    // empty InvalidProgramException on dialog-construction paths (Twist
+    // Pair.Create<double,double>, Bulge/Twist CreateClipper<ColorBgra32>,
+    // Quantize CreateForEnum<PropertyNames>). Exact-overload resolution: the
+    // substituted parameter types must match the call site exactly (no
+    // assignability fallback), so the invoked method is the one the C#
+    // compiler bound. Results run through InvokeEffectMember so
+    // TargetInvocationExceptions unwrap identically to direct calls.
+    // Best-effort runtime type load for bridge names: qualified first,
+    // then the bare full name (compile-time facades such as
+    // System.Runtime are trimmed from the browser closure).
+    private static System.Collections.Generic.List<string> CandidateBridgeAssemblies(string name)
+    {
+        var found = new System.Collections.Generic.List<string>();
+        for (int i = 0; i < name.Length; i++)
+        {
+            if (name[i] != ',')
+                continue;
+            int j = i + 1;
+            while (j < name.Length && name[j] == ' ')
+                j++;
+            int k = j;
+            while (k < name.Length && (char.IsLetterOrDigit(name[k]) || name[k] == '_' || name[k] == '.'))
+                k++;
+            if (k == j)
+                continue;
+            if (k < name.Length && name[k] == '=')
+                continue;
+            string asm = name.Substring(j, k - j);
+            if (!found.Contains(asm))
+                found.Add(asm);
+        }
+        return found;
+    }
+
+    private static System.Type ResolveBridgeType(string name)
+    {
+        System.Type? t = System.Type.GetType(name, false);
+        if (t is not null)
+            return t;
+        foreach (string asm in CandidateBridgeAssemblies(name))
+        {
+            try
+            {
+                System.Reflection.Assembly loaded = System.Reflection.Assembly.Load(asm);
+                TraceChain("chain laad " + asm + " -> " + (loaded.GetName().Name ?? "?"), true);
+            }
+            catch (System.Exception exLoad)
+            {
+                TraceChain("MISS chain laad " + asm + " :: " + exLoad.GetType().Name, false);
+                continue;
+            }
+            t = System.Type.GetType(name, false);
+            if (t is not null)
+                return t;
+        }
+        int comma = name.IndexOf(',');
+        string bare = comma < 0 ? name : name.Substring(0, comma);
+        t = System.Type.GetType(bare, false);
+        if (t is not null)
+            return t;
+        throw new System.InvalidOperationException(
+            "CpuPaint: bridge type not found: " + name);
+    }
+
+    // TEMP-DIAG TRIO-METHOD-BRIDGE-R3 (remove after the trio wall is
+    // localized): capped per-invocation trace so the gate console shows
+    // exactly how far each effect click gets through bridged calls.
+    private static int s_bridgeTraceCount;
+    private static void TraceBridge(string key, bool ok)
+    {
+        if (System.Threading.Interlocked.Increment(ref s_bridgeTraceCount) <= 120)
+            System.Console.WriteLine("CpuFx-bridge: " + (ok ? "ok " : "MISS ") + key);
+    }
+    private static int s_bridgeSiteCount;
+    public static void TraceBridgeSite(string key)
+    {
+        if (System.Threading.Interlocked.Increment(ref s_bridgeSiteCount) <= 20000)
+            System.Console.WriteLine("CpuFx-site: " + key);
+    }
+
+    public static object InvokeClosedGenericStatic(
+        string typeName, string asmName, string methodName, string[] typeArgNames, string[] paramTypeNames, object?[] args)
+    {
+        try { System.Reflection.Assembly.Load(asmName); }
+        catch { }
+        System.Type[] typeArgs = new System.Type[typeArgNames.Length];
+        for (int i = 0; i < typeArgNames.Length; i++)
+            typeArgs[i] = ResolveBridgeType(typeArgNames[i]);
+        string key = typeName + "::" + methodName + "<" + string.Join(",", typeArgNames)
+            + ">(" + string.Join(",", paramTypeNames) + ")";
+        lock (s_effectStaticCache)
+        {
+            if (s_effectStaticCache.TryGetValue(key, out var cached))
+            {
+                var cachedResult = InvokeEffectMember(cached, null, args);
+                TraceBridge(key, true);
+                return cachedResult;
+            }
+        }
+        foreach (System.Reflection.Assembly asm in System.AppDomain.CurrentDomain.GetAssemblies())
+        {
+            System.Type? host;
+            try { host = asm.GetType(typeName, false); }
+            catch { continue; }
+            if (host is null)
+                continue;
+            foreach (System.Reflection.MethodInfo cand in host.GetMethods(
+                System.Reflection.BindingFlags.Static
+                | System.Reflection.BindingFlags.Public
+                | System.Reflection.BindingFlags.NonPublic))
+            {
+                if (cand.Name != methodName || !cand.IsGenericMethodDefinition
+                    || cand.GetGenericArguments().Length != typeArgs.Length)
+                    continue;
+                System.Reflection.MethodInfo closed;
+                try { closed = cand.MakeGenericMethod(typeArgs); }
+                catch { continue; }
+                System.Reflection.ParameterInfo[] ps = closed.GetParameters();
+                if (ps.Length != args.Length || ps.Length != paramTypeNames.Length)
+                    continue;
+                // Exact match by resolved type identity (the emitted
+                // names omit version/culture, so string comparison
+                // against AssemblyQualifiedName would never hold).
+                bool ok = true;
+                for (int i = 0; i < ps.Length; i++)
+                {
+                    System.Type want;
+                    try { want = ResolveBridgeType(paramTypeNames[i]); }
+                    catch { ok = false; break; }
+                    if (want != ps[i].ParameterType)
+                    { ok = false; break; }
+                }
+                if (!ok)
+                    continue;
+                lock (s_effectStaticCache)
+                    s_effectStaticCache[key] = closed;
+                TraceBridge("call " + key, true);
+                object? freshResult;
+                try { freshResult = InvokeEffectMember(closed, null, args); }
+                catch (System.Exception exInvoke)
+                { TraceBridge("THROW " + key + " :: " + exInvoke.GetType().FullName + " :: " + exInvoke.Message, false); throw; }
+                TraceBridge(key, true);
+                return freshResult;
+            }
+        }
+        TraceBridge(key, false);
+        throw new System.InvalidOperationException(
+            "CpuPaint: closed generic static " + key + " not found in loaded assemblies");
+    }
+
+    private static readonly System.Collections.Generic.Dictionary<string, System.Reflection.MethodInfo> s_transferCache = new();
+    private static readonly System.Collections.Generic.Dictionary<string, System.Type> s_transferErrorCache = new();
+
+    public static object CastOrTransferRefRuntime(object? refObj, System.Type closedTarget)
+    {
+        string tname = closedTarget.FullName ?? closedTarget.Name;
+        if (refObj is not null && closedTarget.IsInstanceOfType(refObj))
+        {
+            TraceBridge("CastOrTransferRefRuntime<" + tname + ">", true);
+            return refObj;
+        }
+        System.Reflection.MethodInfo transfer;
+        lock (s_transferCache)
+        {
+            if (!s_transferCache.TryGetValue(tname, out transfer!))
+            {
+                // R34: pre-load the proven-served carrier (gen59 census:
+                // PaintDotNet.ComponentModel.dll is the sole ObjectRefExtensions
+                // home; nonpub static GEN1 1-param TryTransferRef). A first call
+                // before the carrier loads answered TRIO-NEW open-def-missing
+                // (gen40 toolstrip-click) instead of resolving; mirrors the
+                // R12 hostAsmHint / R17 ResolveBridgeType pre-load shape.
+                try { System.Reflection.Assembly.Load("PaintDotNet.ComponentModel");
+                    TraceChain("chain trload PaintDotNet.ComponentModel", true); }
+                catch { }
+                System.Type? host = null;
+                foreach (System.Reflection.Assembly asm in System.AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    System.Type? t;
+                    try { t = asm.GetType("PaintDotNet.ComponentModel.ObjectRefExtensions", false); }
+                    catch { continue; }
+                    if (t is null)
+                        continue;
+                    if (host is null)
+                        host = t;
+                    bool carries = false;
+                    try
+                    {
+                        foreach (System.Reflection.MethodInfo m in t.GetMethods(
+                            System.Reflection.BindingFlags.Static
+                            | System.Reflection.BindingFlags.Public
+                            | System.Reflection.BindingFlags.NonPublic))
+                        {
+                            if (m.Name == "TryTransferRef" && m.IsGenericMethodDefinition
+                                && m.GetGenericArguments().Length == 1 && m.GetParameters().Length == 1)
+                            { carries = true; break; }
+                        }
+                    }
+                    catch { }
+                    if (carries)
+                    {
+                        if (!System.Object.ReferenceEquals(host, t))
+                            TraceChain("chain transferprefer " + (t.Assembly.GetName().Name ?? "?") + " over " + (host.Assembly.GetName().Name ?? "?"), true);
+                        host = t;
+                        break;
+                    }
+                }
+                if (host is null)
+                    throw new System.InvalidOperationException("CpuPaint: ObjectRefExtensions not loaded");
+                System.Reflection.MethodInfo? open = null;
+                foreach (System.Reflection.MethodInfo cand in host.GetMethods(
+                    System.Reflection.BindingFlags.Static
+                    | System.Reflection.BindingFlags.Public
+                    | System.Reflection.BindingFlags.NonPublic))
+                {
+                    if (cand.Name == "TryTransferRef" && cand.IsGenericMethodDefinition
+                        && cand.GetGenericArguments().Length == 1 && cand.GetParameters().Length == 1)
+                    { open = cand; break; }
+                }
+                if (open is null)
+                    throw new System.InvalidOperationException("CpuPaint: TryTransferRef open def missing");
+                try { transfer = open.MakeGenericMethod(closedTarget); }
+                catch (System.Exception exMake)
+                { TraceBridge("MAKENO CastOrTransferRefRuntime<" + tname + "> :: " + exMake.GetType().Name, false); throw; }
+                s_transferCache[tname] = transfer;
+            }
+        }
+        object? moved;
+        try { moved = transfer.Invoke(null, new object?[] { refObj }); }
+        catch (System.Exception exInvoke)
+        { TraceBridge("THROW CastOrTransferRefRuntime<" + tname + "> :: " + exInvoke.GetType().FullName + " :: " + exInvoke.Message, false); throw; }
+        if (moved is not null)
+        {
+            TraceBridge("CastOrTransferRefRuntime<" + tname + ">", true);
+            return moved;
+        }
+        System.Type errType;
+        lock (s_transferErrorCache)
+        {
+            if (!s_transferErrorCache.TryGetValue("INS", out errType!))
+            {
+                errType = null!;
+                foreach (System.Reflection.Assembly asm in System.AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    try { errType = asm.GetType("PaintDotNet.ComponentModel.InterfaceNotSupportedException", false)!; }
+                    catch { continue; }
+                    if (errType is not null)
+                        break;
+                }
+                if (errType is null)
+                    throw new System.InvalidOperationException("CpuPaint: InterfaceNotSupportedException not loaded");
+                s_transferErrorCache["INS"] = errType;
+            }
+        }
+        System.Reflection.ConstructorInfo ctor = errType.GetConstructor(new[] { typeof(System.Type) })
+            ?? throw new System.InvalidOperationException("CpuPaint: INS(Type) ctor missing");
+        throw (System.Exception)ctor.Invoke(new object?[] { closedTarget });
+    }
+
+    private static int s_chainTraceCount;
+
+    private static void TraceChain(string key, bool ok)
+    {
+        if (System.Threading.Interlocked.Increment(ref s_chainTraceCount) <= 1000)
+            System.Console.WriteLine("CpuFx-chain: " + (ok ? "ok " : "MISS ") + key);
+    }
+
+    private static readonly System.Collections.Generic.Dictionary<string, System.Reflection.MethodInfo> s_chainCache = new();
+
+    private static System.Reflection.MethodInfo ResolveChainInterface(
+        System.Type host, System.Type iface, string name, System.Type[] argTypes)
+    {
+        string key = (host.FullName ?? host.Name) + "@" + iface.FullName + "::" + name;
+        lock (s_chainCache)
+        {
+            if (s_chainCache.TryGetValue(key, out var cached))
+                return cached;
+        }
+        const System.Reflection.BindingFlags pubInst =
+            System.Reflection.BindingFlags.Instance
+            | System.Reflection.BindingFlags.Public;
+        System.Reflection.MethodInfo? im =
+            iface.GetMethod(name, pubInst, null, argTypes, null)
+            ?? throw new System.InvalidOperationException(
+                "CpuPaint: chain iface missing: " + iface.FullName + "." + name);
+        System.Reflection.InterfaceMapping map;
+        try { map = host.GetInterfaceMap(iface); }
+        catch (System.Exception ex)
+        {
+            throw new System.InvalidOperationException(
+                "CpuPaint: chain cannot map " + host.FullName + " to " + iface.FullName, ex);
+        }
+        int idx = System.Array.IndexOf(map.InterfaceMethods, im);
+        if (idx < 0)
+            throw new System.InvalidOperationException(
+                "CpuPaint: chain iface method missing from map for " + host.FullName);
+        lock (s_chainCache)
+            s_chainCache[key] = map.TargetMethods[idx];
+        return map.TargetMethods[idx];
+    }
+
+    private static System.Reflection.MethodInfo ResolveChainStep(System.Type host, string name, int arity)
+    {
+        string key = (host.FullName ?? host.Name) + "::" + name + "/" + arity;
+        lock (s_chainCache)
+        {
+            if (s_chainCache.TryGetValue(key, out var cached))
+                return cached;
+        }
+        foreach (System.Reflection.MethodInfo cand in host.GetMethods(
+            System.Reflection.BindingFlags.Instance
+            | System.Reflection.BindingFlags.Public
+            | System.Reflection.BindingFlags.NonPublic))
+        {
+            if (cand.Name != name || cand.GetParameters().Length != arity)
+                continue;
+            lock (s_chainCache)
+                s_chainCache[key] = cand;
+            return cand;
+        }
+        throw new System.InvalidOperationException("CpuPaint: chain step missing: " + key);
+    }
+
+    private static readonly System.Collections.Generic.Dictionary<string, System.Reflection.FieldInfo> s_chainFieldCache = new();
+
+    private static System.Reflection.FieldInfo ResolveChainField(System.Type host, string name)
+    {
+        string key = (host.FullName ?? host.Name) + "." + name;
+        lock (s_chainFieldCache)
+        {
+            if (s_chainFieldCache.TryGetValue(key, out var cached))
+                return cached;
+        }
+        System.Reflection.FieldInfo? f = host.GetField(name,
+            System.Reflection.BindingFlags.Instance
+            | System.Reflection.BindingFlags.Public
+            | System.Reflection.BindingFlags.NonPublic);
+        if (f is null)
+            throw new System.InvalidOperationException("CpuPaint: chain field missing: " + key);
+        lock (s_chainFieldCache)
+            s_chainFieldCache[key] = f;
+        return f;
+    }
+
+    private static object? InvokeClosedGenericRuntime(string hostName, string? hostAsmHint, string methodName, System.Type[] typeArgs, object?[] args, string step)
+    {
+        System.Type? host = null;
+        foreach (System.Reflection.Assembly asm in System.AppDomain.CurrentDomain.GetAssemblies())
+        {
+            System.Type? t;
+            try { t = asm.GetType(hostName, false); }
+            catch { continue; }
+            if (t is null)
+                continue;
+            if (host is null)
+                host = t;
+            bool carries = false;
+            try
+            {
+                foreach (System.Reflection.MethodInfo m in t.GetMethods(
+                    System.Reflection.BindingFlags.Static
+                    | System.Reflection.BindingFlags.Public
+                    | System.Reflection.BindingFlags.NonPublic))
+                {
+                    if (m.Name == methodName && m.IsGenericMethodDefinition
+                        && m.GetGenericArguments().Length == typeArgs.Length)
+                    { carries = true; break; }
+                }
+            }
+            catch { }
+            if (carries)
+            {
+                if (!System.Object.ReferenceEquals(host, t))
+                    TraceChain("chain hostprefer " + (t.Assembly.GetName().Name ?? "?") + " over " + (host.Assembly.GetName().Name ?? "?"), true);
+                host = t;
+                break;
+            }
+        }
+        if (host is null && hostAsmHint is not null)
+        {
+            TraceChain("chain hostload " + hostAsmHint, true);
+            try
+            {
+                System.Reflection.Assembly loaded = System.Reflection.Assembly.Load(hostAsmHint);
+                try { host = loaded.GetType(hostName, false); }
+                catch { host = null; }
+            }
+            catch (System.Exception exLoad)
+            {
+                TraceChain("THROW chain hostload :: " + exLoad.GetType().FullName + " :: " + exLoad.Message, false);
+            }
+        }
+        if (host is null)
+            throw new System.InvalidOperationException("CpuPaint: chain host missing: " + hostName);
+        TraceChain("chain host " + (host.FullName ?? "?") + " @ " + (host.Assembly.GetName().Name ?? "?"), true);
+        int shapeSeen = 0;
+        foreach (System.Reflection.MethodInfo shape in host.GetMethods(
+            System.Reflection.BindingFlags.Static
+            | System.Reflection.BindingFlags.Public
+            | System.Reflection.BindingFlags.NonPublic))
+        {
+            if (shapeSeen >= 12)
+                break;
+            if (shape.Name.IndexOf("Format", System.StringComparison.Ordinal) < 0
+                && shape.Name.IndexOf("Converter", System.StringComparison.Ordinal) < 0)
+                continue;
+            shapeSeen++;
+            TraceChain("chain shape " + shape.Name + " gen=" + shape.IsGenericMethodDefinition
+                + " garity=" + shape.GetGenericArguments().Length
+                + " pars=" + shape.GetParameters().Length, true);
+        }
+        TraceChain("chain shapecount " + shapeSeen + " want=" + methodName + " tagarity=" + typeArgs.Length, true);
+        foreach (System.Reflection.MethodInfo cand in host.GetMethods(
+            System.Reflection.BindingFlags.Static
+            | System.Reflection.BindingFlags.Public
+            | System.Reflection.BindingFlags.NonPublic))
+        {
+            if (cand.Name != methodName || !cand.IsGenericMethodDefinition
+                || cand.GetGenericArguments().Length != typeArgs.Length)
+                continue;
+            TraceChain("chain cand " + cand, true);
+            System.Reflection.MethodInfo closed;
+            try { closed = cand.MakeGenericMethod(typeArgs); }
+            catch (System.Exception exMake)
+            {
+                TraceChain("chain candmake FAIL " + exMake.GetType().Name, false);
+                continue;
+            }
+            System.Reflection.ParameterInfo[] ps = closed.GetParameters();
+            if (ps.Length != args.Length)
+            {
+                TraceChain("chain candarity " + ps.Length + "!=" + args.Length, true);
+                continue;
+            }
+            bool ok = true;
+            for (int i = 0; i < ps.Length; i++)
+            {
+                System.Type pt = ps[i].ParameterType;
+                if (pt.IsByRef)
+                { ok = false; TraceChain("chain candarg " + i + " byref", true); break; }
+                object? a = args[i];
+                if (a is null)
+                { if (pt.IsValueType) ok = false; }
+                else if (!pt.IsInstanceOfType(a))
+                { ok = false; TraceChain("chain candarg " + i + " want " + (pt.FullName ?? "?") + " got " + a.GetType().FullName, true); }
+                if (!ok)
+                    break;
+            }
+            if (!ok)
+                continue;
+            TraceChain("chain " + step + " via " + (closed.DeclaringType!.FullName ?? "?"), true);
+            try
+            {
+                object? r = InvokeEffectMember(closed, null, args);
+                TraceChain("chain " + step, true);
+                return r;
+            }
+            catch (System.Exception ex)
+            {
+                TraceChain("THROW chain " + step + " :: " + ex.GetType().FullName + " :: " + ex.Message, false);
+                throw;
+            }
+        }
+        throw new System.InvalidOperationException(
+            "CpuPaint: chain runtime generic missing: " + hostName + "::" + methodName);
+    }
+
+    public static object GetEffectSourceBitmapFromLayer(object? layer, object? boxedFmt, System.Type? pixelType)
+    {
+        if (layer is null)
+            throw new System.InvalidOperationException("CpuPaint: chain layer null");
+        if (boxedFmt is null)
+            throw new System.InvalidOperationException("CpuPaint: chain fmt null");
+        object? cur = layer;
+        object? cache = null;
+        object? layerFallback = null;
+        for (int depth = 0; depth < 4 && cache is null && cur is not null; depth++)
+        {
+            System.Type t = cur.GetType();
+            TraceChain("chain walk " + (t.FullName ?? t.Name), true);
+            System.Reflection.FieldInfo? cf = t.GetField("pixelFormatToBitmapCache",
+                System.Reflection.BindingFlags.Instance
+                | System.Reflection.BindingFlags.Public
+                | System.Reflection.BindingFlags.NonPublic);
+            if (cf is not null)
+            {
+                cache = cf.GetValue(cur);
+                break;
+            }
+            System.Reflection.FieldInfo? holder = null;
+            foreach (System.Reflection.FieldInfo ff in t.GetFields(
+                System.Reflection.BindingFlags.Instance
+                | System.Reflection.BindingFlags.Public
+                | System.Reflection.BindingFlags.NonPublic))
+            {
+                if (ff.FieldType.GetField("pixelFormatToBitmapCache",
+                    System.Reflection.BindingFlags.Instance
+                    | System.Reflection.BindingFlags.Public
+                    | System.Reflection.BindingFlags.NonPublic) is not null)
+                { holder = ff; break; }
+            }
+            if (holder is not null)
+            {
+                TraceChain("chain holder " + holder.Name + " on " + (t.FullName ?? t.Name), true);
+                cache = holder.GetValue(cur);
+                if (cache is null)
+                    layerFallback = cur;
+                break;
+            }
+            System.Reflection.MethodInfo? inner = t.GetMethod("get_InnerRef",
+                System.Reflection.BindingFlags.Instance
+                | System.Reflection.BindingFlags.Public
+                | System.Reflection.BindingFlags.NonPublic,
+                null, System.Type.EmptyTypes, null);
+            if (inner is not null && !inner.IsGenericMethodDefinition)
+            {
+                cur = InvokeEffectMember(inner, cur, null);
+                continue;
+            }
+            System.Reflection.FieldInfo? lf = t.GetField("layerInfo",
+                System.Reflection.BindingFlags.Instance
+                | System.Reflection.BindingFlags.Public
+                | System.Reflection.BindingFlags.NonPublic);
+            if (lf is null)
+                break;
+            cur = lf.GetValue(cur);
+        }
+        object? src = cache ?? layerFallback;
+        if (src is null)
+            throw new System.InvalidOperationException(
+                "CpuPaint: chain cache not found from " + layer.GetType().FullName);
+        if (cache is not null)
+            TraceChain("chain cache " + (cache.GetType().FullName ?? "?"), true);
+        else
+            TraceChain("chain cache-null-layer " + (src.GetType().FullName ?? "?"), true);
+        object? dictObj = cache is null ? null
+            : ResolveChainField(cache.GetType(), "pixelFormatToBitmapCache").GetValue(cache);
+        TraceChain("chain dict " + (dictObj?.GetType().FullName ?? "null"), true);
+        if (dictObj is not null)
+        {
+            TraceChain("chain idict", true);
+            System.Reflection.MethodInfo idContains = ResolveChainInterface(
+                dictObj.GetType(), typeof(System.Collections.IDictionary), "Contains",
+                new[] { typeof(object) });
+            bool has = (bool)InvokeEffectMember(idContains, dictObj, new object?[] { boxedFmt })!;
+            TraceChain("chain contains " + has, true);
+            if (has)
+            {
+                System.Reflection.MethodInfo idGetItem = ResolveChainInterface(
+                    dictObj.GetType(), typeof(System.Collections.IDictionary), "get_Item",
+                    new[] { typeof(object) });
+                object? soft = InvokeEffectMember(idGetItem, dictObj, new object?[] { boxedFmt });
+                TraceChain("chain indexer ok", true);
+                object? target = InvokeEffectMember(
+                    ResolveChainStep(soft!.GetType(), "TryGetTarget", 0), soft, null);
+                TraceChain("chain TryGetTarget", true);
+                return target!;
+            }
+        }
+        TraceChain("chain cache miss", true);
+        if (pixelType is null)
+            throw new System.InvalidOperationException("CpuPaint: chain miss needs pixel type");
+        object? raw = ResolveChainField(src.GetType(), "bitmap").GetValue(src);
+        object? profile = ResolveChainField(src.GetType(), "colorProfile").GetValue(src);
+        TraceChain("chain miss inputs", true);
+        object? converter = InvokeClosedGenericRuntime(
+            "PaintDotNet.Imaging.BitmapSourceExtensions", "PaintDotNet.Windows.Core", "CreateFormatConverter",
+            new[] { pixelType }, new object?[] { raw, profile },
+            "CreateFormatConverter");
+        System.Type? wrapType = null;
+        foreach (System.Reflection.Assembly asm in System.AppDomain.CurrentDomain.GetAssemblies())
+        {
+            try { wrapType = asm.GetType("PaintDotNet.Effects.EffectInputBitmap", false); }
+            catch { continue; }
+            if (wrapType is not null)
+                break;
+        }
+        if (wrapType is null)
+            throw new System.InvalidOperationException("CpuPaint: chain EffectInputBitmap missing");
+        object? wrapped = System.Activator.CreateInstance(wrapType, new object?[] { converter, profile });
+        TraceChain("chain wrap", true);
+        return wrapped!;
+    }
+
+    public static object GetEffectSourceBitmapChain(object? env, object? boxedFmt, System.Type? pixelType)
+    {
+        TraceChain("call GetEffectSourceBitmapChain", true);
+        if (env is null)
+            throw new System.InvalidOperationException("CpuPaint: chain env null");
+        if (boxedFmt is null)
+            throw new System.InvalidOperationException("CpuPaint: chain fmt null");
+        object? doc = InvokeEffectMember(ResolveChainStep(env.GetType(), "get_Document", 0), env, null);
+        TraceChain("chain get_Document", true);
+        object? layers = InvokeEffectMember(ResolveChainStep(doc!.GetType(), "get_Layers", 0), doc, null);
+        TraceChain("chain get_Layers", true);
+        object? idxObj = InvokeEffectMember(ResolveChainStep(env.GetType(), "get_SourceLayerIndex", 0), env, null);
+        TraceChain("chain get_SourceLayerIndex", true);
+        int idx = (int)idxObj!;
+        System.Reflection.MethodInfo getItem = ResolveChainStep(layers!.GetType(), "get_Item", 1);
+        TraceChain("chain get_Item via " + (getItem.DeclaringType!.FullName ?? "?"), true);
+        object? layer = InvokeEffectMember(getItem, layers, new object?[] { idx });
+        TraceChain("chain get_Item", true);
+        return GetEffectSourceBitmapFromLayer(layer, boxedFmt, pixelType);
+#if false // R8: byref GetBitmap invoke superseded (empty-IPE wall: gen32 THROW chain GetBitmap); bypass via cache fast path + converter miss path above
+        TraceBridge("chain GetBitmap via " + (getBitmap.DeclaringType!.FullName ?? "?"), true);
+        object?[] bmpArgs = new object?[] { boxedFmt };
+        object? bitmap;
+        try { bitmap = getBitmap.Invoke(layer, bmpArgs); }
+        catch (System.Reflection.TargetInvocationException tie) when (tie.InnerException is not null)
+        {
+            TraceBridge("THROW chain GetBitmap :: " + tie.InnerException.GetType().FullName + " :: " + tie.InnerException.Message, false);
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(tie.InnerException).Throw();
+            throw;
+        }
+        TraceBridge("GetEffectSourceBitmapChain", true);
+#endif
+        throw new System.InvalidOperationException("CpuPaint: unreachable chain tail");
+    }
+
+    public static object GetEnumerableValues(object seq, System.Type keyType, System.Type valueType)
+    {
+        TraceBridgeSite("V:GetEnumerableValues");
+        System.Reflection.MethodInfo m = ResolveEffectStaticGeneric(
+            "PaintDotNet.Collections.EnumerableExtensions", "Values",
+            new[] { keyType, valueType }, new[] { seq.GetType() });
+        return InvokeEffectMember(m, null, new object?[] { seq });
     }
 
     public static long CreateScratchTarget(int width, int height)
@@ -2370,7 +3486,15 @@ public static unsafe class CpuPaint
     // Answers false (no-op) on any shape mismatch; real failures
     // still trip the first-chance inventory at their source.
 
-    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<object, object> s_effectMenus = new();
+    private sealed class EffectMenuNote { public object Menu = null!; public bool Consumed; }
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<object, EffectMenuNote> s_effectMenus = new();
+
+    public static bool ResumeEffectApplyIfNoted(object dialog)
+    {
+        lock (s_effectMenus)
+            if (!s_effectMenus.TryGetValue(dialog, out var note) || note.Consumed) return false;
+        return ResumeEffectApply(dialog);
+    }
 
 
     public static void NoteEffectMenu(object? dialog, object? menu)
@@ -2379,10 +3503,11 @@ public static unsafe class CpuPaint
         {
             if (dialog is null || menu is null)
                 return;
+            var note = new EffectMenuNote { Menu = menu };
             lock (s_effectMenus)
             {
                 s_effectMenus.Remove(dialog);
-                s_effectMenus.Add(dialog, menu);
+                s_effectMenus.Add(dialog, note);
             }
             // The noted dialog is often a host wrapper
             // (EffectConfigFormWrapper): FormClosed fires on the hosted
@@ -2421,7 +3546,7 @@ public static unsafe class CpuPaint
                         lock (s_effectMenus)
                         {
                             s_effectMenus.Remove(val);
-                            s_effectMenus.Add(val, menu);
+                            s_effectMenus.Add(val, note);
                         }
                     }
                     dt = dt.BaseType;
@@ -2453,12 +3578,14 @@ public static unsafe class CpuPaint
             object? menu;
             lock (s_effectMenus)
             {
-                if (!s_effectMenus.TryGetValue(dialog, out menu) || menu is null)
+                if (!s_effectMenus.TryGetValue(dialog, out var note) || note.Consumed)
                 {
                     System.Console.WriteLine("[FXAPPLY] no-menu-note for "
                         + dialog.GetType().Name);
                     return false;
                 }
+                note.Consumed = true;
+                menu = note.Menu;
                 s_effectMenus.Remove(dialog);
             }
             // DialogResult.OK == 1; Cancel/X/None settle is a no-op.
@@ -2538,6 +3665,7 @@ public static unsafe class CpuPaint
             // pixels (rev120 probe).
             object scans = BuildFullSurfaceScans(snapshot, out object scanList);
             object?[] args = new object?[] { effect, cloned, scans, scans, renderOriginal, null };
+            int historyBefore = ReadUndoCount(dw);
             object? applied = doEffect.Invoke(menu, args);
             RefreshRepeatEffect(menu, effect, cloned);
             bool ok = applied is true;
@@ -2548,16 +3676,72 @@ public static unsafe class CpuPaint
             // (pre-effect snapshot + full-surface scans): the memento
             // saves pre-effect pixels, so undo restores correctly.
             string rowName = "-";
-            string push = ok ? PushHistoryMemento(dw, effect, snapshot, scanList, out rowName) : "skipped";
+            bool nativePushed = historyBefore >= 0 && ReadUndoCount(dw) > historyBefore;
+            string push = !ok ? "skipped" : nativePushed ? "product-pushed"
+                : PushHistoryMemento(dw, effect, snapshot, scanList, out rowName);
             System.Console.WriteLine("[FXAPPLY] doeffect-applied=" + ok + " push=" + push + " row=" + rowName);
             return ok;
         }
         catch (System.Exception ex)
         {
-            System.Console.WriteLine("[FXAPPLY] threw " + ex.GetType().Name
-                + ": " + (ex.Message ?? "").Split('\n')[0]);
+            System.Console.WriteLine("[FXAPPLY] threw " + FxApplyErrorChain(ex));
             return false;
         }
+    }
+
+    // TargetInvocationException (thrown by every reflective Invoke above)
+    // hides the real fault behind "thrown by the target of an
+    // invocation". Unwrap the inner chain (capped) so served logs name
+    // the effect-leg type + message (e.g. Twist token/render faults).
+    private static string FxApplyErrorChain(System.Exception ex)
+    {
+        var parts = new System.Collections.Generic.List<string>();
+        System.Exception? inner = null;
+        for (System.Exception? cur = ex, prev = (System.Exception?)null;
+            cur is not null && parts.Count < 6 && !ReferenceEquals(cur, prev);
+            prev = cur, cur = cur.InnerException)
+        {
+            parts.Add(cur.GetType().Name + ": " + ((cur.Message ?? "").Split('\n')[0]));
+            inner = cur;
+        }
+        string chain = string.Join(" <", parts);
+        // Innermost stack (top frames only): names the faulting effect-leg
+        // method without dumping a full trace into the console.
+        try
+        {
+            string? stack = inner?.StackTrace;
+            if (!string.IsNullOrEmpty(stack))
+            {
+                string[] frames = stack.Split('\n');
+                var take = new System.Collections.Generic.List<string>();
+                foreach (string f in frames)
+                {
+                    string t = f.Trim();
+                    if (t.Length == 0) continue;
+                    take.Add(t.Length > 220 ? t.Substring(0, 220) : t);
+                    if (take.Count >= 5) break;
+                }
+                if (take.Count > 0) chain += " @ " + string.Join(" | ", take);
+            }
+        }
+        catch { }
+        return chain;
+    }
+
+    public static void SaveEffectHistoryInline(int priority, Action save) => save();
+
+    private static int ReadUndoCount(object workspace)
+    {
+        try
+        {
+            object history = GetProp(workspace, "get_History");
+            object stack = GetProp(history, "get_UndoStack");
+            if (stack is System.Collections.ICollection collection) return collection.Count;
+            var count = stack.GetType().GetProperty("Count");
+            if (count is not null) return Convert.ToInt32(count.GetValue(stack));
+        }
+        catch { }
+        return -1;
     }
 
     // A successful Result<IReadOnlyList<RectInt32>> holding one
@@ -2872,12 +4056,14 @@ public static unsafe class CpuPaint
         }
     }
 
-    // CPU tile renderer for GPU effects (Levels first): the product
+    // CPU tile renderer for GPU effects (Levels, AutoLevel): the product
     // tile loop reads rendered tiles through Renderer.OnCopyPixels,
     // which our rewriter routes here. We answer Levels tiles from the
     // stashed pre-effect surface through the effect token's transfer
-    // function; anything else returns false and the product D2D path
-    // runs as before. All PDN-typed access is reflection-only.
+    // function, and AutoLevel tiles through a per-channel linear
+    // stretch to full range; anything else returns false and the
+    // product D2D path runs as before. All PDN-typed access is
+    // reflection-only.
     private sealed class TileSource
     {
         public byte[] Pixels = System.Array.Empty<byte>();
@@ -2887,6 +4073,34 @@ public static unsafe class CpuPaint
     }
 
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<object, TileSource> s_tileSources = new();
+
+    // Direct-apply stash hook target (rewriter calls this at
+    // EffectMenuBase.DoEffect entry): snapshots the active layer surface
+    // and stashes it as the pre-effect source for the CPU tile renderer.
+    // The dialog path stashes in ResumeEffectApply instead; calling this
+    // again there is a harmless re-snapshot (same pre-effect content).
+    // All PDN-typed access is reflection-only, like ResumeEffectApply.
+    public static void NoteDirectApplySource(object? menu, object? effect)
+    {
+        try
+        {
+            if (menu is null || effect is null)
+                return;
+            object appWs = GetProp(menu, "get_AppWorkspace");
+            object dw = GetProp(appWs, "get_ActiveDocumentWorkspace");
+            object layer = GetProp(dw, "get_ActiveLayer");
+            object surface = GetProp(layer, "get_Surface");
+            // NoteTileSource copies the pixels synchronously before DoEffect
+            // can modify them. An additional native Surface.Clone here was
+            // never disposed and leaked a full image on every direct apply.
+            NoteTileSource(effect, surface);
+            System.Console.WriteLine("[FXSTASH] direct-apply stashed for " + effect.GetType().Name);
+        }
+        catch (System.Exception ex)
+        {
+            System.Console.WriteLine("[FXSTASH] direct-apply miss " + ex.GetType().Name);
+        }
+    }
 
     public static void NoteTileSource(object? effect, object? surface)
     {
@@ -2917,10 +4131,489 @@ public static unsafe class CpuPaint
 
     public static void NoteTileSourceBytes(object effect, byte[] pixels, int w, int h, int stride)
     {
+        effect = UnwrapEffectSourceOwner(effect);
         lock (s_tileSources)
         {
             s_tileSources.Remove(effect);
             s_tileSources.Add(effect, new TileSource { Pixels = pixels, Width = w, Height = h, Stride = stride });
+        }
+        lock (s_autoLevelRanges)
+        {
+            s_autoLevelRanges.Remove(effect);
+        }
+    }
+
+    private static object UnwrapEffectSourceOwner(object effect)
+    {
+        // Menus pass an IEffectProxy; the tile renderer owns its InnerRef.
+        // Keying the snapshot by the proxy made every real render miss even
+        // though a direct-apply stash had succeeded.
+        for (int guard = 0; guard < 8 && effect.GetType().Name.Contains("EffectProxy", StringComparison.Ordinal); guard++)
+        {
+            object? inner = null;
+            for (Type? type = effect.GetType(); type is not null; type = type.BaseType)
+            {
+                var property = type.GetProperty("InnerRef", System.Reflection.BindingFlags.Instance
+                    | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic
+                    | System.Reflection.BindingFlags.DeclaredOnly);
+                if (property is not null) { inner = property.GetValue(effect); break; }
+            }
+            if (inner is null || ReferenceEquals(inner, effect)) break;
+            effect = inner;
+        }
+        return effect;
+    }
+
+    // AutoLevel range cache: per-channel min/max over opaque stash
+    // pixels (min0,max0,min1,max1,min2,max2). Keyed by effect like the
+    // stash; re-note invalidates. Computed once: the tile loop calls
+    // per tile and must not rescan the surface every time.
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<object, int[]> s_autoLevelRanges = new();
+
+    private static int[] GetAutoLevelRanges(object effect, TileSource ts)
+    {
+        lock (s_autoLevelRanges)
+        {
+            if (s_autoLevelRanges.TryGetValue(effect, out int[]? cached) && cached is not null)
+                return cached;
+        }
+        int[] range = new int[] { 255, 0, 255, 0, 255, 0 };
+        bool any = false;
+        byte[] px = ts.Pixels;
+        for (int y = 0; y < ts.Height; y++)
+        {
+            int baseOff = y * ts.Stride;
+            for (int x = 0; x < ts.Width; x++)
+            {
+                int o = baseOff + x * 4;
+                if (px[o + 3] == 0)
+                    continue;
+                any = true;
+                for (int c = 0; c < 3; c++)
+                {
+                    int v = px[o + c];
+                    if (v < range[c * 2]) range[c * 2] = v;
+                    if (v > range[c * 2 + 1]) range[c * 2 + 1] = v;
+                }
+            }
+        }
+        if (!any)
+        {
+            // No opaque pixels: nothing to stretch; identity range.
+            range = new int[] { 0, 255, 0, 255, 0, 255 };
+        }
+        lock (s_autoLevelRanges)
+        {
+            s_autoLevelRanges.Remove(effect);
+            s_autoLevelRanges.Add(effect, range);
+        }
+        return range;
+    }
+
+    // AutoLevel CPU tiles: per-channel linear stretch of the stashed
+    // pre-effect surface to full range. APPROXIMATION (stated, not
+    // silent): full-range min/max stretch over opaque stash pixels,
+    // straight stored channel values, alpha preserved, flat channels
+    // pass through. No vendor oracle exists in-repo for clip behavior,
+    // premultiplication handling, or exact desktop parity; if a reference
+    // pins those, this transfer must be re-derived. Returns false on
+    // any shape mismatch so the product path runs as before.
+    private static bool RenderAutoLevelTileCpu(object owner, object dst, object src)
+    {
+        try
+        {
+            TileSource? ts;
+            lock (s_tileSources)
+            {
+                if (!s_tileSources.TryGetValue(owner, out ts) || ts is null)
+                    return false;
+            }
+            int[] range = GetAutoLevelRanges(owner, ts);
+            System.Type dt = dst.GetType();
+            int tw = System.Convert.ToInt32(dt.GetProperty("Width")?.GetValue(dst));
+            int th = System.Convert.ToInt32(dt.GetProperty("Height")?.GetValue(dst));
+            int tstride = System.Convert.ToInt32(dt.GetProperty("Stride")?.GetValue(dst));
+            IntPtr dptr = UnboxPointer(dt.GetProperty("Ptr")?.GetValue(dst));
+            System.Type pt = src.GetType();
+            int tx = System.Convert.ToInt32(pt.GetProperty("X")?.GetValue(src));
+            int ty = System.Convert.ToInt32(pt.GetProperty("Y")?.GetValue(src));
+            if (tw <= 0 || th <= 0 || tstride <= 0 || dptr == IntPtr.Zero)
+                return false;
+            if (tx < 0 || ty < 0 || tx + tw > ts.Width || ty + th > ts.Height)
+                return false;
+            byte[] srow = new byte[tw * 4];
+            unsafe
+            {
+                byte* dp = (byte*)dptr.ToPointer();
+                for (int y = 0; y < th; y++)
+                {
+                    System.Buffer.BlockCopy(ts.Pixels, (ty + y) * ts.Stride + tx * 4, srow, 0, srow.Length);
+                    byte* row = dp + (nint)y * (nint)tstride;
+                    for (int x = 0; x < tw; x++)
+                    {
+                        int so = x * 4;
+                        row[so + 3] = srow[so + 3];
+                        for (int c = 0; c < 3; c++)
+                        {
+                            int lo = range[c * 2];
+                            int hi = range[c * 2 + 1];
+                            int v = srow[so + c];
+                            row[so + c] = hi <= lo
+                                ? (byte)v
+                                : (byte)(((v - lo) * 255 + (hi - lo) / 2) / (hi - lo));
+                        }
+                    }
+                }
+            }
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool RenderInvertTileCpu(object owner, object dst, object src)
+    {
+        try
+        {
+            TileSource? ts;
+            lock (s_tileSources)
+            {
+                if (!s_tileSources.TryGetValue(owner, out ts) || ts is null)
+                    return false;
+            }
+            System.Type dt = dst.GetType();
+            int tw = System.Convert.ToInt32(dt.GetProperty("Width")?.GetValue(dst));
+            int th = System.Convert.ToInt32(dt.GetProperty("Height")?.GetValue(dst));
+            int tstride = System.Convert.ToInt32(dt.GetProperty("Stride")?.GetValue(dst));
+            IntPtr dptr = UnboxPointer(dt.GetProperty("Ptr")?.GetValue(dst));
+            System.Type pt = src.GetType();
+            int tx = System.Convert.ToInt32(pt.GetProperty("X")?.GetValue(src));
+            int ty = System.Convert.ToInt32(pt.GetProperty("Y")?.GetValue(src));
+            if (tw <= 0 || th <= 0 || tstride <= 0 || dptr == IntPtr.Zero)
+                return false;
+            if (tx < 0 || ty < 0 || tx + tw > ts.Width || ty + th > ts.Height)
+                return false;
+            byte[] srow = new byte[tw * 4];
+            unsafe
+            {
+                byte* dp = (byte*)dptr.ToPointer();
+                for (int y = 0; y < th; y++)
+                {
+                    System.Buffer.BlockCopy(ts.Pixels, (ty + y) * ts.Stride + tx * 4, srow, 0, srow.Length);
+                    byte* row = dp + (nint)y * (nint)tstride;
+                    for (int x = 0; x < tw; x++)
+                    {
+                        int so = x * 4;
+                        row[so] = (byte)(255 - srow[so]);         // B
+                        row[so + 1] = (byte)(255 - srow[so + 1]); // G
+                        row[so + 2] = (byte)(255 - srow[so + 2]); // R
+                        row[so + 3] = srow[so + 3];               // A preserved
+                    }
+                }
+            }
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool RenderDesaturateTileCpu(object owner, object dst, object src)
+    {
+        try
+        {
+            TileSource? ts;
+            lock (s_tileSources)
+            {
+                if (!s_tileSources.TryGetValue(owner, out ts) || ts is null)
+                    return false;
+            }
+            System.Type dt = dst.GetType();
+            int tw = System.Convert.ToInt32(dt.GetProperty("Width")?.GetValue(dst));
+            int th = System.Convert.ToInt32(dt.GetProperty("Height")?.GetValue(dst));
+            int tstride = System.Convert.ToInt32(dt.GetProperty("Stride")?.GetValue(dst));
+            IntPtr dptr = UnboxPointer(dt.GetProperty("Ptr")?.GetValue(dst));
+            System.Type pt = src.GetType();
+            int tx = System.Convert.ToInt32(pt.GetProperty("X")?.GetValue(src));
+            int ty = System.Convert.ToInt32(pt.GetProperty("Y")?.GetValue(src));
+            if (tw <= 0 || th <= 0 || tstride <= 0 || dptr == IntPtr.Zero)
+                return false;
+            if (tx < 0 || ty < 0 || tx + tw > ts.Width || ty + th > ts.Height)
+                return false;
+            byte[] srow = new byte[tw * 4];
+            unsafe
+            {
+                byte* dp = (byte*)dptr.ToPointer();
+                for (int y = 0; y < th; y++)
+                {
+                    System.Buffer.BlockCopy(ts.Pixels, (ty + y) * ts.Stride + tx * 4, srow, 0, srow.Length);
+                    byte* row = dp + (nint)y * (nint)tstride;
+                    for (int x = 0; x < tw; x++)
+                    {
+                        int so = x * 4;
+                        byte b = srow[so];
+                        byte g = srow[so + 1];
+                        byte r = srow[so + 2];
+                        byte gray = (byte)((r * 2126 + g * 7152 + b * 722 + 5000) / 10000);
+                        row[so] = gray;
+                        row[so + 1] = gray;
+                        row[so + 2] = gray;
+                        row[so + 3] = srow[so + 3];
+                    }
+                }
+            }
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static object? GetEffectToken(object owner)
+    {
+        try
+        {
+            for (System.Type? tt = owner.GetType(); tt is not null; tt = tt.BaseType)
+            {
+                var tp = tt.GetProperty("Token",
+                    System.Reflection.BindingFlags.Instance
+                    | System.Reflection.BindingFlags.Public
+                    | System.Reflection.BindingFlags.NonPublic
+                    | System.Reflection.BindingFlags.DeclaredOnly);
+                if (tp is not null) return tp.GetValue(owner);
+            }
+        }
+        catch
+        {
+        }
+        return null;
+    }
+
+    private static int GetTokenIntProperty(object token, string name, int defaultValue)
+    {
+        try { return Convert.ToInt32(GetTokenValue(token, name) ?? defaultValue); }
+        catch { return defaultValue; }
+    }
+
+    private static void RgbToHsl(byte rByte, byte gByte, byte bByte, out float h, out float s, out float l)
+    {
+        float r = rByte / 255f;
+        float g = gByte / 255f;
+        float b = bByte / 255f;
+
+        float max = Math.Max(r, Math.Max(g, b));
+        float min = Math.Min(r, Math.Min(g, b));
+        float delta = max - min;
+
+        l = (max + min) / 2f;
+
+        if (delta <= 1e-5f)
+        {
+            h = 0f;
+            s = 0f;
+            return;
+        }
+
+        s = l <= 0.5f ? delta / (max + min) : delta / (2f - max - min);
+
+        if (r >= max)
+            h = ((g - b) / delta) % 6f;
+        else if (g >= max)
+            h = ((b - r) / delta) + 2f;
+        else
+            h = ((r - g) / delta) + 4f;
+
+        h *= 60f;
+        if (h < 0f) h += 360f;
+    }
+
+    private static void HslToRgb(float h, float s, float l, out byte rByte, out byte gByte, out byte bByte)
+    {
+        if (s <= 1e-5f)
+        {
+            int gray = (int)Math.Round(l * 255f);
+            byte gb = (byte)(gray < 0 ? 0 : gray > 255 ? 255 : gray);
+            rByte = gb;
+            gByte = gb;
+            bByte = gb;
+            return;
+        }
+
+        float c = (1f - Math.Abs(2f * l - 1f)) * s;
+        float x = c * (1f - Math.Abs((h / 60f) % 2f - 1f));
+        float m = l - c / 2f;
+
+        float rPrime = 0f;
+        float gPrime = 0f;
+        float bPrime = 0f;
+
+        if (h < 60f)
+        {
+            rPrime = c; gPrime = x; bPrime = 0f;
+        }
+        else if (h < 120f)
+        {
+            rPrime = x; gPrime = c; bPrime = 0f;
+        }
+        else if (h < 180f)
+        {
+            rPrime = 0f; gPrime = c; bPrime = x;
+        }
+        else if (h < 240f)
+        {
+            rPrime = 0f; gPrime = x; bPrime = c;
+        }
+        else if (h < 300f)
+        {
+            rPrime = x; gPrime = 0f; bPrime = c;
+        }
+        else
+        {
+            rPrime = c; gPrime = 0f; bPrime = x;
+        }
+
+        int rInt = (int)Math.Round((rPrime + m) * 255f);
+        int gInt = (int)Math.Round((gPrime + m) * 255f);
+        int bInt = (int)Math.Round((bPrime + m) * 255f);
+
+        rByte = (byte)(rInt < 0 ? 0 : rInt > 255 ? 255 : rInt);
+        gByte = (byte)(gInt < 0 ? 0 : gInt > 255 ? 255 : gInt);
+        bByte = (byte)(bInt < 0 ? 0 : bInt > 255 ? 255 : bInt);
+    }
+
+    private static bool RenderBrightnessContrastTileCpu(object owner, object dst, object src)
+    {
+        try
+        {
+            TileSource? ts;
+            lock (s_tileSources)
+            {
+                if (!s_tileSources.TryGetValue(owner, out ts) || ts is null)
+                    return false;
+            }
+            object? token = GetEffectToken(owner);
+            int brightness = token != null ? GetTokenIntProperty(token, "Brightness", 0) : 0;
+            int contrast = token != null ? GetTokenIntProperty(token, "Contrast", 0) : 0;
+
+            System.Type dt = dst.GetType();
+            int tw = System.Convert.ToInt32(dt.GetProperty("Width")?.GetValue(dst));
+            int th = System.Convert.ToInt32(dt.GetProperty("Height")?.GetValue(dst));
+            int tstride = System.Convert.ToInt32(dt.GetProperty("Stride")?.GetValue(dst));
+            IntPtr dptr = UnboxPointer(dt.GetProperty("Ptr")?.GetValue(dst));
+            System.Type pt = src.GetType();
+            int tx = System.Convert.ToInt32(pt.GetProperty("X")?.GetValue(src));
+            int ty = System.Convert.ToInt32(pt.GetProperty("Y")?.GetValue(src));
+            if (tw <= 0 || th <= 0 || tstride <= 0 || dptr == IntPtr.Zero)
+                return false;
+            if (tx < 0 || ty < 0 || tx + tw > ts.Width || ty + th > ts.Height)
+                return false;
+
+            float factor = 1f + (contrast / 100f);
+            float bShift = (brightness / 100f) * 255f;
+
+            byte[] srow = new byte[tw * 4];
+            unsafe
+            {
+                byte* dp = (byte*)dptr.ToPointer();
+                for (int y = 0; y < th; y++)
+                {
+                    System.Buffer.BlockCopy(ts.Pixels, (ty + y) * ts.Stride + tx * 4, srow, 0, srow.Length);
+                    byte* row = dp + (nint)y * (nint)tstride;
+                    for (int x = 0; x < tw; x++)
+                    {
+                        int so = x * 4;
+                        for (int c = 0; c < 3; c++)
+                        {
+                            float v = srow[so + c];
+                            float nv = (v - 128f) * factor + 128f + bShift;
+                            int b = (int)System.Math.Round(nv);
+                            row[so + c] = (byte)(b < 0 ? 0 : b > 255 ? 255 : b);
+                        }
+                        row[so + 3] = srow[so + 3];
+                    }
+                }
+            }
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool RenderHueSaturationTileCpu(object owner, object dst, object src)
+    {
+        try
+        {
+            TileSource? ts;
+            lock (s_tileSources)
+            {
+                if (!s_tileSources.TryGetValue(owner, out ts) || ts is null)
+                    return false;
+            }
+            object? token = GetEffectToken(owner);
+            int hueDelta = token != null ? GetTokenIntProperty(token, "Hue", 0) : 0;
+            int saturation = token != null ? GetTokenIntProperty(token, "Saturation", 100) : 100;
+            int lightness = token != null ? GetTokenIntProperty(token, "Lightness", 0) : 0;
+
+            System.Type dt = dst.GetType();
+            int tw = System.Convert.ToInt32(dt.GetProperty("Width")?.GetValue(dst));
+            int th = System.Convert.ToInt32(dt.GetProperty("Height")?.GetValue(dst));
+            int tstride = System.Convert.ToInt32(dt.GetProperty("Stride")?.GetValue(dst));
+            IntPtr dptr = UnboxPointer(dt.GetProperty("Ptr")?.GetValue(dst));
+            System.Type pt = src.GetType();
+            int tx = System.Convert.ToInt32(pt.GetProperty("X")?.GetValue(src));
+            int ty = System.Convert.ToInt32(pt.GetProperty("Y")?.GetValue(src));
+            if (tw <= 0 || th <= 0 || tstride <= 0 || dptr == IntPtr.Zero)
+                return false;
+            if (tx < 0 || ty < 0 || tx + tw > ts.Width || ty + th > ts.Height)
+                return false;
+
+            float satFactor = saturation / 100f;
+            float lightDelta = lightness / 100f;
+
+            byte[] srow = new byte[tw * 4];
+            unsafe
+            {
+                byte* dp = (byte*)dptr.ToPointer();
+                for (int y = 0; y < th; y++)
+                {
+                    System.Buffer.BlockCopy(ts.Pixels, (ty + y) * ts.Stride + tx * 4, srow, 0, srow.Length);
+                    byte* row = dp + (nint)y * (nint)tstride;
+                    for (int x = 0; x < tw; x++)
+                    {
+                        int so = x * 4;
+                        byte b = srow[so];
+                        byte g = srow[so + 1];
+                        byte r = srow[so + 2];
+                        byte a = srow[so + 3];
+
+                        RgbToHsl(r, g, b, out float h, out float s, out float l);
+
+                        h = (h + hueDelta) % 360f;
+                        if (h < 0f) h += 360f;
+
+                        s = Math.Clamp(s * satFactor, 0f, 1f);
+                        l = Math.Clamp(l + lightDelta, 0f, 1f);
+
+                        HslToRgb(h, s, l, out byte outR, out byte outG, out byte outB);
+
+                        row[so] = outB;
+                        row[so + 1] = outG;
+                        row[so + 2] = outR;
+                        row[so + 3] = a;
+                    }
+                }
+            }
+            return true;
+        }
+        catch
+        {
+            return false;
         }
     }
 
@@ -2997,28 +4690,44 @@ public static unsafe class CpuPaint
             }
             if (owner is null)
                 return false;
-            if (!owner.GetType().Name.Contains("LevelsGpuEffect", System.StringComparison.Ordinal))
+            string ownerName = owner.GetType().Name;
+            if (ownerName.Contains("CurvesGpuEffect", StringComparison.Ordinal) || ownerName.Contains("PosterizeGpuEffect", StringComparison.Ordinal))
+                return RenderTransferTileCpu(owner, dst, src);
+            if (ownerName.Contains("GaussianBlurGpuEffect", StringComparison.Ordinal) || ownerName.Contains("SharpenGpuEffect", StringComparison.Ordinal))
+                return RenderSpatialTileCpu(owner, dst, src);
+            bool isBulge = ownerName.Contains("BulgeGpuEffect", System.StringComparison.Ordinal);
+            bool isTwist = ownerName.Contains("TwistGpuEffect", System.StringComparison.Ordinal);
+            bool isClouds = ownerName.Contains("CloudsGpuEffect", System.StringComparison.Ordinal);
+            bool isLevels = ownerName.Contains("LevelsGpuEffect", System.StringComparison.Ordinal);
+            bool isAutoLevel = !isLevels
+                && ownerName.Contains("AutoLevelGpuEffect", System.StringComparison.Ordinal);
+            bool isInvert = !isLevels && !isAutoLevel
+                && ownerName.Contains("InvertColors", System.StringComparison.Ordinal);
+            bool isDesaturate = !isLevels && !isAutoLevel && !isInvert
+                && ownerName.Contains("Desaturate", System.StringComparison.Ordinal);
+            bool isBrightnessContrast = !isLevels && !isAutoLevel && !isInvert && !isDesaturate
+                && ownerName.Contains("BrightnessContrast", System.StringComparison.Ordinal);
+            bool isHueSaturation = !isLevels && !isAutoLevel && !isInvert && !isDesaturate && !isBrightnessContrast
+                && ownerName.Contains("HueSaturation", System.StringComparison.Ordinal);
+            if (!isLevels && !isAutoLevel && !isInvert && !isDesaturate && !isBrightnessContrast && !isHueSaturation && !isBulge && !isTwist && !isClouds)
                 return false;
-            object? token = null;
-            try
-            {
-                // EffectBase.Token is protected, and GpuEffect<TToken>
-                // shadows it with new: a flat lookup is ambiguous, so
-                // walk most-derived first (the generic token wins).
-                for (System.Type? tt = owner.GetType(); tt is not null; tt = tt.BaseType)
-                {
-                    var tp = tt.GetProperty("Token",
-                        System.Reflection.BindingFlags.Instance
-                        | System.Reflection.BindingFlags.Public
-                        | System.Reflection.BindingFlags.NonPublic
-                        | System.Reflection.BindingFlags.DeclaredOnly);
-                    if (tp is not null) { token = tp.GetValue(owner); break; }
-                }
-            }
-            catch
-            {
-                return false;
-            }
+            if (isBulge)
+                return RenderBulgeTileCpu(owner, dst, src);
+            if (isTwist)
+                return RenderTwistTileCpu(owner, dst, src);
+            if (isClouds)
+                return RenderCloudsTileCpu(owner, dst, src);
+            if (isAutoLevel)
+                return RenderAutoLevelTileCpu(owner, dst, src);
+            if (isInvert)
+                return RenderInvertTileCpu(owner, dst, src);
+            if (isDesaturate)
+                return RenderDesaturateTileCpu(owner, dst, src);
+            if (isBrightnessContrast)
+                return RenderBrightnessContrastTileCpu(owner, dst, src);
+            if (isHueSaturation)
+                return RenderHueSaturationTileCpu(owner, dst, src);
+            object? token = GetEffectToken(owner);
             if (token is null)
                 return false;
             object? levels = null;
@@ -3964,7 +5673,7 @@ public static unsafe class CpuPaint
             bool knownPassThrough = effectName.Contains("ColorManagementEffect")
                 || effectName.Contains("CropEffect")
                 || effectName.Contains("BitmapSourceEffect");
-            if (!knownPassThrough)
+            if (!knownPassThrough && AppContext.TryGetSwitch("WfWasm.TraceCpuImages", out bool traceDraw) && traceDraw)
             {
                 try
                 {
@@ -4068,7 +5777,7 @@ public static unsafe class CpuPaint
                 if (ReferenceEquals(input, before))
                     break;
             }
-            try { Console.WriteLine("[PROXYOUT] in=" + t.FullName + " out=" + (input is null ? "null" : input.GetType().FullName)); }
+            try { if (AppContext.TryGetSwitch("WfWasm.TraceCpuImages", out bool traceOutput) && traceOutput) Console.WriteLine("[PROXYOUT] in=" + t.FullName + " out=" + (input is null ? "null" : input.GetType().FullName)); }
             catch { }
             return input;
         }
@@ -5801,4 +7510,3 @@ public static unsafe class CpuPaint
         }
     }
 }
-

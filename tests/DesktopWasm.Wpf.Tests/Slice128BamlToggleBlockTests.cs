@@ -776,7 +776,7 @@ public sealed class Slice128BamlToggleBlockTests : IDisposable
         var bytes = EngineShortFormDictionary("DesktopWasm.Wpf.ToggleButton", -39, "Top", -195);
         var error = Assert.Throws<XamlLoadException>(() => BamlReader.LoadDictionary(bytes));
         Assert.Contains("well-known member id -39", error.Message);
-        Assert.Contains("short-form properties beyond FlowDirection/Template/Focusable/IsEnabled/HorizontalAlignment/VerticalAlignment/HorizontalContentAlignment/VerticalContentAlignment/Background/Height/Width/Fill/Visibility/BorderThickness/BorderBrush/Margin/IsTabStop/Padding/ItemsPanel/RenderTransform", error.Message);
+        Assert.Contains("short-form properties beyond FlowDirection/Template/Focusable/IsEnabled/HorizontalAlignment/VerticalAlignment/HorizontalContentAlignment/VerticalContentAlignment/Background/Height/Width/Fill/Visibility/Foreground/BorderThickness/BorderBrush/Margin/IsTabStop/Padding/ItemsPanel/RenderTransform", error.Message);
     }
 
     [Fact]

@@ -52,4 +52,36 @@ public sealed class FiddlerEntryTransformTests
         using var asm = AssemblyDefinition.ReadAssembly(stream);
         Assert.NotNull(asm.EntryPoint);
     }
+
+    // Rev-rule pin: the obfuscator module-init (RateSetter/ListSetter ->
+    // RSACryptoServiceProvider.set_UseMachineKeyStore, machine-key-store
+    // CAPI unreachable from the browser host) must not survive the rule:
+    // after NeutralizeFiddlerModuleInit the <Module>..cctor is a bare
+    // ret, so the init can never fire and the real MainForm load is not
+    // TypeLoad-killed by it. RAM-only: reads the prepared benchmark
+    // input, never writes.
+    [Fact]
+    public void Rewrite_Fiddler_ModuleInit_Neutralized()
+    {
+        string folder = Path.Combine(RepoRoot(), ".artifacts", "benchmark-apps", "benchmark-fiddler-classic");
+        string input = Path.Combine(folder, "Fiddler.exe");
+        Assert.True(File.Exists(input),
+            "benchmark input not prepared (run prepare-desktop-benchmarks.ps1): " + input);
+        byte[] raw = File.ReadAllBytes(input);
+        using var stream = new MemoryStream(raw, writable: false);
+        using var asm = AssemblyDefinition.ReadAssembly(stream);
+        int removed = AssemblyRewriter.NeutralizeFiddlerModuleInit(asm.MainModule);
+        // The prepared entry binary carries exactly the two reachable
+        // init calls (<Module>..cctor -> RateSetter + ListSetter; the
+        // remaining call slot is the unreachable null-call the tail
+        // sweep nops, not this rule's target).
+        Assert.Equal(2, removed);
+        var global = asm.MainModule.GetType("<Module>");
+        Assert.NotNull(global);
+        var cctor = global.Methods.First(m => m.Name == ".cctor");
+        Assert.Single(cctor.Body.Instructions);
+        Assert.Equal(Mono.Cecil.Cil.OpCodes.Ret, cctor.Body.Instructions[0].OpCode);
+        // Idempotent: a second application is a no-op, not an error.
+        Assert.Equal(0, AssemblyRewriter.NeutralizeFiddlerModuleInit(asm.MainModule));
+    }
 }

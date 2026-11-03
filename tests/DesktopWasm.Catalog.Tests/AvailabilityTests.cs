@@ -53,6 +53,45 @@ public sealed class AvailabilityTests
     }
 
     [Fact]
+    public void RefreshIsIdempotent_NoEvidenceDup()
+    {
+        var once = LocalInputMapper.Refresh(Fx.Descriptor("fixture-app"), Receipts("fixture-app"));
+        var twice = LocalInputMapper.Refresh(once, Receipts("fixture-app"));
+        Assert.Equal(
+            CatalogSerializer.Serialize([once]),
+            CatalogSerializer.Serialize([twice]));
+        Assert.Single(twice.Evidence.Where(e => e.StartsWith("local:", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public void PilotWithReceiptStaysDemoted()
+    {
+        // A receipt alone never promotes a bridgeless mixed entry, and the
+        // refresh must not throw: the pilot stays Unavailable with its gap.
+        var pilot = LegacyAdapters.MixedPilot();
+        var after = LocalInputMapper.Refresh(pilot,
+            new Dictionary<string, LocalInputMapper.StagedReceipt>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["mixed-session-pilot"] = new("mixed-session-pilot", "inputs/mixed", new string('f', 64), "2026-10-30T16:36:36Z"),
+            });
+        Assert.Equal(AppAvailability.Unavailable, after.Availability);
+        Assert.NotEmpty(after.Gaps);
+        CatalogValidator.ValidateDescriptor(after);
+    }
+
+    [Fact]
+    public void MixedWithBridgeAndReceiptGoesAvailable()
+    {
+        var app = Fx.Descriptor("fixture-mixed",
+            capabilities: AppCapability.Mixed,
+            entry: new AppEntry("mixed-session", "FixtureMixed", null, null,
+                new AppBridge("interop-host", "mixed-session-v1")));
+        var after = LocalInputMapper.Refresh(app, Receipts("fixture-mixed"));
+        Assert.Equal(AppAvailability.Available, after.Availability);
+        CatalogValidator.ValidateDescriptor(after);
+    }
+
+    [Fact]
     public void StagedBytesAreNotVerifiedRuntime()
     {
         // The mapper caps at Available; there is no verified state to reach.

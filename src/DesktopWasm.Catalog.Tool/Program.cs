@@ -1,7 +1,9 @@
 // Catalog import tool: frozen roots in, canonical catalog out.
 //   import --winforms-root <p> --wpf-root <p> --out <catalog-dir>
 //   verify --winforms-root <p> --wpf-root <p> --catalog <catalog-dir>
-//   refresh --catalog <dir> --receipts <json>
+//   refresh --catalog <dir> --receipts <json> [--receipts <json>...]
+//   (repeatable; the union is the new batch, still-present earlier staging
+//   verified on disk is carried forward, invalid receipts abort unwritten)
 // Snapshots are migration provenance only; runtime never needs old roots.
 // Exit codes: 0 ok, 2 bad input, 3 drift/validation failure.
 using DesktopWasm.Catalog.Tool;
@@ -33,7 +35,7 @@ try
     {
         "import" => Importer.Import(Get(opts, "winforms-root"), Get(opts, "wpf-root"), Get(opts, "out")),
         "verify" => Importer.Verify(Get(opts, "winforms-root"), Get(opts, "wpf-root"), Get(opts, "catalog")),
-        "refresh" => Importer.Refresh(Get(opts, "catalog"), Get(opts, "receipts")),
+        "refresh" => Importer.Refresh(Get(opts, "catalog"), Receipts(cliArgs)),
         _ => Fail($"unknown command '{cliArgs[0]}'"),
     };
 }
@@ -62,6 +64,15 @@ static Dictionary<string, string> Parse(string[] rest)
 
 static string Get(Dictionary<string, string> opts, string key) =>
     opts.TryGetValue(key, out var value) ? value : throw new ArgumentException($"Missing --{key}.");
+
+/// <summary>All --receipts values in order; at least one is required.</summary>
+static IReadOnlyList<string> Receipts(string[] cliArgs)
+{
+    var list = new List<string>();
+    for (var i = 1; i + 1 < cliArgs.Length; i++)
+        if (cliArgs[i] == "--receipts") list.Add(cliArgs[i + 1]);
+    return list.Count > 0 ? list : throw new ArgumentException("Missing --receipts.");
+}
 
 static int Fail(string message)
 {

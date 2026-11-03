@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\DesktopWasm.Host.Server\DesktopWasm.Host.Server.csproj" />
+    <ProjectReference Include="..\..\src\DesktopWasm.Catalog\DesktopWasm.Catalog.csproj" />
   </ItemGroup>
 
 </Project>

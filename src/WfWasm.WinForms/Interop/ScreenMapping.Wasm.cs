@@ -18,29 +18,53 @@ internal static class WasmScreenMapping
     /// <summary>
     ///  Client origin of <paramref name="hWnd"/> in scene ("screen")
     ///  coordinates. Null/unknown windows map to the origin.
+    ///  Guarantees bounded traversal (depth < 50) and safe foreign handle handling.
     /// </summary>
     internal static Point ClientOrigin(HWND hWnd)
     {
-        if (hWnd.IsNull)
+        if (hWnd.IsNull || hWnd.Value == 0)
         {
             return Point.Empty;
         }
 
-        var control = global::System.Windows.Forms.Control.FromHandle((nint)hWnd.Value);
-        if (control is null)
+        global::System.Windows.Forms.Control? control = null;
+        try
+        {
+            control = global::System.Windows.Forms.Control.FromHandle((nint)hWnd.Value);
+        }
+        catch
+        {
+            return Point.Empty;
+        }
+
+        if (control is null || control.IsDisposed)
         {
             return Point.Empty;
         }
 
         int x = 0;
         int y = 0;
-        for (var current = control; current != null; current = current.Parent)
+        int depth = 0;
+        for (var current = control; current != null && depth < 50; depth++)
         {
-            x += current.Location.X;
-            y += current.Location.Y;
-            if (current is global::System.Windows.Forms.Form form)
+            if (current.IsDisposed)
             {
-                y += ChromeHeight(form);
+                break;
+            }
+
+            try
+            {
+                x += current.Location.X;
+                y += current.Location.Y;
+                if (current is global::System.Windows.Forms.Form form && (form.TopLevel || form.Parent == null))
+                {
+                    y += ChromeHeight(form);
+                    break;
+                }
+                current = current.Parent;
+            }
+            catch
+            {
                 break;
             }
         }
@@ -48,18 +72,46 @@ internal static class WasmScreenMapping
         return new Point(x, y);
     }
 
+    internal static Point ClientOrigin(nint hWnd) => ClientOrigin((HWND)hWnd);
+
     // Must match WinFormsAppHost.ChromeHeight: the host paints a 30px bar for
     // captioned forms and none for chromeless ones; client coords start below it.
     private static int ChromeHeight(global::System.Windows.Forms.Form form)
     {
-        if (form.FormBorderStyle == global::System.Windows.Forms.FormBorderStyle.None)
+        try
+        {
+            if (form.IsDisposed || form.FormBorderStyle == global::System.Windows.Forms.FormBorderStyle.None)
+            {
+                return 0;
+            }
+
+            Type? type = form.GetType();
+            while (type != null)
+            {
+                string name = type.Name;
+                if (name.Contains("RadForm", StringComparison.Ordinal) || name.Contains("ShapedForm", StringComparison.Ordinal))
+                {
+                    return 0;
+                }
+                if (name == "Form")
+                {
+                    break;
+                }
+                type = type.BaseType;
+            }
+
+            int style = form.IsHandleCreated
+                ? global::System.Windows.Forms.WasmWindowLongs.GetWindowStyle(form.Handle)
+                : 0;
+            if (style != 0 && (style & (int)global::Windows.Win32.UI.WindowsAndMessaging.WINDOW_STYLE.WS_CAPTION) != (int)global::Windows.Win32.UI.WindowsAndMessaging.WINDOW_STYLE.WS_CAPTION)
+            {
+                return 0;
+            }
+            return 30;
+        }
+        catch
         {
             return 0;
         }
-
-        int style = form.IsHandleCreated
-            ? global::System.Windows.Forms.WasmWindowLongs.GetWindowStyle(form.Handle)
-            : 0;
-        return (style & (int)global::Windows.Win32.UI.WindowsAndMessaging.WINDOW_STYLE.WS_CAPTION) != 0 ? 30 : 0;
     }
 }

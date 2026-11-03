@@ -15,7 +15,7 @@
         <p><a href="/">Back to the catalog</a> <button @onclick="RetryAsync">Try again</button></p>
     </div>
 }
-else if (_app is null)
+else if (_app is null || _probing)
 {
     <p role="status">Opening @AppId…</p>
 }
@@ -23,19 +23,21 @@ else
 {
     <h1>@_app.Label <code>@_app.Id</code></h1>
     <p>@_app.Description</p>
-    <p>Session: <code>@_sessionId</code> · Frameworks: @string.Join(" + ", _app.Frameworks) · Status: @_app.Status</p>
-    @if (!_app.Available)
+    <p>@string.Join(" + ", _app.Frameworks)</p>
+    @if (_openUrl is not null)
+    {
+        <p role="status">Ready to open</p>
+        <a href="@_openUrl" @onclick="() => Nav.NavigateTo(_openUrl, forceLoad: true)" @onclick:preventDefault>Open app</a>
+    }
+    else
     {
         <div class="stage-overlay error" role="alert">
-            <h2>Not available yet</h2>
-            <p>@string.Join("; ", _app.Gaps)</p>
+            <h2>This app is not ready to open</h2>
+            @if (_app.Supports("winforms")) { <p>@_wfDetail</p> }
+            @if (_app.Supports("wpf")) { <p>@_wpfDetail</p> }
+            @if (!_app.Available) { <p>@_app.AvailabilityNote</p> }
         </div>
     }
-    <h2>Runtime adapters</h2>
-    <ul>
-        <li>Windows Forms: @_wfStatus (@_wfDetail)</li>
-        <li>WPF: @_wpfStatus (@_wpfDetail)</li>
-    </ul>
     @if (_app.Mixed)
     {
         <h2>Mixed session</h2>
@@ -44,9 +46,15 @@ else
     @if (_provenance is not null)
     {
         <h2>Provenance</h2>
-        <p>Source: @_provenance.SourceUrl ?? @_provenance.Repository ?? "native demo"</p>
+        <p>Family: @_provenance.Family · Origin: @_provenance.Origin</p>
+        <p>Source: @(_provenance.SourceUrl ?? _provenance.Repository ?? "native demo")</p>
         @if (_provenance.Boundary is not null) { <p>Boundary: @_provenance.Boundary</p> }
     }
+    <details><summary>Input inventory</summary>
+        <p>Catalog input state: @_app.Status. This tracks imported files separately from the running host's launch check.</p>
+        <p>@_app.AvailabilityNote</p>
+        <p>Session: <code>@_sessionId</code></p>
+    </details>
     <p><a href="/">Back to the catalog</a></p>
 }
 
@@ -54,8 +62,10 @@ else
     [Parameter] public string AppId { get; set; } = "";
     private CatalogEntry? _app;
     private ProvenanceInfo? _provenance;
-    private string? _loadError, _sessionId;
+    private string? _loadError, _sessionId, _wfUrl, _wpfUrl;
     private string _wfStatus = "…", _wpfStatus = "…", _wfDetail = "", _wpfDetail = "";
+    private bool _probing = true;
+    private string? _openUrl;
 
     protected override async Task OnParametersSetAsync() => await OpenAsync();
 
@@ -63,7 +73,7 @@ else
 
     private async Task OpenAsync()
     {
-        _loadError = null; _app = null;
+        _loadError = null; _app = null; _probing = true; _openUrl = null;
         try
         {
             _app = await Http.GetFromJsonAsync<CatalogEntry>($"api/catalog/{Uri.EscapeDataString(AppId)}");
@@ -83,13 +93,15 @@ else
             _sessionId = Uri.UnescapeDataString(session ?? "");
             var wf = await WinForms.StatusAsync(_app);
             var wpf = await Wpf.StatusAsync(_app);
-            _wfStatus = wf.CanBoot ? "ready" : "not bootable"; _wfDetail = wf.Detail;
-            _wpfStatus = wpf.CanBoot ? "ready" : "not bootable"; _wpfDetail = wpf.Detail;
+            _wfStatus = wf.CanBoot ? "ready" : "not bootable"; _wfDetail = wf.Detail; _wfUrl = wf.MountedUrl;
+            _wpfStatus = wpf.CanBoot ? "ready" : "not bootable"; _wpfDetail = wpf.Detail; _wpfUrl = wpf.MountedUrl;
+            if (!_app.Mixed) _openUrl = wf.CanBoot ? wf.MountedUrl : wpf.CanBoot ? wpf.MountedUrl : null;
             if (_app.Mixed) await Mixed.AttachAsync(_app, _sessionId);
         }
         catch (Exception ex)
         {
             _loadError = ex.GetBaseException().Message;
         }
+        finally { _probing = false; }
     }
 }

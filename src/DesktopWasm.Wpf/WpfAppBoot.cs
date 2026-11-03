@@ -592,6 +592,16 @@ public static class WpfAppBoot
     {
         NameScopes.Remove(component);
         NameScopes.Add(component, names);
+        if (component is DependencyObject dobj)
+        {
+            var scope = new NameScope();
+            foreach (var (k, v) in names)
+            {
+                if (scope.FindName(k) is null)
+                    scope.RegisterName(k, v);
+            }
+            NameScope.SetNameScope(dobj, scope);
+        }
     }
 
     private static void WireEvents(object component, XamlLoadResult loaded, string path)
@@ -736,10 +746,20 @@ public static class WpfAppBoot
         source switch
         {
             LooseSource loose => XamlLoader.Load(loose.Text),
-            BamlSource baml => new XamlLoadResult(ParseBaml(baml, path),
-                new Dictionary<string, object>(StringComparer.Ordinal)),
+            BamlSource baml => CreateBamlLoadResult(ParseBaml(baml, path)),
             _ => throw new XamlLoadException($"Internal error: unknown component source for '{path}'."),
         };
+
+    private static XamlLoadResult CreateBamlLoadResult(UIElement root)
+    {
+        var names = new Dictionary<string, object>(StringComparer.Ordinal);
+        if (NameScope.GetNameScope(root) is System.Collections.Generic.IEnumerable<System.Collections.Generic.KeyValuePair<string, object>> scope)
+        {
+            foreach (var kvp in scope)
+                names[kvp.Key] = kvp.Value;
+        }
+        return new XamlLoadResult(root, names);
+    }
 
     private static UIElement ParseBaml(BamlSource baml, string path)
     {
@@ -780,8 +800,17 @@ public static class WpfAppBoot
                     app.StartupUri = new Uri(reader.Value, UriKind.RelativeOrAbsolute);
                     continue;
                 }
+                if (reader.Prefix == string.Empty && reader.LocalName == "ShutdownMode")
+                {
+                    if (!Enum.TryParse<ShutdownMode>(reader.Value, out var mode))
+                        throw new XamlLoadException(
+                            $"Application root '{path}' has unsupported ShutdownMode '{reader.Value}' " +
+                            "(want OnLastWindowClose, OnMainWindowClose or OnExplicitShutdown).");
+                    app.ShutdownMode = mode;
+                    continue;
+                }
                 throw new XamlLoadException(
-                    $"Application root attribute '{reader.Name}' is not supported (StartupUri only).");
+                    $"Application root attribute '{reader.Name}' is not supported (StartupUri and ShutdownMode only).");
             }
             reader.MoveToElement();
         }

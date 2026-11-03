@@ -14,67 +14,104 @@ namespace Windows.Win32;
 
 internal static partial class PInvoke
 {
-    public static HWND ChildWindowFromPointEx(HWND hwndParent, Point pt, CWP_FLAGS uFlags) => default;
-    public static BOOL ClientToScreen(HWND hWnd, ref Point lpPoint)
+    public static HWND ChildWindowFromPointEx(HWND hwndParent, Point pt, CWP_FLAGS uFlags)
     {
-        var origin = WasmScreenMapping.ClientOrigin(hWnd);
-        lpPoint.X += origin.X;
-        lpPoint.Y += origin.Y;
-        return (BOOL)true;
+        // No native windows exist headless: resolve nesting from managed
+        // bounds, topmost-first (Controls[0] is front-most). Desktop
+        // returns the parent itself when no child contains the point
+        // (callers map that to null) and skips invisible/disabled children
+        // when asked (CWP_SKIPTRANSPARENT has no managed counterpart and
+        // is not honored). A query must never throw.
+        try
+        {
+            var parent = global::System.Windows.Forms.Control.FromHandle((nint)hwndParent.Value);
+            if (parent is null || parent.IsDisposed)
+                return default;
+            bool skipInvisible = (uFlags & CWP_FLAGS.CWP_SKIPINVISIBLE) != 0;
+            bool skipDisabled = (uFlags & CWP_FLAGS.CWP_SKIPDISABLED) != 0;
+            var hit = HitChildAtPoint(parent, pt.X, pt.Y, skipInvisible, skipDisabled);
+            return hit ?? hwndParent;
+        }
+        catch
+        {
+        }
+        return default;
     }
+
+    private static HWND? HitChildAtPoint(global::System.Windows.Forms.Control parent, int x, int y, bool skipInvisible, bool skipDisabled)
+    {
+        for (int i = 0; i < parent.Controls.Count; i++)
+        {
+            global::System.Windows.Forms.Control child;
+            try
+            {
+                child = parent.Controls[i];
+            }
+            catch
+            {
+                continue;
+            }
+            if (child.IsDisposed)
+                continue;
+            if (skipInvisible && !child.Visible)
+                continue;
+            if (skipDisabled && !child.Enabled)
+                continue;
+            int cx;
+            int cy;
+            try
+            {
+                if (x < child.Left || y < child.Top || x >= child.Right || y >= child.Bottom)
+                    continue;
+                cx = x - child.Left;
+                cy = y - child.Top;
+            }
+            catch
+            {
+                continue;
+            }
+            var deep = HitChildAtPoint(child, cx, cy, skipInvisible, skipDisabled);
+            if (deep.HasValue)
+                return deep;
+            try
+            {
+                // Only real (handle-backed) windows are clickable; a
+                // handle-less child is treated as transparent so clicks
+                // keep falling through instead of wedging on a null HWND.
+                if (child.IsHandleCreated)
+                    return new HWND((nint)child.Handle);
+            }
+            catch
+            {
+            }
+        }
+        return null;
+    }
+    public static BOOL ClientToScreen(HWND hWnd, ref Point lpPoint) => PInvokeCore.ClientToScreen(hWnd, ref lpPoint);
     public static BOOL CloseHandle(HANDLE hObject) => (BOOL)true;
     public static BOOL DestroyAcceleratorTable(HACCEL hAccel) => (BOOL)true;
     public static BOOL DrawMenuBar(HWND hWnd) => (BOOL)true;
     public static BOOL EnableMenuItem(HMENU hMenu, uint uIDEnableItem, MENU_ITEM_FLAGS uEnable) => (BOOL)true;
     public static BOOL EnableWindow(HWND hWnd, BOOL bEnable) => (BOOL)true;
     public static BOOL EndDialog(HWND hDlg, nint nResult) => (BOOL)true;
-    public static HWND GetAncestor(HWND hwnd, GET_ANCESTOR_FLAGS flags) => default;
+    public static HWND GetAncestor(HWND hwnd, GET_ANCESTOR_FLAGS flags) => PInvokeCore.GetAncestor(hwnd, flags);
     public static HWND GetDlgItem(HWND hDlg, int nIDDlgItem) => default;
     public static uint GetDpiForWindow(HWND hwnd) => 96;
     public static HMENU GetMenu(HWND hWnd) => default;
     public static int GetMenuItemCount(HMENU hMenu) => 0;
-    public static HWND GetParent(HWND hwnd) => default;
+    public static HWND GetParent(HWND hwnd) => PInvokeCore.GetParent(hwnd);
     public static BOOL GetScrollInfo(HWND hwnd, SCROLLBAR_CONSTANTS nBar, ref SCROLLINFO lpsi) => (BOOL)false;
     public static HMENU GetSystemMenu(HWND hwnd, BOOL bRevert) => default;
-    public static HWND GetWindow(HWND hWnd, GET_WINDOW_CMD uCmd) => default;
+    public static HWND GetWindow(HWND hWnd, GET_WINDOW_CMD uCmd) => PInvokeCore.GetWindow(hWnd, uCmd);
     public static HIMC ImmGetContext(HWND hWnd) => default;
     public static BOOL ImmReleaseContext(HWND hWnd, HIMC hIMC) => (BOOL)true;
     public static BOOL InvalidateRgn(HWND hWnd, HRGN hrgn, BOOL erase) => (BOOL)true;
-    public static BOOL IsChild(HWND hWndParent, HWND hWnd)
-    {
-        // Desktop walks the parent chain (NULL or foreign handles
-        // are not children). ContainsFocus depends on this for
-        // child-hosting controls such as combo editors.
-        // A query must never throw: parallel test sessions (and real apps)
-        // can leave a destroyed handle focused, so a disposed control in
-        // the chain means "not a child", not ObjectDisposedException.
-        try
-        {
-            global::System.Windows.Forms.Control? c =
-                global::System.Windows.Forms.Control.FromHandle((IntPtr)hWnd.Value);
-            while (c is not null && !c.IsDisposed)
-            {
-                if (c.IsHandleCreated && c.Handle == (IntPtr)hWndParent.Value)
-                    return (BOOL)true;
-                c = c.Parent;
-            }
-        }
-        catch
-        {
-        }
-        return (BOOL)false;
-    }
+    public static BOOL IsChild(HWND hWndParent, HWND hWnd) => PInvokeCore.IsChild(hWndParent, hWnd);
     public static BOOL IsWindow(HWND hWnd) => (BOOL)(!hWnd.IsNull);
     public static BOOL IsWindowEnabled(HWND hWnd) => (BOOL)true;
     public static BOOL IsWindowVisible(HWND hWnd) => (BOOL)true;
     public static void NotifyWinEvent(uint @event, HWND hwnd, int idObject, int idChild) { }
-    public static BOOL ScreenToClient(HWND hWnd, ref Point lpPoint)
-    {
-        var origin = WasmScreenMapping.ClientOrigin(hWnd);
-        lpPoint.X -= origin.X;
-        lpPoint.Y -= origin.Y;
-        return (BOOL)true;
-    }
+    public static BOOL ScreenToClient(HWND hWnd, ref Point lpPoint) => PInvokeCore.ScreenToClient(hWnd, ref lpPoint);
     public static HWND SetActiveWindow(HWND hWnd) => hWnd;
     public static IntPtr SetCapture(HWND hWnd) { return (IntPtr)global::System.Windows.Forms.WasmCaptureState.Set(hWnd.Value); }
     public static BOOL SetForegroundWindow(HWND hWnd) => (BOOL)true;
@@ -128,6 +165,15 @@ internal static partial class PInvoke
             s_inSetWindowPos = false;
             s_pendingBounds = null;
         }
+        // Desktop SetWindowPos shows/hides the window when SWP_SHOWWINDOW /
+        // SWP_HIDEWINDOW is set (vendor drag ghosts rely on the show half via
+        // ShowWindowTopMost); the stub previously only moved bounds, so such
+        // forms stayed invisible. Mirror ShowWindow's delivery, outer path
+        // only: nested requests keep today's deferral.
+        if ((uFlags & SET_WINDOW_POS_FLAGS.SWP_SHOWWINDOW) != 0)
+            global::System.Windows.Forms.NativeWindow.WasmNotifyShowWindow(hWnd, true);
+        else if ((uFlags & SET_WINDOW_POS_FLAGS.SWP_HIDEWINDOW) != 0)
+            global::System.Windows.Forms.NativeWindow.WasmNotifyShowWindow(hWnd, false);
         return (BOOL)true;
     }
 

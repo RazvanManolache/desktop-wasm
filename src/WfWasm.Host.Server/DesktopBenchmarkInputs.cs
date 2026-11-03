@@ -12,7 +12,8 @@ public static class DesktopBenchmarkInputs
             string? configured = Environment.GetEnvironmentVariable("WFWASM_BENCHMARK_APPS_ROOT");
             if (!string.IsNullOrWhiteSpace(configured)) return Path.GetFullPath(configured);
             for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
-                if (File.Exists(Path.Combine(directory.FullName, "WfWasm.sln")))
+                if (File.Exists(Path.Combine(directory.FullName, "DesktopWasm.slnx")) ||
+                    File.Exists(Path.Combine(directory.FullName, "WfWasm.sln")))
                     return Path.Combine(directory.FullName, ".artifacts", "benchmark-apps");
             throw new InvalidOperationException("Set WFWASM_BENCHMARK_APPS_ROOT to the prepared benchmark directory.");
         }

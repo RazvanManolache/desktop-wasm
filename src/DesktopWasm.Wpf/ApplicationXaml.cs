@@ -1124,7 +1124,7 @@ public static partial class XamlLoader
     /// <summary>Resolves a resource-reference attribute value ({StaticResource Key}
     /// or {DynamicResource Key}) on CLR/engine resource entries against the same
     /// scopes the streaming entry reader uses (hydration scopes innermost-first,
-    /// then Application scope — the dictionary being built rides the hydration
+    /// then Application scope â€” the dictionary being built rides the hydration
     /// stack). SolidColorBrush values land on Color properties via .Color.
     /// Returns false when the value is not a resource reference.</summary>
     /// <summary>Presentation-namespace entry kinds with a dedicated streaming
@@ -2107,6 +2107,16 @@ public static partial class XamlLoader
     {
         ArgumentNullException.ThrowIfNull(app);
         ArgumentNullException.ThrowIfNull(reader);
+        var outerSeen = HydrationSeenDictionaries;
+        HydrationSeenDictionaries = new HashSet<ResourceDictionary>();
+        try { HydrateApplicationResourcesCore(app, reader); }
+        finally { HydrationSeenDictionaries = outerSeen; }
+    }
+
+    private static void HydrateApplicationResourcesCore(Application app, XmlReader reader)
+    {
+        ArgumentNullException.ThrowIfNull(app);
+        ArgumentNullException.ThrowIfNull(reader);
         var line = (IXmlLineInfo)reader;
         if (reader.IsEmptyElement) { reader.Read(); return; }
         reader.Read(); // past the property start tag
@@ -2141,6 +2151,20 @@ public static partial class XamlLoader
                 string? missing;
                 lock (PendingTemplateStatics)
                 {
+                    // Keys that landed during this hydration bind at inflation as
+                    // before: app scope, or any dictionary parsed in this call
+                    // (element-local scopes bind at inflation via the tree).
+                    // Only keys that land nowhere fail loud.
+                    foreach (var added in PendingTemplateStatics.Where(k => !before.Contains(k)).ToList())
+                    {
+                        if (app.Resources.TryGetValue(added, out var found) && found is not null)
+                        { PendingTemplateStatics.Remove(added); continue; }
+                        var seen = HydrationSeenDictionaries;
+                        if (seen is null) continue;
+                        foreach (var d in seen)
+                            if (d.TryGetValue(added, out var scoped) && scoped is not null)
+                            { PendingTemplateStatics.Remove(added); break; }
+                    }
                     missing = PendingTemplateStatics.FirstOrDefault(k => !before.Contains(k));
                 }
                 if (missing is not null)
@@ -2453,6 +2477,21 @@ public static partial class XamlLoader
         var bindings = new List<(object Element, string Property)>();
         var entries = new List<TemplateBindingEntry>();
         var resources = new ResourceDictionary();
+        // Native defining-dictionary scope (B-defer): the dictionary being
+        // parsed when this template markup is read. Rebuilds re-parse the
+        // same retained markup with empty hydration scopes, so reuse the
+        // recorded scope for the same node.
+        TemplateScopeRecord? scopeRecord = null;
+        if (CurrentHydrationScope is { } live)
+        {
+            if (!s_templateDefiningScopes.TryGetValue(node, out scopeRecord))
+            {
+                scopeRecord = new TemplateScopeRecord { Defining = live };
+                s_templateDefiningScopes.Add(node, scopeRecord);
+            }
+        }
+        else s_templateDefiningScopes.TryGetValue(node, out scopeRecord);
+        var definingScope = scopeRecord;
         var hasResources = false;
         UIElement? root = null;
         foreach (var child in node.Elements())
@@ -2471,7 +2510,7 @@ public static partial class XamlLoader
             }
             if (root is not null)
                 throw Fail(line, "<ControlTemplate> holds one visual root plus <ControlTemplate.Triggers> and <ControlTemplate.Resources>.");
-            root = ReadTemplateElement(child, names, bindings, entries, template, line, TriggerScopeResolver(resources, styleResources));
+            root = ReadTemplateElement(child, names, bindings, entries, template, line, TriggerScopeResolver(resources, styleResources), definingScope: scopeRecord);
         }
         var visual = root
             ?? throw Fail(line, "<ControlTemplate> needs a visual root element.");
@@ -2878,7 +2917,7 @@ public static partial class XamlLoader
     /// <summary>Parses one template visual element with attributes and property children.</summary>
     private static UIElement ReadTemplateElement(
         XElement node, Dictionary<string, object> names, List<(object Element, string Property)> bindings,
-        List<TemplateBindingEntry> entries, ControlTemplate template, IXmlLineInfo line, Func<string, object?>? resolveResource = null)
+        List<TemplateBindingEntry> entries, ControlTemplate template, IXmlLineInfo line, Func<string, object?>? resolveResource = null, TemplateScopeRecord? definingScope = null)
     {
         var element = CreateElement(node.Name.LocalName, node.Name.NamespaceName, line);
         foreach (var attribute in node.Attributes().Where(a => !a.IsNamespaceDeclaration))
@@ -2899,7 +2938,7 @@ public static partial class XamlLoader
                 if (element is FrameworkElement named) named.Name = attribute.Value;
                 continue;
             }
-            ApplyTemplateAttribute(element, local, attribute.Value, bindings, entries, line);
+            ApplyTemplateAttribute(element, local, attribute.Value, bindings, entries, line, definingScope);
         }
         foreach (var child in node.Elements())
         {
@@ -2924,7 +2963,7 @@ public static partial class XamlLoader
             }
             if (element is FrameworkElement host && host is Panel or Border)
             {
-                host.AddChild(ReadTemplateElement(child, names, bindings, entries, template, line));
+                host.AddChild(ReadTemplateElement(child, names, bindings, entries, template, line, definingScope: definingScope));
                 continue;
             }
             if (element is Popup popupHost && popupHost.Child is null)
@@ -2932,7 +2971,7 @@ public static partial class XamlLoader
                 // Popup.Child hosts the single drop-down visual (matches
                 // System.Windows.Controls.Primitives.Popup: the PC Space Map
                 // ComboBox template nests its DropDownBorder here).
-                popupHost.Child = ReadTemplateElement(child, names, bindings, entries, template, line);
+                popupHost.Child = ReadTemplateElement(child, names, bindings, entries, template, line, definingScope: definingScope);
                 continue;
             }
             if (element is Decorator decoratorHost && decoratorHost.Child is null)
@@ -2940,7 +2979,7 @@ public static partial class XamlLoader
                 // Decorator.Child hosts the single adorned visual (matches
                 // System.Windows.Controls.Decorator: theme templates nest
                 // the content grid inside AdornerDecorator).
-                decoratorHost.Child = ReadTemplateElement(child, names, bindings, entries, template, line);
+                decoratorHost.Child = ReadTemplateElement(child, names, bindings, entries, template, line, definingScope: definingScope);
                 continue;
             }
             if (element is Viewbox boxHost && boxHost.Child is null)
@@ -2948,7 +2987,7 @@ public static partial class XamlLoader
                 // Viewbox.Child hosts the single scaled visual (matches
                 // System.Windows.Controls.Viewbox: the Calendar arrows nest
                 // their Path glyphs here).
-                boxHost.Child = ReadTemplateElement(child, names, bindings, entries, template, line);
+                boxHost.Child = ReadTemplateElement(child, names, bindings, entries, template, line, definingScope: definingScope);
                 continue;
             }
             if (element is ScrollViewer scrollerHost && scrollerHost.Content is null)
@@ -2956,7 +2995,7 @@ public static partial class XamlLoader
                 // ScrollViewer.Content hosts the single scrolled visual
                 // (matches System.Windows.Controls.ScrollViewer: the PC Space
                 // Map ComboBox template nests its ItemsPresenter here).
-                scrollerHost.Content = ReadTemplateElement(child, names, bindings, entries, template, line);
+                scrollerHost.Content = ReadTemplateElement(child, names, bindings, entries, template, line, definingScope: definingScope);
                 continue;
             }
             if (element is ContentControl contentHost &&
@@ -2965,10 +3004,10 @@ public static partial class XamlLoader
                 // Template scope retains one nested visual as content (only
                 // controls that host visuals render it; XAML scope stays
                 // strict because live trees need layout).
-                contentHost.Content = ReadTemplateElement(child, names, bindings, entries, template, line);
+                contentHost.Content = ReadTemplateElement(child, names, bindings, entries, template, line, definingScope: definingScope);
                 continue;
             }
-            if (XamlLoader.TryAttachCustomContent(element, ReadTemplateElement(child, names, bindings, entries, template, line), line))
+            if (XamlLoader.TryAttachCustomContent(element, ReadTemplateElement(child, names, bindings, entries, template, line, definingScope: definingScope), line))
                 continue;
             throw Fail(line, $"<{child.Name.LocalName}> cannot nest in template <{element.GetType().Name}> (use the <{element.GetType().Name}.Property> form).");
         }
@@ -3001,6 +3040,28 @@ public static partial class XamlLoader
     /// apply; keys added during one hydration that never land fail it loud).
     /// </summary>
     private static readonly HashSet<string> PendingTemplateStatics = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Parse-time defining scope for one retained template markup root: the
+    /// innermost dictionary being parsed. Earlier sibling merges bind
+    /// eagerly at parse; only later-sibling misses reach inflation.
+    /// Rebuilds re-parse the same markup with empty hydration scopes, so
+    /// inflation reuses the recorded scope for the same node.
+    /// </summary>
+    internal sealed class TemplateScopeRecord
+    {
+        internal required ResourceDictionary Defining;
+    }
+
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<System.Xml.Linq.XElement, TemplateScopeRecord> s_templateDefiningScopes = new();
+
+    /// <summary>
+    /// Dictionaries parsed during the current HydrateApplicationResources call
+    /// (app merges and element-local scopes alike): the hydration-end missing
+    /// check consults them so element-local keys that bind at inflation (theme
+    /// element Resources) don't fail fast. Save/restore across nested calls.
+    /// </summary>
+    private static HashSet<ResourceDictionary>? HydrationSeenDictionaries;
 
     /// <summary>Parses {ComponentResourceKey ResourceId=Id, TypeInTargetAssembly={x:Type T}}.</summary>
     private static ComponentResourceKey ParseComponentResourceKey(string inner, string original, IXmlLineInfo line)
@@ -3035,10 +3096,10 @@ public static partial class XamlLoader
         return new ComponentResourceKey(assembly, resourceId);
     }
 
-    /// <summary>Applies one template attribute (TemplateBinding defers; StaticResource resolves now or after hydration).</summary>
+    /// <summary>Applies one template attribute (TemplateBinding defers; StaticResource resolves now or after hydration; definingScope pins the parse-time scope).</summary>
     private static void ApplyTemplateAttribute(
         UIElement element, string local, string value, List<(object Element, string Property)> bindings,
-        List<TemplateBindingEntry> entries, IXmlLineInfo line)
+        List<TemplateBindingEntry> entries, IXmlLineInfo line, TemplateScopeRecord? definingScope = null)
     {
         if (value.StartsWith("{Binding", StringComparison.Ordinal) && value.EndsWith('}'))
         {
@@ -3196,15 +3257,31 @@ public static partial class XamlLoader
                 lookupKey = staticKey;
             }
             }
+            // Defining-dictionary scope for template-child refs (B-defer):
+            // the threaded record from the template builder, or a fresh
+            // record over the live hydration scopes for paths that
+            // parse templates outside BuildControlTemplate.
+            var scopeRecord = definingScope ?? (CurrentHydrationScope is { } liveScope
+                ? new TemplateScopeRecord { Defining = liveScope }
+                : null);
+            var templateDefining = scopeRecord?.Defining;
             if (local == "Style" && element is FrameworkElement && lookupKey is string plainKey)
             {
-                // Template StaticResource Style resolves at use, not in
-                // dictionary order (WPF): sibling dictionaries may not have
-                // landed yet, and the style's own setters must apply against
-                // the linked tree (a theme template Style applies setters
-                // naming later-sibling keys). Defer by key; inflation
-                // resolves loud-or-bound like WPF.
-                entries.Add(new TemplateBindingEntry(element, "Style", string.Empty) { DeferredStyleKey = plainKey });
+                // Template StaticResource Style resolves at use in its
+                // defining-dictionary scope (WPF): sibling dictionaries may
+                // not have landed yet, and the style's own setters must apply
+                // against the linked tree (a theme template Style applies
+                // setters naming later-sibling keys). Defer by key with the
+                // defining scope pinned; inflation resolves in that scope and
+                // fails loud when the key is invisible there, like WPF.
+                entries.Add(new TemplateBindingEntry(element, "Style", string.Empty) { DeferredStyleKey = plainKey, DefiningDictionary = templateDefining });
+                // Queue like every other template StaticResource: the hydration-end
+                // sweep drops keys that landed (app scope or any same-call dictionary,
+                // including element-local scopes that bind at inflation) and fails
+                // loud only for keys that land nowhere.
+                lock (PendingTemplateStatics) { PendingTemplateStatics.Add(plainKey); }
+                // Element-local scopes bind at inflation via the tree; only keys
+                // that land nowhere fail loud (see hydration-end sweep).
                 return;
             }
             // Defining-dictionary merges first (a theme file merges
@@ -3218,7 +3295,13 @@ public static partial class XamlLoader
             var app = Application.Current;
             if (app is null)
                 throw Fail(line, $"StaticResource '{key}' was not found in application resources (template scope).");
-            if (app.Resources.TryGetValue(lookupKey, out var resource) && resource is not null)
+            // Native parity (B-defer): a template defined in a merged dictionary
+            // resolves template-child Style refs in its defining scope only;
+            // application-scope keys stay invisible on this path and fail at
+            // apply instead of binding late. Other locals keep deferred fill.
+            var appScopeBarred = local == "Style" && templateDefining is not null
+                && IsInMergeGraph(app.Resources, templateDefining);
+            if (!appScopeBarred && app.Resources.TryGetValue(lookupKey, out var resource) && resource is not null)
             {
                 SetTemplateValue(element, local, resource, line);
                 return;
@@ -6118,7 +6201,7 @@ public static partial class XamlLoader
 
     /// <summary>Parses one template trigger (property Trigger or RoutedEvent EventTrigger).</summary>
     /// <summary>Builds an easing/brush scope lookup (template-local resources
-    /// first, then hydration scopes, then application scope — the StaticResource
+    /// first, then hydration scopes, then application scope â€” the StaticResource
     /// order inline trigger storyboards share with keyed theme storyboards).</summary>
     private static Func<string, object?> TriggerScopeResolver(ResourceDictionary? local, ResourceDictionary? outer = null) => key =>
     {

@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\DesktopWasm.Catalog\DesktopWasm.Catalog.csproj" />
+    <ProjectReference Include="..\..\src\DesktopWasm.Catalog.Tool\DesktopWasm.Catalog.Tool.csproj" />
     <ProjectReference Include="..\..\src\DesktopWasm.AppModel\DesktopWasm.AppModel.csproj" />
   </ItemGroup>
 

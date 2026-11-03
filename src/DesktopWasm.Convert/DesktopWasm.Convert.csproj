@@ -16,6 +16,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\DesktopWasm.Wpf\DesktopWasm.Wpf.csproj" />
+    <!-- Merge-packaging adapter seam: joint precedence policy (no engine refs). -->
+    <ProjectReference Include="..\DesktopWasm.Packaging\DesktopWasm.Packaging.csproj" />
   </ItemGroup>
 
 </Project>

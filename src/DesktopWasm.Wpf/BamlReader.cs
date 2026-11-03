@@ -25,7 +25,7 @@ namespace DesktopWasm.Wpf;
 ///   typeId + U8 flags), ElementEnd (0x04, 1 byte), LineNumberAndPosition
 ///   (0x35: U32 line + U32 pos), LinePosition (0x36: U32 pos),
 ///   ContentProperty (0x2E: I16 memberId), ConnectionId (0x2D: I32 LE
-///   namescope id, validated then skipped: no BAML namescope yet),
+///   namescope id, validated then skipped),
 ///   DeferableContentStart (0x25: U32 skip-to-end distance, validated to land
 ///   on the dictionary's closing ElementEnd; the content itself is parsed,
 ///   never skipped).
@@ -374,6 +374,7 @@ public static class BamlReader
     private const short KnownTreeViewItem = -687; // verified against a real TreeView BAML fixture
     private const short KnownMenu = -401; // verified against a real Menu BAML fixture
     private const short KnownMenuItem = -403; // verified against a real Menu BAML fixture
+    private const short KnownSeparator = -554; // System.Windows.Controls.Separator (verified: the TestApp main window 0xB48 row)
     private const short KnownContextMenu = -105; // System.Windows.Controls.ContextMenu (verified: the staged HandyControl keyidx-160 'TabItemMenu' entry plus a genuine net10.0-windows fixture compiling the same ContextMenu/MenuItem block, both emitting 97 FF)
     private const short ConvCommand = -94; // CommandConverter (verified: the staged TabItemMenu MenuItem Command PropertyWithConverter values plus a genuine net10.0-windows fixture compiling MenuItem and Button Command properties with custom and framework statics, all emitting A2 FF)
     private const ushort ExtStaticExtension = 602; // StaticExtension as carried in PropertyWithExtension records (mirrors KnownStaticExtension = -602; verified: the staged TabItemMenu Header values plus the same genuine fixture, all emitting 5A 02)
@@ -410,6 +411,7 @@ public static class BamlReader
     private const short ConvCornerRadius = -111; // CornerRadiusConverter (verified: real theme BAML corners)
     private const short KnownGeometry = -237; // System.Windows.Media.Geometry (verified: real theme BAML geometries)
     private const short ConvGeometry = -240; // GeometryConverter (verified: real theme BAML geometries)
+    private const short ConvFontWeight = -222; // FontWeightConverter (verified: the genuine fw132 fixture compiling FontWeight="Bold" emits 22 FF)
     // PathGeometry keyed-entry run ids (verified: the staged HandyControl
     // keyidx-162 'TreeArrow' entry plus a genuine net10.0-windows fixture
     // compiling the upstream PathGeometry/Figures block, both emitting
@@ -449,6 +451,12 @@ public static class BamlReader
     // DynamicResource PropertyWithExtension discriminator (verified: the staged LightPrimaryBrush-run 0x23 Color values plus the genuine net10.0-windows fixture compiling Color="{DynamicResource ...}" on a SolidColorBrush and a GradientStop, both emitting BD 00 with the resource key as a StringInfo id).
     private const ushort ExtDynamicResource = 189;
     private const short KnownStackPanel = -601; // System.Windows.Controls.StackPanel (verified: template visual of the staged #104 FlipClock style - Orientation/Horizontal with six FlipNumber children - plus a real net10 StackPanel BAML fixture; name-only until template inflation lands)
+    private const short KnownDataTemplate = -120; // System.Windows.DataTemplate (verified: genuine net10.0-windows fixture C:\Temp\fw120 compiling a Window.Resources DataTemplate emits 88 FF at the element head; real TestApp mainwindow.baml DocumentHeaderTemplate root at BAML+0x13B9 emits the same id)
+    private const short KnownImage = -281; // System.Windows.Controls.Image (verified: genuine net10.0-windows fixture E:\tmp\fw121 - DataTemplate/StackPanel/Orientation/Image-16px/Margin/Source-Binding/Style-Trigger/TextBlock-Title template mirroring the real shape - emits the E7 FE element head; real TestApp mainwindow.baml emits the byte-identical head for the Width/Height-16 Margin Source-{Binding IconSource} child inside the DocumentHeaderTemplate StackPanel.Children at BAML+0x13EE, modulo per-file table numbering and line markers)
+    private const short KnownImageSourceMember = -75; // Image.Source complex member (verified: the same genuine fixture carries the Source {Binding IconSource} value as the 07 B5 FF complex child on the -281 Image; the real TestApp file carries the byte-identical member at BAML+0x140F)
+    private const short KnownStyleMember = -55; // FrameworkElement.Style complex member (verified: the same genuine fixture carries the inline Image.Style value as the 07 C9 FF complex child holding the -620 Style; the real TestApp file carries the byte-identical member at BAML+0x1423)
+    private const short KnownButton = -55; // System.Windows.Controls.Button (verified: genuine net10.0-windows fixture E:\\tmp\\fw123 compiling Label/Button/CheckBox/RadioButton/Slider/ProgressBar/Expander/GroupBox/Viewbox/Frame/StatusBar/Canvas/TextBlock emits exactly one 03 C9 FF head wrapping the probe-button text; real TestApp mainwindow.baml carries the byte-identical element head at BAML+0x1BCA)
+    // (KnownTextTrimmingMember = -112 already declared below with the staged/fixture verification; the TestApp DocumentHeaderTemplate title carries the same 90 FF simple at BAML+0x1474, and the generic ApplyProperty switch gains its arm alongside Margin.)
     private const short KnownVirtualizingStackPanel = -732; // System.Windows.Controls.VirtualizingStackPanel (verified: a genuine net10.0-windows fixture compiling a VirtualizingStackPanel Orientation/Horizontal ItemsPanelTemplate emits 24 FD, byte-identical in every staged record shape to the staged keyidx 143-144 visuals modulo per-file table numbering and line markers, verified against a genuine net10.0-windows fixture compiling the upstream VirtualizingStackPanel Orientation/Horizontal plus bare ItemsPanelTemplates (the fixture emits the 24 FD head plus the Orientation EnumConverter simple and the FocusVisualStyle x:Null complex); the panel lands as a live engine VirtualizingStackPanel)
     private const short KnownWrapPanel = -742; // System.Windows.Controls.WrapPanel (verified: the staged HandyControl keyidx 145-146 Wrap items-panel entries, emitting 1A FD with the Orientation/HorizontalAlignment/VerticalAlignment simples plus the FocusVisualStyle x:Null complex; owns the per-file Orientation row 54; the panel lands as a live engine WrapPanel)
     private const short KnownItemsPanelTemplate = -330; // System.Windows.Controls.ItemsPanelTemplate (verified: the staged HandyControl keyidx 132-135 ButtonGroup entries plus a genuine net10.0-windows fixture compiling the upstream ButtonGroupBaseStyle ItemsPanelTemplates, both emitting B6 FE)
@@ -485,6 +493,9 @@ public static class BamlReader
     private const short KnownIsEnabledMember = -133; // IsEnabled member (verified: short-form Setter.Property of Property="IsEnabled" with "False"/BooleanConverter in the same real net10 BAML fixture)
     private const short KnownHAlignMember = -48; // HorizontalAlignment member (verified: short-form Setter.Property of Property="HorizontalAlignment" with "Left"/EnumConverter in the same real net10 BAML fixture; staged #105 carries it)
     private const short KnownVAlignMember = -56; // VerticalAlignment member (verified: short-form Setter.Property of Property="VerticalAlignment" with "Top"/EnumConverter in the same real net10 BAML fixture; staged #105 carries it)
+    private const short KnownPanelBackgroundMember = -86;
+    private const short KnownTextBoxBorderThicknessMember = -26; // TextBox.BorderThickness member (verified: genuine fw125 TextBox BorderThickness="0" fixture emits the byte-identical 24 07 E6 FF 01 30 71 FD record; the real TestApp file carries it at BAML+0x1C98).
+    private const short KnownTextBoxBackgroundMember = -24; // TextBox.Background member (verified: genuine fw124 TextBox Background="Transparent" fixture emits the byte-identical 06 0A E8 FF E8 02 01 FF FF FF 00 record; the real TestApp file carries it at BAML+0x1C12). // Panel.Background member (verified: genuine fw122 Background="Transparent" fixture emits the byte-identical in-element 0x06 record; the real TestApp file carries it at BAML+0x1BA3/0x1F49/0x22E9).
     private const short KnownBackgroundMember = -24; // Background member (verified: short-form Setter.Property of Property="Background" with a 744 packed-ARGB brush value in the staged #107 shape plus a real net10 Background/StaticResource BAML fixture)
     private const short KnownHeightMember = -47; // Height member (verified: short-form Setter.Property of Property="Height" with "5"/LengthConverter in the staged SnapRect shape plus the same fixture)
     private const short KnownWidthMember = -57; // Width member (verified: short-form Setter.Property of Property="Width" with "5"/LengthConverter in the same shapes)
@@ -560,6 +571,8 @@ public static class BamlReader
     private const short KnownTranslateTransform = -684; // System.Windows.Media.TranslateTransform
     private const short ConvPoint = -474; // PointConverter (verified: PWC "0.5,0.5" on the staged RenderTransformOrigin plus the fixture, emitting 26 FE)
     private const short KnownMinWidthMember = -53; // FrameworkElement.MinWidth member (verified: the same LeftTemplate fixture emitting CB FF for MinWidth="13" plus the staged 07 CB FF MinWidth TemplatedParent binding)
+    private const short KnownTextWrappingMember = -113; // TextBlock.TextWrapping member (verified: the genuine fw131 fixture compiling TextWrapping="WrapWithOverflow" emits 8F FF with EnumConverter)
+    private const short KnownFontWeightMember = -108; // TextBlock.FontWeight member (verified: the genuine fw132 fixture compiling FontWeight="Bold" emits 94 FF with converter -222)
     private const short KnownMaxWidthMember = -51; // FrameworkElement.MaxWidth member (verified: short-form Setter.Property of Property="MaxWidth" with "340"/LengthConverter in the staged GrowlWindow entry plus a genuine net10.0-windows fixture compiling the same Width/MaxWidth shapes on a Window, both emitting CD FF with the A4 FE value)
     private const short KnownItemsPanelMember = -81; // ItemsControl.ItemsPanel member (verified: short-form Setter.Property of Property="ItemsPanel" with an ItemsPanelTemplate complex value in the staged RibbonTab entry plus a genuine net10.0-windows fixture compiling the same Focusable/VerticalContentAlignment/ItemsPanel shape on a TabControl style, both emitting AF FF; shares its number with the KnownColor *type* id, but members and types are separate well-known namespaces like the -122 trigger precedent)
     private const short KnownDataTrigger = -122; // System.Windows.DataTrigger (verified: the staged SnapRect/TargetArea trigger lists plus a real net10 fixture compiling DataTrigger/Binding/Value/Setters, all emitting 86 FF)
@@ -677,6 +690,18 @@ public static class BamlReader
         return (UIElement)r.Parse();
     }
 
+    /// <summary>Inflates one fresh visual from a retained DataTemplate slice
+    /// (see <see cref="BamlTemplateSource"/>): reparses the exact subtree
+    /// bytes against copies of the snapshotted tables, so instances,
+    /// namescopes and bindings are independent per call while the parsed
+    /// semantics stay shared. Throws precise when the slice references rows
+    /// outside its snapshot (corrupt slice, never a shared instance).</summary>
+    internal static UIElement InflateRetained(BamlTemplateSource source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        return new Parser(source).ParseSingleRoot();
+    }
+
     /// <summary>
     /// Loads a ResourceDictionary from compiled BAML bytes (must be a
     /// ResourceDictionary root: Source= is captured on
@@ -699,6 +724,36 @@ public static class BamlReader
     private sealed record StringKeyRecord(string Key, uint Offset, bool Shared = true) : KeyRecord(Offset, Shared);
     private sealed record TypeKeyRecord(short TypeId, uint Offset, bool Shared = true) : KeyRecord(Offset, Shared);
     private sealed record StaticKeyRecord(short TypeId, string? Member, uint Offset, bool Shared = true) : KeyRecord(Offset, Shared);
+
+    /// <summary>Retained BAML inflation source for one parsed DataTemplate:
+    /// the exact subtree bytes plus snapshots of the tables the subtree can
+    /// reference (taken when the template closed, a superset of every row it
+    /// uses). LoadContent reparses the slice through a fresh Parser, so every
+    /// inflation gets fresh instances, a fresh namescope and rewired bindings
+    /// while sharing the parsed semantics. Never mutate a live snapshot: the
+    /// reparse copies them again before parsing.</summary>
+    internal sealed class BamlTemplateSource
+    {
+        internal BamlTemplateSource(
+            byte[] slice,
+            List<string> assemblies,
+            List<(short AsmId, string Name)> types,
+            List<(short OwnerId, string Name)> attrs,
+            List<string> strings)
+        {
+            Slice = slice;
+            Assemblies = assemblies;
+            Types = types;
+            Attrs = attrs;
+            Strings = strings;
+        }
+
+        internal byte[] Slice { get; }
+        internal List<string> Assemblies { get; }
+        internal List<(short AsmId, string Name)> Types { get; }
+        internal List<(short OwnerId, string Name)> Attrs { get; }
+        internal List<string> Strings { get; }
+    }
 
     private sealed class Parser(byte[] bytes, bool expectDictionary)
     {
@@ -735,13 +790,147 @@ public static class BamlReader
         private bool _indexOpen;
         private bool _entriesStarted;
         private ResourceDictionary? _dictRoot;
+        // Inline 0x0D dictionary under construction (an element's .Resources
+        // block: PropertyDictionaryStart carries the member id, entries ride
+        // an inline deferable index, a nested ResourceDictionary element body
+        // is transparent, PropertyDictionaryEnd closes).
+        private sealed class InlineDictionaryFrame
+        {
+            public ResourceDictionary Dictionary { get; } = new();
+            public object Owner { get; init; } = null!;
+            public int KeyBase { get; init; }
+            public int Claimed { get; set; }
+            public bool NestedRd { get; set; }
+            public bool IndexOpen { get; set; }
+        }
+        private readonly Stack<InlineDictionaryFrame> _inlineFrames = new();
+
+        private ResourceDictionary? CurrentInlineDict => _inlineFrames.Count > 0 ? _inlineFrames.Peek().Dictionary : null;
         private int? _dictBase;
         // Stack elements are usually UIElement visuals; DataGridTextColumn
         // (not a visual) rides the same frames while its Columns list is
         // open, so the element type is object with per-site casts.
         private readonly Stack<(object Element, short? ContentMember)> _stack = new();
+        // Open complex-property (0x07) frames, innermost last, by stack
+        // depth after the frame push. A child ElementEnd whose pop lands
+        // back on a complex depth attaches to the complex member then.
+        private readonly Stack<int> _complexDepths = new();
         private UIElement? _root;
         private object? _columnsOwner;
+        private Grid? _gridListOwner;
+        private bool _gridListRows;
+        private object? _modelListOwner;
+        private System.Collections.IList? _modelList;
+        // Document/retained namescope for in-element DefAttribute x:Names
+        // (created on first use against the outermost element, so each
+        // LoadContent inflation gets its own scope through its fresh
+        // Parser; duplicates rejected like WPF).
+        private NameScope? _docScope;
+
+        /// <summary>Retained-template reparse: the slice plus copies of the
+        /// table snapshots taken when the template closed (a superset of
+        /// every row the slice references; the copies keep the live snapshot
+        /// immutable while inline table rows inside a slice append locally).
+        /// Document state (keys, dictionaries, statics) stays empty: template
+        /// content never carries it, and any such record fails precise.</summary>
+        internal Parser(BamlTemplateSource source)
+            : this(source.Slice, false)
+        {
+            _assemblies.AddRange(source.Assemblies);
+            _types.AddRange(source.Types);
+            _attrs.AddRange(source.Attrs);
+            _strings.AddRange(source.Strings);
+        }
+
+        /// <summary>Parses exactly one retained template subtree: the first
+        /// ElementStart opens the root, its matching ElementEnd returns the
+        /// fresh visual. Dispatch mirrors the document loop minus document
+        /// and dictionary records (a slice never carries them; finding one
+        /// is a corrupt slice, failed loud).</summary>
+        internal UIElement ParseSingleRoot()
+        {
+            while (true)
+            {
+                var offset = _pos;
+                var type = ReadByte();
+                switch (type)
+                {
+                    case 0x03: ReadRetainedElementStart(offset); break;
+                    case 0x04:
+                        if (_stack.Count == 1 && _complexDepths.Count == 0)
+                        {
+                            var (retained, _) = _stack.Pop();
+                            if (retained is DataTemplate template && template.VisualRoot is UIElement visual)
+                                return visual;
+                            Fail<object>(offset, "retained template closed without a visual root (a template takes its VisualTree content plus one visual; corrupt slice inflates nothing shared)");
+                            throw new InvalidOperationException("unreachable");
+                        }
+                        EndElement(offset);
+                        break;
+                    case 0x1C: ReadAssemblyInfo(); break;
+                    case 0x1D: ReadTypeInfo(); break;
+                    case 0x1F: ReadAttributeInfo(); break;
+                    case 0x20: ReadStringInfo(); break;
+                    case 0x24: ReadPropertyWithConverter(offset); break;
+                    case 0x10: ReadText(offset); break;
+                    case 0x11: ReadTextWithConverter(offset); break;
+                    case 0x2E: SetContentMember(offset); break;
+                    case 0x07: ReadComplexPropertyStart(offset); break;
+                    case 0x08: EndComplexProperty(offset); break;
+                    case 0x2A: ReadBindingCtorPath(offset); break;
+                    case 0x0B: ReadPropertyIListStart(offset); break;
+                    case 0x0C: ReadPropertyIListEnd(offset); break;
+                    case 0x1A: break; // EndAttributes: pure delimiter, no tree effect
+                    case 0x1B: ReadPIMapping(offset); break;
+                    case 0x14: ReadXmlnsProperty(offset); break;
+                    case 0x2D: ReadConnectionId(offset); break;
+                    case 0x35: _line = (int)ReadU32(); _col = (int)ReadU32(); break;
+                    case 0x36: _col = (int)ReadU32(); break;
+                    case 0x37: ReadOptimizedStaticResource(offset); break;
+                    case 0x0D: ReadPropertyDictionaryStart(offset); break;
+                    case 0x19: ReadDefAttribute(offset); break;
+                    case 0x06: ReadPropertyCustomBackground(offset); break;
+                    case 0x38: ReadPropertyWithStaticResource(offset); break;
+                    default:
+                        Fail<object>(offset, $"unsupported BAML record 0x{type:X2} inside a retained template (template content takes elements, properties, text, bindings and lists only; corrupt slice never inflates shared state)");
+                        throw new InvalidOperationException("unreachable");
+                }
+            }
+        }
+
+        /// <summary>ElementStart inside a retained slice: identical to the
+        /// document path minus the document-root branch (a slice root is an
+        /// ordinary complex-child push, returned when its end empties the
+        /// stack). Records the element's slice offset on DataTemplates so
+        /// the matching ElementEnd can retain the exact subtree bytes.</summary>
+        private void ReadRetainedElementStart(int offset)
+        {
+            var typeId = ReadI16();
+            _pos += 1; // flags byte
+            if (IsDictionaryContent())
+            {
+                ParseEntry(offset, typeId);
+                return;
+            }
+            if (typeId == KnownStyle && IsComplexParent())
+            {
+                var (styleParent, styleMember) = _stack.Peek();
+                AttachComplexChild(offset, styleParent, styleMember, ParseInlineStyle(offset, styleParent));
+                return;
+            }
+            var element = CreateElement(typeId, offset);
+            if (element is DataTemplate retained)
+                retained.BamlStartOffset = offset;
+            if (_stack.Count == 0 || IsComplexParent())
+            {
+                // Slice root (or a complex child): no parent to attach to
+                // yet; the matching ElementEnd returns or attaches it.
+                _stack.Push((element, null));
+                return;
+            }
+            AttachChild(offset, element);
+            _stack.Push((element, null));
+        }
 
         public object Parse()
         {
@@ -758,6 +947,13 @@ public static class BamlReader
                         if (_keyIndex != _keys.Count) Fail(offset, "unclaimed BAML dictionary keys at end of document");
                         if (_expectDictionary)
                             return _dictRoot ?? Fail<ResourceDictionary>(offset, "empty BAML document (no root element)");
+                        if (_root is not null)
+                        {
+                            ApplyImplicitStylesTree(_root);
+                            TemplateApplier.RefreshLoadedTree(_root);
+                            if (_root is FrameworkElement feRoot)
+                                feRoot.RefreshBindingsTree();
+                        }
                         return _root ?? Fail(offset, "empty BAML document (no root element)");
                     case 0x03: ReadElementStart(offset); break;
                     case 0x04: EndElement(offset); break;
@@ -773,16 +969,26 @@ public static class BamlReader
                     case 0x27: ReadDefKeyType(offset); break;
                     case 0x28: ReadKeyElement(offset); break;
                     case 0x29: Fail(offset, "unbalanced BAML key-element end (no open KeyElementStart)"); break;
-                    case 0x2A: case 0x2B:
-                        Fail(offset, "constructor parameters outside a key element (markup-extension follow-up)");
+                    case 0x2B:
+                        Fail(offset, "unbalanced constructor-parameters end (no ConstructorParametersStart)");
                         break;
                     case 0x2C: Fail(offset, "constructor parameter types need the markup-extension follow-up"); break;
                     case 0x37: ReadOptimizedStaticResource(offset); break;
                     case 0x2E: SetContentMember(offset); break;
-                    case 0x05: case 0x06: case 0x07: case 0x08: case 0x09: case 0x0A:
-                    case 0x0D: case 0x0E: case 0x12: case 0x19: case 0x21: case 0x22:
+                    case 0x07: ReadComplexPropertyStart(offset); break;
+                    case 0x08: EndComplexProperty(offset); break;
+                    case 0x2A: ReadBindingCtorPath(offset); break;
+                    case 0x0D: ReadPropertyDictionaryStart(offset); break;
+                    case 0x19: ReadDefAttribute(offset); break;
+                    case 0x06: ReadPropertyCustomBackground(offset); break;
+                    case 0x38: ReadPropertyWithStaticResource(offset); break;
+                    case 0x05 when _stack.Count != 0 && _stack.Peek().Element is RelativeSource relativeSource:
+                        ReadRelativeSourceProperty(offset, relativeSource);
+                        break;
+                    case 0x05: case 0x09: case 0x0A:
+                    case 0x0E: case 0x12: case 0x21: case 0x22:
                     case 0x23: case 0x2F: case 0x30: case 0x31: case 0x32: case 0x33:
-                    case 0x34: case 0x38:
+                    case 0x34:
                         Fail(offset, $"BAML record 0x{type:X2} ({DescribeRecord(type)}) outside any entry (style-surface/markup follow-up)");
                         break;
                     case 0x35: _line = (int)ReadU32(); _col = (int)ReadU32(); break;
@@ -793,9 +999,9 @@ public static class BamlReader
                     case 0x2D:
                         // ConnectionId (fixed 5 bytes: type + I32 LE): namescope
                         // id for x:Name/Name, consumed by generated
-                        // InitializeComponent. The engine has no BAML namescope
-                        // yet, so the id is validated for framing and skipped;
-                        // the Name itself also arrives as PWC (see KnownName).
+                        // InitializeComponent. The id itself stays framing-only;
+                        // the Name lands through ReadDefAttribute below (document
+                        // namescope) or as PWC (see KnownName).
                         ReadConnectionId(offset);
                         break;
                     case 0x0B: ReadPropertyIListStart(offset); break;
@@ -907,6 +1113,96 @@ public static class BamlReader
                 Fail<object>(offset, $"invalid BAML connection id {id}");
         }
 
+        /// <summary>Reads an in-element DefAttribute x:Name (sized record:
+        /// 7-bit ANSI name plus the U16 name id; both genuine TestApp sites —
+        /// the 0x17D6 "WinFormsWindow" on the converted LayoutAnchorable and
+        /// the 0x1A45 "LayoutDocumentPane" — carry the unassigned 0xFFFF id,
+        /// which anything else fails precise against). FrameworkElement hosts
+        /// take the CLR Name (mirroring the PWC KnownName path);
+        /// converted-model hosts (non-UIElement closure instances, Name-less
+        /// by probe) register in the document namescope only. The scope is
+        /// created once per parse on the outermost element, so each
+        /// LoadContent inflation keeps its own names through its fresh
+        /// Parser; duplicates rejected like WPF. Dictionary roots are not
+        /// DependencyObjects, so names there stay a precise boundary.</summary>
+        /// <summary>Reads an in-element PropertyCustom brush Background
+        /// (sized record: I16 attribute id + U16 serializer + bytes; the
+        /// three genuine TestApp sites and the genuine fw122
+        /// Background="Transparent" fixture all carry attr -86 with
+        /// serializer 744 and the 5-byte 0x01 + LE ARGB payload). Lands a
+        /// SolidColorBrush on the host FrameworkElement's Brush-typed
+        /// Background DP (DP-first SetValue, consistent with the PWC Name
+        /// and model routes). Anything else fails precise so a half-set
+        /// Background never lands.</summary>
+        private void ReadPropertyCustomBackground(int offset)
+        {
+            var end = StartSized(out _);
+            var attrId = ReadI16();
+            var serializer = ReadU16();
+            if (_stack.Count == 0) Fail(offset, "BAML PropertyCustom outside any element");
+            var element = _stack.Peek().Element;
+            if (attrId != KnownPanelBackgroundMember && attrId != KnownTextBoxBackgroundMember)
+                Fail<object>(offset, $"BAML PropertyCustom attribute {attrId} on {Describe(element)} (in-element PropertyCustom takes the Background members -86/-24; follow-up)");
+            if (serializer != BrushValueSerializer)
+                Fail<object>(offset, $"BAML PropertyCustom Background on {Describe(element)} uses serializer {serializer} (Background takes the packed-ARGB brush serializer 744; follow-up)");
+            if (end - _pos != 5)
+                Fail<object>(offset, $"BAML PropertyCustom Background on {Describe(element)} has {end - _pos} value bytes (packed-ARGB brushes take 0x01 plus 4 bytes; follow-up)");
+            var mark = ReadByte();
+            var blue = ReadByte();
+            var green = ReadByte();
+            var red = ReadByte();
+            var alpha = ReadByte();
+            ExpectEnd(end, offset, "PropertyCustom");
+            if (mark != 0x01)
+                Fail<object>(offset, $"BAML PropertyCustom Background on {Describe(element)} has marker 0x{mark:X2} (packed-ARGB brushes start with 0x01; follow-up)");
+            if (element is FrameworkElement fe && DependencyProperty.FromName(element.GetType(), "Background") is { } bgDp && bgDp.PropertyType == typeof(Brush))
+            {
+                fe.SetValue(bgDp, new SolidColorBrush(Color.FromArgb(alpha, red, green, blue)));
+            }
+            else
+            {
+                Fail<object>(offset, $"BAML PropertyCustom Background on {Describe(element)} (Background lands on FrameworkElement hosts with a Brush-typed Background DP; follow-up)");
+                throw new InvalidOperationException("unreachable");
+            }
+        }
+
+        private void ReadDefAttribute(int offset)
+        {
+            var end = StartSized(out _);
+            var name = ReadAnsiString();
+            var nameId = ReadU16();
+            ExpectEnd(end, offset, "DefAttribute");
+            if (nameId != 0xFFFF)
+                Fail<object>(offset, $"BAML DefAttribute '{name}' carries name id {nameId} (document names take the unassigned id; uid wiring is a follow-up)");
+            if (string.IsNullOrEmpty(name))
+                Fail<object>(offset, "BAML DefAttribute carries an empty name");
+            if (_stack.Count == 0) Fail(offset, "BAML DefAttribute outside any element");
+            var element = _stack.Peek().Element;
+            if (element is FrameworkElement named)
+            {
+                if (!string.IsNullOrEmpty(named.Name) && !string.Equals(named.Name, name, StringComparison.Ordinal))
+                    Fail<object>(offset, $"BAML name '{name}' conflicts with Name '{named.Name}' on {Describe(element)}");
+                named.Name = name;
+            }
+            else if (!DockingIntegration.IsConvertedModelInstance(element))
+                Fail<object>(offset, $"BAML name '{name}' on {Describe(element)} (names land on FrameworkElement or converted-model hosts only)");
+            RegisterDocumentName(element, name, offset);
+        }
+
+        private void RegisterDocumentName(object element, string name, int offset)
+        {
+            if (_docScope is null)
+            {
+                _docScope = new NameScope();
+                var bottom = _stack.Count > 0 ? _stack.ToArray()[^1].Element : element;
+                if (bottom is DependencyObject scopeRoot)
+                {
+                    NameScope.SetNameScope(scopeRoot, _docScope);
+                }
+            }
+            _docScope[name] = element;
+        }
+
         private void ReadAttributeInfo()
         {
             var end = StartSized(out var offset);
@@ -949,6 +1245,11 @@ public static class BamlReader
         /// OptimizedStaticResource and the StaticResource/KeyElement trees as
         /// the key block).</summary>
         private bool IsDictionaryIndex() =>
+            // An open inline 0x0D frame collects its keys the same way a
+            // root index does (frame parsing runs its own record loop, never
+            // the main loop, so both share the key lists distinguished by a
+            // per-frame base index).
+            (_inlineFrames.Count > 0 && _inlineFrames.Peek().IndexOpen) ||
             _indexOpen && _dictRoot is not null && _stack.Count == 1 &&
             ReferenceEquals(_stack.Peek().Element, _dictRoot);
 
@@ -1126,6 +1427,589 @@ public static class BamlReader
             _stack.Push((top.Element, member));
         }
 
+        private bool IsComplexParent() =>
+            _complexDepths.Count != 0 && _stack.Count == _complexDepths.Peek();
+
+        private void ReadComplexPropertyStart(int offset)
+        {
+            if (_stack.Count == 0) Fail(offset, "complex property outside any element");
+            if (_pos + 2 > bytes.Length) Fail<object>(offset, "truncated BAML complex-property start (needs the U16 member id)");
+            var memberId = ReadI16();
+            var (element, _) = _stack.Peek();
+            _stack.Push((element, memberId));
+            _complexDepths.Push(_stack.Count);
+        }
+
+        private void EndComplexProperty(int offset)
+        {
+            if (_complexDepths.Count == 0) Fail(offset, "unbalanced PropertyComplexEnd (no open complex property)");
+            if (_stack.Count == 0) Fail(offset, "unbalanced PropertyComplexEnd (empty element stack)");
+            if (_stack.Count != _complexDepths.Peek())
+                Fail(offset, "PropertyComplexEnd with open child content (unbalanced element end)");
+            _complexDepths.Pop();
+            _stack.Pop();
+        }
+
+        private void AttachComplexChild(int offset, object parent, short? member, object child)
+        {
+            if (member is short memberId && memberId >= 0 && memberId < _attrs.Count
+                && DockingIntegration.IsHostedInstance(parent))
+            {
+                // Hosted converted value (e.g. the converted theme on
+                // DockingManager.Theme): the converted DP type-checks the
+                // real converted instance; anything else fails precise.
+                var (_, complexName) = _attrs[memberId];
+                if (DockingIntegration.TryApplyConvertedValue(parent, complexName, child, out var complexFailure))
+                    return;
+                Fail<object>(offset, complexFailure!);
+                throw new InvalidOperationException("unreachable");
+            }
+            if (member == KnownStyleMember && parent is FrameworkElement styled && child is Style inline)
+            {
+                // Inline <X.Style> complex value (verified: the real TestApp
+                // DocumentHeaderTemplate icon carries its Style at BAML+0x1423):
+                // the parsed Style applies immediately through the DP store,
+                // so its Trigger/Setter semantics run on existing machinery.
+                styled.Style = inline;
+                return;
+            }
+            if (member == KnownImageSourceMember && parent is Image image)
+            {
+                // Image.Source travels as a complex value (verified: the
+                // real TestApp DocumentHeaderTemplate icon binds
+                // IconSource at BAML+0x140F): a Binding wires through the
+                // store, a decoded ImageSource lands directly; anything
+                // else stays precise.
+                if (child is Binding imageBinding) { BindingOperations.SetBinding(image, Image.SourceProperty, imageBinding); return; }
+                if (child is ImageSource imageSource) { image.Source = imageSource; return; }
+                Fail<object>(offset, $"Image.Source holds {Describe(child)} (image sources take a Binding or an ImageSource; image-surface follow-up)");
+            }
+            if (member == KnownTextBlockText && parent is TextBlock textBlock && child is Binding textBinding)
+            {
+                // TextBlock.Text travels as a complex value too (verified:
+                // the real TestApp DocumentHeaderTemplate Title binds
+                // Title at BAML+0x1499): the literal-PWC path above stays
+                // for plain text; bindings wire through the store.
+                BindingOperations.SetBinding(textBlock, TextBlock.TextProperty, textBinding);
+                return;
+            }
+            if (member is short modelComplexId && modelComplexId >= 0 && modelComplexId < _attrs.Count
+                && DockingIntegration.IsConvertedModelInstance(parent))
+            {
+                // Converted model complex child (e.g. a model Content set
+                // as a complex value): same CLR-setter contract as content.
+                var (_, modelComplexName) = _attrs[modelComplexId];
+                if (DockingIntegration.TrySetConvertedModelMember(parent, modelComplexName, child, out var modelComplexFailure))
+                    return;
+                Fail<object>(offset, modelComplexFailure!);
+                throw new InvalidOperationException("unreachable");
+            }
+            if (member is short rsMember && rsMember >= 0 && rsMember < _attrs.Count
+                && parent is Binding rsBinding && child is RelativeSource relativeSource)
+            {
+                // Complex RelativeSource child on a document-level Binding
+                // (verified: the real TestApp TextBox.Text binding carries
+                // the -516 element at BAML+0x1CCE): the per-file member id varies by file,
+                // so the attach keys on the (owner, name) pair, like the
+                // converted-model arms above.
+                var (_, rsMemberName) = _attrs[rsMember];
+                if (!string.Equals(rsMemberName, "RelativeSource", StringComparison.Ordinal))
+                    Fail<object>(offset, $"complex property member '{rsMemberName}' on <Binding> holds {Describe(child)} (bindings take a RelativeSource child only)");
+                if (rsBinding.RelativeSource is not null)
+                    Fail<object>(offset, "duplicate RelativeSource on the Binding (bindings take one RelativeSource)");
+                rsBinding.RelativeSource = relativeSource;
+                return;
+            }
+            if (member == KnownTextBoxText && parent is TextBox textBox && child is Binding boxBinding)
+            {
+                // Complex TextBox.Text holding a Binding (verified: the real
+                // TestApp document TextBox binds its text through a
+                // RelativeSource complex inside the Binding):
+                // wires through the Text DP store, like TextBlock.Text above.
+                BindingOperations.SetBinding(textBox, TextBox.TextProperty, boxBinding);
+                return;
+            }
+            if (member == KnownBackgroundMember && child is Binding binding && parent is Control control)
+            {
+                BindingOperations.SetBinding(control, Control.BackgroundProperty, binding);
+                return;
+            }
+            Fail<object>(offset, $"complex property member {member} on {Describe(parent)} holds {Describe(child)} (v1 routes Window/Control Background plus Image.Source plus TextBlock.Text bindings only)");
+        }
+
+        private static bool IsKnownResourcesMember(short memberId) =>
+            memberId is -55 or -58 or -59 or -123 or -8 or -107;
+
+        private void ReadPropertyDictionaryStart(int offset)
+        {
+            // PropertyDictionaryStart: U16 per-file attribute id naming a
+            // dictionary-valued property (real files: FrameworkElement.
+            // Resources for <X.Resources> blocks), followed by the inline
+            // entries through PropertyDictionaryEnd. A nested
+            // ResourceDictionary element body is transparent; anything else
+            // fails precise so a half-built dictionary never lands.
+            if (_pos + 2 > bytes.Length) Fail<object>(offset, "truncated BAML dictionary start (needs the U16 member id)");
+            var memberId = ReadI16();
+            if (_stack.Count == 0) Fail(offset, $"BAML dictionary start for member {memberId} outside any element (inline dictionaries attach to an element's Resources)");
+            
+            string memberName;
+            short ownerId = 0;
+            if (memberId >= 0 && memberId < _attrs.Count)
+            {
+                (ownerId, memberName) = _attrs[memberId];
+            }
+            else if (IsKnownResourcesMember(memberId))
+            {
+                memberName = "Resources";
+            }
+            else
+            {
+                Fail<object>(offset, $"BAML dictionary start names attribute id {memberId} with no AttributeInfo record");
+                return;
+            }
+
+            if (!string.Equals(memberName, "Resources", StringComparison.Ordinal) && !memberName.EndsWith(".Resources", StringComparison.Ordinal))
+                Fail<object>(offset, $"BAML dictionary start names '{memberName}' (owner {ownerId}; inline dictionaries attach to a Resources property)");
+            var (element, _) = _stack.Peek();
+            var frame = new InlineDictionaryFrame
+            {
+                Owner = element,
+                KeyBase = _keys.Count,
+                Claimed = 0,
+                NestedRd = false,
+                IndexOpen = false
+            };
+            _inlineFrames.Push(frame);
+            try
+            {
+                ReadInlineDictionary(offset, memberId);
+            }
+            finally
+            {
+                if (_inlineFrames.Count > 0 && ReferenceEquals(_inlineFrames.Peek(), frame))
+                    _inlineFrames.Pop();
+            }
+        }
+
+        private void ReadInlineDictionary(int offset, short memberId)
+        {
+            var frame = _inlineFrames.Peek();
+            while (true)
+            {
+                var recordOffset = _pos;
+                var record = ReadByte();
+                switch (record)
+                {
+                    case 0x0E:
+                        if (frame.NestedRd) Fail(recordOffset, "PropertyDictionaryEnd closes an unclosed nested ResourceDictionary (each nested body needs its ElementEnd)");
+                        if (_keys.Count - frame.KeyBase != frame.Claimed) Fail(recordOffset, $"PropertyDictionaryEnd with an unclaimed dictionary key (keys need their value element; style-surface follow-up)");
+                        AttachInlineDictionary(offset, memberId, frame);
+                        return;
+                    case 0x03:
+                        ReadInlineEntryOrBody(recordOffset, memberId);
+                        break;
+                    case 0x04:
+                        if (!frame.NestedRd) Fail(recordOffset, "unbalanced ElementEnd in an inline resource dictionary (no open nested ResourceDictionary body)");
+                        frame.NestedRd = false;
+                        break;
+                    case 0x25:
+                        ReadDeferableStart(recordOffset);
+                        frame.IndexOpen = true;
+                        break;
+                    case 0x26:
+                        ReadKeyPosition(recordOffset);
+                        break;
+                    case 0x27:
+                        ReadDefKeyType(recordOffset);
+                        break;
+                    case 0x28:
+                        ReadKeyElement(recordOffset);
+                        break;
+                    case 0x37:
+                        ReadOptimizedStaticResource(recordOffset);
+                        break;
+                    case 0x0D:
+                        ReadPropertyDictionaryStart(recordOffset);
+                        break;
+                    case 0x24:
+                        ReadInlineDictionaryProperty(recordOffset, frame);
+                        break;
+                    case 0x1C:
+                        ReadAssemblyInfo();
+                        break;
+                    case 0x1D:
+                        ReadTypeInfo();
+                        break;
+                    case 0x1F:
+                        ReadAttributeInfo();
+                        break;
+                    case 0x20:
+                        ReadStringInfo();
+                        break;
+                    case 0x14:
+                        ReadXmlnsProperty(recordOffset);
+                        break;
+                    case 0x1B:
+                        ReadPIMapping(recordOffset);
+                        break;
+                    case 0x35:
+                        _line = (int)ReadU32(); _col = (int)ReadU32();
+                        break;
+                    case 0x36:
+                        _col = (int)ReadU32();
+                        break;
+                    case 0x1A:
+                        break;
+                    case 0x2D:
+                        ReadConnectionId(recordOffset);
+                        break;
+                    default:
+                        Fail(recordOffset, $"record 0x{record:X2} inside the inline resource dictionary for member {memberId} (dictionaries take table records, an index, keyed entries and the nested body; style-surface follow-up)");
+                        break;
+                }
+            }
+        }
+
+        private void ReadInlineDictionaryProperty(int offset, InlineDictionaryFrame frame)
+        {
+            var end = StartSized(out _);
+            var attrId = ReadI16();
+            var value = ReadAnsiString();
+            var conv = ReadI16();
+            ExpectEnd(end, offset, "PropertyWithConverter");
+            ApplyDictionaryProperty(offset, frame.Dictionary, attrId, value, conv);
+        }
+
+        private void ReadInlineEntryOrBody(int offset, short memberId)
+        {
+            var frame = _inlineFrames.Peek();
+            var typeId = ReadI16();
+            _pos += 1; // flags byte (skipped like ElementStart)
+            if (typeId == KnownResourceDictionary)
+            {
+                if (frame.NestedRd || frame.Claimed != 0 || _keys.Count - frame.KeyBase != 0) Fail<object>(offset, "second ResourceDictionary body in one inline dictionary (one inline dictionary takes one body)");
+                frame.NestedRd = true;
+                return;
+            }
+            if (_keys.Count - frame.KeyBase <= frame.Claimed) Fail<object>(offset, $"keyless value {WellKnownName(typeId)} in the inline resource dictionary for member {memberId} (each value needs its 0x26/0x27/0x28 key; style-surface follow-up)");
+            var key = _keys[frame.KeyBase + frame.Claimed];
+            _entryStatics = _keyStatics[frame.KeyBase + frame.Claimed];
+            object entryKey;
+            var display = DescribeKey(key);
+            if (key is StaticKeyRecord staticKey)
+            {
+                entryKey = ResolveStaticKey(offset, staticKey);
+            }
+            else if (key is TypeKeyRecord typeKey)
+            {
+                if (typeKey.TypeId < 0)
+                {
+                    entryKey = ResolveTargetTypeId(offset, display, typeKey.TypeId);
+                }
+                else
+                {
+                    var (entryType, _) = ResolveEntryType(offset, display, typeKey.TypeId);
+                    entryKey = entryType;
+                }
+            }
+            else
+            {
+                entryKey = ((StringKeyRecord)key).Key;
+            }
+            ParseKeyedEntry(offset, entryKey, display, typeId, key.Shared);
+            frame.Claimed++;
+        }
+
+        private void AttachInlineDictionary(int offset, short memberId, InlineDictionaryFrame frame)
+        {
+            var dict = frame.Dictionary;
+            var owner = frame.Owner;
+            if (owner is FrameworkElement fe)
+            {
+                if (dict.Source is not null)
+                {
+                    fe.Resources.MergedDictionaries.Add(dict);
+                }
+                foreach (var pair in dict.LocalEntries())
+                {
+                    try { fe.Resources.Add(pair.Key, pair.Value); }
+                    catch (InvalidOperationException ex) { throw new XamlLoadException($"BAML+0x{offset:X} (line {_line}, pos {_col}): duplicate resource key {pair.Key} merging into {Describe(owner)} (inline dictionaries merge; {ex.Message})"); }
+                }
+                foreach (var merged in dict.MergedDictionaries)
+                {
+                    fe.Resources.MergedDictionaries.Add(merged);
+                }
+                return;
+            }
+            if (owner is Style style)
+            {
+                if (dict.Source is not null)
+                {
+                    style.Resources.MergedDictionaries.Add(dict);
+                }
+                foreach (var pair in dict.LocalEntries())
+                {
+                    try { style.Resources.Add(pair.Key, pair.Value); }
+                    catch (InvalidOperationException ex) { throw new XamlLoadException($"BAML+0x{offset:X} (line {_line}, pos {_col}): duplicate resource key {pair.Key} merging into {Describe(owner)} (inline dictionaries merge; {ex.Message})"); }
+                }
+                foreach (var merged in dict.MergedDictionaries)
+                {
+                    style.Resources.MergedDictionaries.Add(merged);
+                }
+                return;
+            }
+            Fail<object>(offset, $"inline resource dictionary for member {memberId} on {Describe(owner)} (inline dictionaries attach to FrameworkElement or Style Resources)");
+        }
+
+        private bool TryFindResourceInScope(string key, out object? resource)
+        {
+            if (CurrentInlineDict is not null && CurrentInlineDict.TryGetValue(key, out resource))
+                return true;
+            foreach (var (stackItem, _) in _stack)
+            {
+                if (stackItem is FrameworkElement stackFe && stackFe.TryFindResource(key, out resource))
+                    return true;
+            }
+            if (_dictRoot is not null && _dictRoot.TryGetValue(key, out resource))
+                return true;
+            if (Application.Current is not null && Application.Current.TryFindResource(key, out resource))
+                return true;
+            resource = null;
+            return false;
+        }
+
+        private void ReadPropertyWithStaticResource(int offset)
+        {
+            if (_pos + 4 > bytes.Length)
+                Fail<object>(offset, "truncated BAML property with static resource");
+            var attrId = ReadI16();
+            var staticId = (int)ReadU16();
+            if (_stack.Count == 0)
+                Fail(offset, "property with static resource outside any element");
+            var (element, _) = _stack.Peek();
+
+            string key;
+            if (_entryStatics is not null && staticId >= 0 && staticId < _entryStatics.Count)
+            {
+                key = _entryStatics[staticId].Key;
+            }
+            else if (staticId >= 0 && staticId < _strings.Count)
+            {
+                key = _strings[staticId];
+            }
+            else
+            {
+                Fail<object>(offset, $"BAML static resource id {staticId} has no StringInfo record");
+                return;
+            }
+
+            if (!TryFindResourceInScope(key, out var resource) || resource is null)
+            {
+                Fail<object>(offset, $"StaticResource '{key}' was not found in element, ancestor or application resources.");
+                return;
+            }
+
+            ApplyStaticResourceProperty(offset, element, attrId, key, resource);
+        }
+
+        private void ApplyStaticResourceProperty(int offset, object element, short attrId, string key, object resource)
+        {
+            string? attrName = null;
+            if (attrId >= 0 && attrId < _attrs.Count)
+            {
+                var (_, name) = _attrs[attrId];
+                attrName = name;
+            }
+            else
+            {
+                attrName = WellKnownMemberName(attrId);
+            }
+
+            if (element is FrameworkElement fe)
+            {
+                if (attrName == "Style")
+                {
+                    if (resource is Style style)
+                    {
+                        fe.Style = style;
+                        return;
+                    }
+                    Fail<object>(offset, $"StaticResource '{key}' is not a Style for Style property on {Describe(element)}");
+                }
+                if (attrName == "Background")
+                {
+                    if (element is Control control) { control.Background = CoerceBrush(resource); return; }
+                    if (element is Panel panel) { panel.Background = CoerceBrush(resource); return; }
+                    if (element is Border border) { border.Background = CoerceBrush(resource); return; }
+                }
+                if (attrName == "Foreground")
+                {
+                    if (element is Control cFore) { cFore.Foreground = CoerceBrush(resource); return; }
+                    if (element is TextBlock tbFore) { tbFore.Foreground = CoerceBrush(resource); return; }
+                }
+                if (attrName == "BorderBrush")
+                {
+                    if (element is Control cBorder) { cBorder.BorderBrush = CoerceBrush(resource); return; }
+                    if (element is Border bBorder) { bBorder.BorderBrush = CoerceBrush(resource); return; }
+                }
+                if (attrName is not null)
+                {
+                    var dp = DependencyProperty.FromName(fe.GetType(), attrName);
+                    if (dp is not null)
+                    {
+                        fe.SetValue(dp, resource);
+                        return;
+                    }
+                    var prop = element.GetType().GetProperty(attrName, BindingFlags.Public | BindingFlags.Instance);
+                    if (prop is not null && prop.CanWrite)
+                    {
+                        prop.SetValue(element, resource);
+                        return;
+                    }
+                }
+            }
+            Fail<object>(offset, $"Unsupported static resource property attribute id {attrId} ('{attrName}') on {Describe(element)}");
+        }
+
+        private static Brush CoerceBrush(object resource) =>
+            resource switch
+            {
+                Brush b => b,
+                Color c => new SolidColorBrush(c),
+                uint rgba => new SolidColorBrush(StyleValueConverter.ColorFromRgba(rgba)),
+                _ => new SolidColorBrush(Colors.Transparent)
+            };
+
+        private static void ApplyImplicitStylesTree(UIElement root)
+        {
+            if (root is FrameworkElement fe)
+            {
+                if (fe.Style is null && TryFindImplicitStyle(fe, out var style) && style is not null)
+                {
+                    fe.Style = style;
+                }
+                foreach (var child in fe.LogicalChildren)
+                {
+                    ApplyImplicitStylesTree(child);
+                }
+            }
+        }
+
+        private static bool TryFindImplicitStyle(FrameworkElement element, out Style? style)
+        {
+            for (var t = element.GetType(); t != null && t != typeof(UIElement) && t != typeof(object); t = t.BaseType)
+            {
+                if (element.TryFindResource(t, out var res) && res is Style s)
+                {
+                    style = s;
+                    return true;
+                }
+            }
+            style = null;
+            return false;
+        }
+
+        private void ReadBindingCtorPath(int offset)
+        {
+            if (_stack.Peek().Element is Binding binding)
+            {
+                var args = ReadCtorParams(offset, "the Binding element");
+                if (args.Count > 1)
+                    Fail<object>(offset, $"Binding element takes one constructor argument (the path; richer markup-extension arguments are a follow-up)");
+                if (args.Count == 1) binding.Path = new PropertyPath(args[0]);
+            }
+            else if (_stack.Peek().Element is RelativeSource source)
+            {
+                var args = ReadCtorParams(offset, "the RelativeSource element");
+                if (args.Count != 1)
+                    Fail<object>(offset, $"RelativeSource element takes one constructor argument (the mode; richer markup-extension arguments are a follow-up)");
+                try { source.Mode = Enum.Parse<RelativeSourceMode>(args[0], ignoreCase: false); }
+                catch (ArgumentException)
+                {
+                    Fail<object>(offset, $"RelativeSource names '{args[0]}' (relative-source modes take FindAncestor/Self/TemplatedParent/PreviousData; follow-up)");
+                }
+            }
+            else
+                Fail(offset, "constructor parameters outside a Binding element (markup-extension follow-up)");
+        }
+
+        /// <summary>Parses a 0x05 Property record on a document-level
+        /// RelativeSource element (its ElementStart is consumed): the only
+        /// in-element property is AncestorType, naming a framework type
+        /// (real TestApp: Window). Anything else fails precise.</summary>
+        private void ReadRelativeSourceProperty(int offset, RelativeSource source)
+        {
+            var end = StartSized(out _);
+            var attrId = ReadI16();
+            var text = ReadAnsiString();
+            ExpectEnd(end, offset, "Property");
+            if (!IsRelativeSourceAncestorTypeAttribute(attrId))
+                Fail<object>(offset, $"RelativeSource holds attribute {BindingAttributeDisplay(attrId)} (relative sources take AncestorType; follow-up)");
+            if (source.AncestorType is not null)
+                Fail<object>(offset, "duplicate AncestorType on the RelativeSource (relative sources take one AncestorType)");
+            source.AncestorType = ResolveDocumentAncestorType(offset, text);
+        }
+
+        /// <summary>Resolves a document-level RelativeSource AncestorType
+        /// name to a loaded type: a bare name resolves an engine short
+        /// name (real TestApp: Window), like the template resolver;
+        /// anything else fails precise.</summary>
+        private Type ResolveDocumentAncestorType(int offset, string text)
+        {
+            var engine = XamlLoader.FindEngineType(text);
+            if (engine is not null) return engine;
+            return Fail<Type>(offset, $"RelativeSource AncestorType '{text}' (relative-source ancestor types take an engine type; follow-up)");
+        }
+
+        /// <summary>Parses an inline Style complex value (the ElementStart type
+        /// id is consumed by the caller): a PropertyTypeReference TargetType
+        /// plus a Triggers list, closed by ElementEnd. The real TestApp
+        /// DocumentHeaderTemplate icon carries exactly this shape (Style
+        /// targeting Image with one Source=={x:Null} Trigger hiding the icon
+        /// through a Visibility=Collapsed Setter, byte-verified against the
+        /// genuine net10.0-windows fixture E:\tmp\fw121); anything richer
+        /// fails precise so a half-built style never lands. TargetType,
+        /// Trigger and Setter records reuse the keyed-entry helpers, so
+        /// inline and keyed styles share one semantic machine.</summary>
+        private Style ParseInlineStyle(int offset, object parent)
+        {
+            var display = $"the inline Style on {Describe(parent)}";
+            Type? targetType = null;
+            var triggers = new List<TriggerBase>();
+            while (true)
+            {
+                var record = ReadEntryRecord(out var recordOffset);
+                if (record == 0x04)
+                {
+                    if (targetType is null)
+                        Fail<object>(offset, $"style {display} has no TargetType (inline styles take TargetType plus Triggers; style-surface follow-up)");
+                    var style = new Style(targetType!);
+                    foreach (var trigger in triggers) style.Triggers.Add(trigger);
+                    return style;
+                }
+                if (record == 0x22)
+                {
+                    if (targetType is not null)
+                        Fail<object>(recordOffset, $"duplicate TargetType on style {display}");
+                    var attrId = ReadI16();
+                    var styleTypeId = ReadI16();
+                    RequireAttribute(recordOffset, display, attrId, KnownStyle, "TargetType");
+                    targetType = styleTypeId == KnownImage
+                        ? typeof(Image)
+                        : ResolveTargetTypeId(recordOffset, display, styleTypeId);
+                    continue;
+                }
+                if (record == 0x0B)
+                {
+                    if (targetType is null)
+                        Fail<object>(recordOffset, $"trigger list on style {display} precedes its style TargetType (BAML emits TargetType first; style-surface follow-up)");
+                    ParseTriggerList(recordOffset, offset, display, targetType!, triggers, KnownStyle);
+                    continue;
+                }
+                Fail<object>(recordOffset, $"style {display} holds record 0x{record:X2} (inline styles take TargetType plus Triggers; style-surface follow-up)");
+            }
+        }
+
         private void ReadElementStart(int offset)
         {
             var typeId = ReadI16();
@@ -1140,7 +2024,28 @@ public static class BamlReader
                 ParseEntry(offset, typeId);
                 return;
             }
+            if (typeId == KnownStyle && IsComplexParent())
+            {
+                // Inline <X.Style> complex child (verified: the real TestApp
+                // DocumentHeaderTemplate icon at BAML+0x142A): the dedicated
+                // sub-loop reuses the keyed-entry TargetType/Trigger/Setter/
+                // Null machinery and attaches immediately, so the generic
+                // EndElement path never sees a half-built style.
+                var (styleParent, styleMember) = _stack.Peek();
+                AttachComplexChild(offset, styleParent, styleMember, ParseInlineStyle(offset, styleParent));
+                return;
+            }
             var element = CreateElement(typeId, offset);
+            if (element is DataTemplate created)
+                created.BamlStartOffset = offset;
+            if (IsComplexParent())
+            {
+                // Complex-property child (e.g. the Binding in
+                // <Window.Background>): attach at ElementEnd when the
+                // child subtree is complete, never half-built.
+                _stack.Push((element, null));
+                return;
+            }
             AttachChild(offset, element);
             _stack.Push((element, null));
         }
@@ -1159,7 +2064,8 @@ public static class BamlReader
                 Fail(offset, "BAML root is a ResourceDictionary (load it through LoadDictionary)");
             var element = CreateElement(typeId, offset);
             if (element is Window w) _root = w;
-            else Fail(offset, $"BAML root must be a Window (have {Describe(element)})");
+            else if (element is UserControl u) _root = u;
+            else Fail(offset, $"BAML root must be a Window or converted-component UserControl (have {Describe(element)})");
             _stack.Push((element, null));
         }
 
@@ -1452,32 +2358,72 @@ public static class BamlReader
         /// staged values name HandyControl.Interactivity.ControlCommands
         /// members, which the converter rewrote onto the engine RoutedCommand
         /// type, so the resolved value assigns directly).</summary>
-        private ICommand ReadMenuItemCommand(int recordOffset, string display, short attrId, string text, short conv)
+        private ICommand ReadMenuItemCommand(int recordOffset, string display, short attrId, string text, short conv, string surface = "context-menu entry")
         {
             if (attrId < 0 || attrId >= _attrs.Count)
-                Fail<object>(recordOffset, $"command property id {attrId} in context-menu entry {display} has no AttributeInfo record");
+                Fail<object>(recordOffset, $"command property id {attrId} in {surface} {display} has no AttributeInfo record");
             var (owner, name) = _attrs[attrId];
             if (owner != KnownMenuItem || name != "Command")
-                Fail<object>(recordOffset, $"attribute '{name}' in context-menu entry {display} (menu rows take the MenuItem Command; menu-surface follow-up)");
+                Fail<object>(recordOffset, $"attribute '{name}' in {surface} {display} (menu rows take the MenuItem Command; menu-surface follow-up)");
             if (conv != ConvCommand)
-                Fail<object>(recordOffset, $"Command value with converter {conv} in context-menu entry {display} (menu commands take the Command converter; menu-surface follow-up)");
-            return ResolveMenuCommand(recordOffset, display, text);
+                Fail<object>(recordOffset, $"Command value with converter {conv} in {surface} {display} (menu commands take the Command converter; menu-surface follow-up)");
+            return ResolveMenuCommand(recordOffset, display, text, surface);
         }
 
         /// <summary>Resolves prefix:Type.Member command text through the file
         /// xmlns table (prefix to xmlns) and namespace-mapping table (xmlns to
         /// clr-namespace plus assembly) to the converted static member, which
         /// must be an engine command.</summary>
-        private ICommand ResolveMenuCommand(int recordOffset, string display, string text)
+        private ICommand ResolveCanonicalMenuCommand(int recordOffset, string display, string text, string surface)
         {
+            // Bare command names (verified: the TestApp main window carries
+            // Undo/Redo/Cut/Copy/Paste with no prefix) resolve through the
+            // canonical command holders like the WPF CommandConverter: the
+            // name must hit exactly one holder, otherwise the row stays
+            // loud instead of binding the wrong command.
+            var holders = new[]
+            {
+                typeof(ApplicationCommands), typeof(NavigationCommands),
+                typeof(EditingCommands), typeof(MediaCommands),
+                typeof(ComponentCommands), typeof(SystemCommands),
+            };
+            Type? hit = null;
+            foreach (var holder in holders)
+            {
+                var property = holder.GetProperty(text,
+                    BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy);
+                if (property is null || property.GetIndexParameters().Length != 0 || property.GetMethod?.IsPublic != true) continue;
+                if (!typeof(ICommand).IsAssignableFrom(property.PropertyType)) continue;
+                if (hit is not null)
+                    Fail<object>(recordOffset, $"command '{text}' in {surface} {display} is ambiguous ({hit.Name} and {holder.Name} both carry it; menu commands take prefix:Type.Member to disambiguate)");
+                hit = holder;
+            }
+            if (hit is null)
+                Fail<object>(recordOffset, $"command '{text}' in {surface} {display} names an unknown command (menu commands take a canonical ApplicationCommands/NavigationCommands/EditingCommands/MediaCommands/ComponentCommands/SystemCommands name or prefix:Type.Member)");
+            object? value;
+            try { value = hit!.GetProperty(text, BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy)!.GetValue(null); }
+            catch (Exception ex)
+            {
+                Fail<object>(recordOffset, $"command '{text}' in {surface} {display} throws reading the canonical command ({ex.GetBaseException().Message})");
+                throw new InvalidOperationException("unreachable");
+            }
+            if (value is ICommand ok) return ok;
+            Fail<object>(recordOffset, $"command '{text}' in {surface} {display} is not an engine command");
+            throw new InvalidOperationException("unreachable");
+        }
+
+        private ICommand ResolveMenuCommand(int recordOffset, string display, string text, string surface = "context-menu entry")
+        {
+            if (!text.Contains(':'))
+                return ResolveCanonicalMenuCommand(recordOffset, display, text, surface);
             var colon = text.IndexOf(':');
             if (colon <= 0 || colon == text.Length - 1)
-                Fail<object>(recordOffset, $"command '{text}' in context-menu entry {display} (menu commands take prefix:Type.Member; menu-surface follow-up)");
+                Fail<object>(recordOffset, $"command '{text}' in {surface} {display} (menu commands take prefix:Type.Member; menu-surface follow-up)");
             var prefix = text[..colon];
             var remainder = text[(colon + 1)..];
             var dot = remainder.LastIndexOf('.');
             if (dot <= 0 || dot == remainder.Length - 1)
-                Fail<object>(recordOffset, $"command '{text}' in context-menu entry {display} (menu commands take prefix:Type.Member; menu-surface follow-up)");
+                Fail<object>(recordOffset, $"command '{text}' in {surface} {display} (menu commands take prefix:Type.Member; menu-surface follow-up)");
             var typeName = remainder[..dot];
             var memberName = remainder[(dot + 1)..];
             string? xmlns = null;
@@ -1486,7 +2432,7 @@ public static class BamlReader
                 if (string.Equals(candidatePrefix, prefix, StringComparison.Ordinal)) { xmlns = candidateXmlns; break; }
             }
             if (xmlns is null)
-                Fail<object>(recordOffset, $"command '{text}' in context-menu entry {display} names unknown xmlns prefix '{prefix}' (menu-surface follow-up)");
+                Fail<object>(recordOffset, $"command '{text}' in {surface} {display} names unknown xmlns prefix '{prefix}' (menu-surface follow-up)");
             string? clrNamespace = null;
             var assemblyId = -1;
             foreach (var (candidateXmlns, candidateClr, candidateAsm) in _piMapping)
@@ -1494,8 +2440,8 @@ public static class BamlReader
                 if (string.Equals(candidateXmlns, xmlns, StringComparison.Ordinal)) { clrNamespace = candidateClr; assemblyId = candidateAsm; break; }
             }
             if (clrNamespace is null)
-                Fail<object>(recordOffset, $"command '{text}' in context-menu entry {display} has no namespace mapping for '{xmlns}' (menu-surface follow-up)");
-            return (ICommand)ResolveConvertedStatic(recordOffset, display, text, assemblyId, clrNamespace + "." + typeName, memberName, typeof(ICommand));
+                Fail<object>(recordOffset, $"command '{text}' in {surface} {display} has no namespace mapping for '{xmlns}' (menu-surface follow-up)");
+            return (ICommand)ResolveConvertedStatic(recordOffset, display, text, assemblyId, clrNamespace + "." + typeName, memberName, typeof(ICommand), surface);
         }
 
         /// <summary>Reads one MenuItem Header value: a fixed PropertyWithExtension
@@ -1528,11 +2474,11 @@ public static class BamlReader
         /// and the member must be a public static property or field. Command
         /// values must implement the engine command contract; anything else
         /// fails precise so a half-built menu never lands.</summary>
-        private object? ResolveConvertedStatic(int recordOffset, string display, string text, int assemblyId, string fullName, string memberName, Type? expectedType)
+        private object? ResolveConvertedStatic(int recordOffset, string display, string text, int assemblyId, string fullName, string memberName, Type? expectedType, string surface = "context-menu entry")
         {
             if (assemblyId < 0 || assemblyId >= _assemblies.Count)
             {
-                Fail<object>(recordOffset, $"'{text}' in context-menu entry {display} references assembly id {assemblyId} (only {_assemblies.Count} AssemblyInfo records)");
+                Fail<object>(recordOffset, $"'{text}' in {surface} {display} references assembly id {assemblyId} (only {_assemblies.Count} AssemblyInfo records)");
                 throw new InvalidOperationException("unreachable");
             }
             var full = _assemblies[assemblyId];
@@ -1546,7 +2492,7 @@ public static class BamlReader
             }
             if (owner is null)
             {
-                Fail<object>(recordOffset, $"'{text}' in context-menu entry {display} names '{fullName}' (no loadable converted type with that full name in assembly '{shortName}')");
+                Fail<object>(recordOffset, $"'{text}' in {surface} {display} names '{fullName}' (no loadable converted type with that full name in assembly '{shortName}')");
                 throw new InvalidOperationException("unreachable");
             }
             const BindingFlags StaticFlags = BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy;
@@ -1557,7 +2503,7 @@ public static class BamlReader
                 try { value = property.GetValue(null); }
                 catch (Exception ex)
                 {
-                    Fail<object>(recordOffset, $"'{text}' in context-menu entry {display} throws reading the static property ({ex.GetBaseException().Message})");
+                    Fail<object>(recordOffset, $"'{text}' in {surface} {display} throws reading the static property ({ex.GetBaseException().Message})");
                     throw new InvalidOperationException("unreachable");
                 }
             }
@@ -1566,19 +2512,19 @@ public static class BamlReader
                 var field = owner.GetField(memberName, StaticFlags);
                 if (field is null)
                 {
-                    Fail<object>(recordOffset, $"'{text}' in context-menu entry {display} names no public static property or field '{memberName}' on '{fullName}'");
+                    Fail<object>(recordOffset, $"'{text}' in {surface} {display} names no public static property or field '{memberName}' on '{fullName}'");
                     throw new InvalidOperationException("unreachable");
                 }
                 try { value = field.GetValue(null); }
                 catch (Exception ex)
                 {
-                    Fail<object>(recordOffset, $"'{text}' in context-menu entry {display} throws reading the static field ({ex.GetBaseException().Message})");
+                    Fail<object>(recordOffset, $"'{text}' in {surface} {display} throws reading the static field ({ex.GetBaseException().Message})");
                     throw new InvalidOperationException("unreachable");
                 }
             }
             if (expectedType is not null && value is not null && !expectedType.IsInstanceOfType(value))
             {
-                Fail<object>(recordOffset, $"'{text}' in context-menu entry {display} is a {value.GetType().FullName}, not a {expectedType.Name}");
+                Fail<object>(recordOffset, $"'{text}' in {surface} {display} is a {value.GetType().FullName}, not a {expectedType.Name}");
                 throw new InvalidOperationException("unreachable");
             }
             return value;
@@ -2041,10 +2987,8 @@ public static class BamlReader
         /// same resolve-now rule).</summary>
         private Color ResolveSolidBrushColor(int offset, string display, string key)
         {
-            if (_dictRoot is not null && _dictRoot.TryGetValue(key, out var local))
-                return CoerceSolidBrushColor(offset, display, key, local);
-            if (Application.Current is not null && Application.Current.Resources.TryGetValue(key, out var appValue))
-                return CoerceSolidBrushColor(offset, display, key, appValue);
+            if (TryFindResourceInScope(key, out var resource) && resource is not null)
+                return CoerceSolidBrushColor(offset, display, key, resource);
             return Colors.Transparent;
         }
 
@@ -2532,10 +3476,8 @@ public static class BamlReader
         /// fails loud, and genuine mismatches fail loud.</summary>
         private Color ResolveEffectStaticColor(int offset, string display, string key)
         {
-            if (_dictRoot is not null && _dictRoot.TryGetValue(key, out var local))
-                return CoerceEffectStaticColor(offset, display, key, local);
-            if (Application.Current is not null && Application.Current.Resources.TryGetValue(key, out var appValue))
-                return CoerceEffectStaticColor(offset, display, key, appValue);
+            if (TryFindResourceInScope(key, out var resource) && resource is not null)
+                return CoerceEffectStaticColor(offset, display, key, resource);
             return Fail<Color>(offset, $"StaticResource '{key}' for keyed entry {display} has no resource (static colors resolve eagerly; style-surface follow-up)");
         }
 
@@ -4184,6 +5126,7 @@ public static class BamlReader
             KnownWidthMember => "Width",
             KnownFillMember => "Fill",
             KnownVisibilityMember => "Visibility",
+            KnownForegroundSourceMember => "Foreground",
             KnownBorderThicknessMember => "BorderThickness",
             KnownBorderBrushMember => "BorderBrush",
             KnownBorderBackgroundMember => "Background",
@@ -4192,12 +5135,13 @@ public static class BamlReader
             KnownPaddingMember => "Padding",
             KnownItemsPanelMember => "ItemsPanel",
             KnownRenderTransformMember => "RenderTransform",
+            KnownImageSourceMember => "Source",
             _ => null,
         };
 
         /// <summary>Short-form member list for precise errors.</summary>
         private static string ShortMemberList() =>
-            "FlowDirection/Template/Focusable/IsEnabled/HorizontalAlignment/VerticalAlignment/HorizontalContentAlignment/VerticalContentAlignment/Background/Height/Width/Fill/Visibility/BorderThickness/BorderBrush/Margin/IsTabStop/Padding/ItemsPanel/RenderTransform";
+            "FlowDirection/Template/Focusable/IsEnabled/HorizontalAlignment/VerticalAlignment/HorizontalContentAlignment/VerticalContentAlignment/Background/Height/Width/Fill/Visibility/Foreground/BorderThickness/BorderBrush/Margin/IsTabStop/Padding/ItemsPanel/RenderTransform/Source";
 
         /// <summary>Reads a PropertyTypeReference (fixed 4 bytes: I16
         /// attribute + I16 type, no size prefix) as a Style TargetType. The
@@ -4214,7 +5158,7 @@ public static class BamlReader
 
         /// <summary>Resolves a style/template TargetType id: the verified
         /// well-known framework types (Path/Border/ContentControl/GridSplitter/
-        /// Rectangle/RepeatButton/GroupBox/Thumb/ToolBarTray/ComboBox/TextBlock/ListBoxItem) plus per-file
+        /// Rectangle/RepeatButton/GroupBox/Thumb/ToolBarTray/ComboBox/MenuItem/TextBlock/ListBoxItem) plus per-file
         /// CLR types (engine short names and converted full names, never instantiated
         /// here). ComboBox routes to the engine Selector lineage (shim, never ported):
         /// the staged DataGridComboBoxColumnStyle entry targets it, and the Focusable
@@ -4233,10 +5177,11 @@ public static class BamlReader
             if (typeId == KnownThumb) return typeof(Thumb);
             if (typeId == KnownToolBarTray) return typeof(ToolBarTray);
             if (typeId == KnownComboBox) return typeof(ComboBox);
+            if (typeId == KnownMenuItem) return typeof(MenuItem);
             if (typeId == KnownTextBlock) return typeof(TextBlock);
             if (typeId == KnownListBoxItem) return typeof(ListBoxItem);
             if (typeId >= 0) return ResolveEntryType(offset, display, typeId).Type;
-            Fail<object>(offset, $"keyed entry {display} targets {TargetTypeName(typeId)} (style targets beyond Path/Border/ContentControl/GridSplitter/Rectangle/RepeatButton/GroupBox/Thumb/ToolBarTray/ComboBox/TextBlock/ListBoxItem are a style-surface follow-up)");
+            Fail<object>(offset, $"keyed entry {display} targets {TargetTypeName(typeId)} (style targets beyond Path/Border/ContentControl/GridSplitter/Rectangle/RepeatButton/GroupBox/Thumb/ToolBarTray/ComboBox/MenuItem/TextBlock/ListBoxItem are a style-surface follow-up)");
             throw new InvalidOperationException("unreachable");
         }
 
@@ -7269,7 +8214,8 @@ public static class BamlReader
         /// attached RightProperty DP through the DP store like WPF attached
         /// setters; the staged ToolBarTrayBaseStyle Background setter resolves
         /// the engine ToolBarTray the same well-known way, landing the shared
-        /// Panel Background identity). Unloadable owners stay a precise follow-up.</summary>
+        /// Panel Background identity, the MenuItem.Icon trigger condition resolves
+        /// the engine MenuItem the same well-known way). Unloadable owners stay a precise follow-up.</summary>
         private Type ResolvePropertyOwner(int offset, string display, short ownerId)
         {
             if (ownerId == KnownShape) return typeof(Shape);
@@ -7279,8 +8225,9 @@ public static class BamlReader
             if (ownerId == KnownFrameworkElement) return typeof(FrameworkElement);
             if (ownerId == KnownCanvas) return typeof(Canvas);
             if (ownerId == KnownToolBarTray) return typeof(ToolBarTray);
+            if (ownerId == KnownMenuItem) return typeof(MenuItem);
             if (ownerId < 0)
-                Fail<object>(offset, $"setter property owner {WellKnownName(ownerId)} in style entry {display} (owners beyond Shape/UIElement/Window/FrameworkElement/Canvas/ToolBarTray are a style-surface follow-up)");
+                Fail<object>(offset, $"setter property owner {WellKnownName(ownerId)} in style entry {display} (owners beyond Shape/UIElement/Window/FrameworkElement/Canvas/ToolBarTray/MenuItem are a style-surface follow-up)");
             if (ownerId >= _types.Count)
                 Fail<object>(offset, $"setter property owner id {ownerId} in style entry {display} (only {_types.Count} TypeInfo records)");
             var fullName = TypeInfoName(ownerId);
@@ -7361,6 +8308,8 @@ public static class BamlReader
                         KnownFiguresMember => "Figures",
             KnownDataMember => "Data",
             KnownRenderTransformMember => "RenderTransform",
+            KnownImageSourceMember => "Source",
+            KnownStyleMember => "Style",
             _ => $"well-known member id {memberId}",
         };
 
@@ -7484,18 +8433,19 @@ public static class BamlReader
                 BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance,
                 null, Type.EmptyTypes, null) is not null;
 
+        private ResourceDictionary ActiveDictionary(int offset, string display) =>
+            CurrentInlineDict ?? _dictRoot ?? Fail<ResourceDictionary>(offset, $"dictionary entry {display} outside any ResourceDictionary");
+
         private void AddEntry(int offset, object entryKey, string display, object? value)
         {
-            if (_dictRoot is null) Fail(offset, $"dictionary entry {display} outside any ResourceDictionary");
-            try { _dictRoot.Add(entryKey, value); }
+            try { ActiveDictionary(offset, display).Add(entryKey, value); }
             catch (InvalidOperationException ex) { throw new XamlLoadException($"BAML+0x{offset:X} (line {_line}, pos {_col}): duplicate dictionary key {display} ({ex.Message})"); }
             _keyIndex++;
         }
 
         private void AddDeferredEntry(int offset, object entryKey, string display, Func<object?> factory)
         {
-            if (_dictRoot is null) Fail(offset, $"dictionary entry {display} outside any ResourceDictionary");
-            try { _dictRoot.AddDeferred(entryKey, factory); }
+            try { ActiveDictionary(offset, display).AddDeferred(entryKey, factory); }
             catch (InvalidOperationException ex) { throw new XamlLoadException($"BAML+0x{offset:X} (line {_line}, pos {_col}): duplicate dictionary key {display} ({ex.Message})"); }
             _keyIndex++;
         }
@@ -7503,7 +8453,81 @@ public static class BamlReader
         private void EndElement(int offset)
         {
             if (_stack.Count == 0) Fail(offset, "unbalanced ElementEnd");
+            if (_complexDepths.Count != 0 && _stack.Count == _complexDepths.Peek())
+                Fail(offset, "ElementEnd closes a complex property (missing PropertyComplexEnd)");
             var (element, _) = _stack.Pop();
+            if (element is DataTemplate template && template.BamlStartOffset >= 0
+                && template.TemplateSource is null
+                && _complexDepths.Count != 0 && _stack.Count == _complexDepths.Peek())
+            {
+                // Closing a complex-child DataTemplate: retain its exact
+                // subtree bytes plus the table rows it can reference, so
+                // LoadContent reparses fresh instances per call (independent
+                // namescope and bindings, never a shared live root).
+                template.SetRetainedSource(new BamlTemplateSource(
+                    bytes[template.BamlStartOffset..(offset + 1)],
+                    new(_assemblies),
+                    new(_types),
+                    new(_attrs),
+                    new(_strings)));
+            }
+            if (_complexDepths.Count != 0 && _stack.Count == _complexDepths.Peek())
+            {
+                var (parent, member) = _stack.Peek();
+                AttachComplexChild(offset, parent, member, element);
+            }
+            if (_stack.Count != 0 && (_complexDepths.Count == 0 || _stack.Count != _complexDepths.Peek()))
+            {
+                var peekElement = _stack.Peek().Element;
+                if ((peekElement is TextBlock || peekElement is Span) && (element is TextBlock || element is Span))
+                {
+                    // Nested TextBlock / Span default content:
+                    // Transfer the completed child into the parent as an inline via the
+                    // reader attachment contract, preserving styling (FontWeight, FontStyle,
+                    // FontSize, FontFamily, Foreground, Background, TextDecorations).
+                    Span inlineToAttach;
+                    if (element is Span existingSpan)
+                    {
+                        inlineToAttach = existingSpan;
+                    }
+                    else
+                    {
+                        var tbChild = (TextBlock)element;
+                        var wrappedSpan = new Span
+                        {
+                            FontFamily = tbChild.FontFamily,
+                            FontSize = tbChild.FontSize,
+                            FontStyle = tbChild.FontStyle,
+                            FontWeight = tbChild.FontWeight,
+                            FontStretch = tbChild.FontStretch,
+                            Foreground = tbChild.Foreground,
+                            Background = tbChild.Background,
+                            TextDecorations = tbChild.TextDecorations
+                        };
+                        if (tbChild.Inlines.Count > 0)
+                        {
+                            foreach (var childInline in tbChild.Inlines)
+                            {
+                                wrappedSpan.AddInline(childInline);
+                            }
+                        }
+                        else
+                        {
+                            wrappedSpan.Text = tbChild.Text;
+                        }
+                        inlineToAttach = wrappedSpan;
+                    }
+
+                    if (peekElement is TextBlock tbParent)
+                    {
+                        tbParent.AddInline(inlineToAttach);
+                    }
+                    else if (peekElement is Span spParent)
+                    {
+                        spParent.AddInline(inlineToAttach);
+                    }
+                }
+            }
             if (element is ResourceDictionary && _stack.Count == 0 && _expectDictionary)
             {
                 // Closing the dictionary root: every index key must have an
@@ -7595,6 +8619,8 @@ public static class BamlReader
             KnownDataTrigger => "DataTrigger",
             KnownControlTemplate => "ControlTemplate",
             KnownItemsPanelTemplate => "ItemsPanelTemplate",
+            KnownDataTemplate => "DataTemplate",
+            KnownImage => "Image",
             KnownLinearGradientBrush => "LinearGradientBrush",
             KnownSolidColorBrush => "SolidColorBrush",
             KnownGradientStop => "GradientStop",
@@ -7719,9 +8745,19 @@ public static class BamlReader
             if (_stack.Count == 0) Fail(offset, "text outside any element");
             if (IsDictionaryContent())
                 Fail<object>(offset, "plain BAML text outside any entry (entries are element subtrees; style-surface follow-up)");
-            var tb = _stack.Peek().Element as TextBlock
-                ?? Fail<TextBlock>(offset, $"BAML text run inside {Describe(_stack.Peek().Element)} (v1 supports TextBlock text only)");
-            tb.Text += value;
+            var peek = _stack.Peek().Element;
+            if (peek is TextBlock tb)
+            {
+                tb.AppendLiteral(value);
+            }
+            else if (peek is Span sp)
+            {
+                sp.AppendLiteral(value);
+            }
+            else
+            {
+                Fail<object>(offset, $"BAML text run inside {Describe(peek)} (v1 supports TextBlock/Span text only)");
+            }
         }
 
         private object CreateElement(short typeId, int offset)
@@ -7732,9 +8768,27 @@ public static class BamlReader
                 // short id (verified: DataGrid/DataGridTextColumn have none
                 // and always travel by TypeInfo) are mapped by full CLR name
                 // in the PresentationFramework assembly; the root custom
-                // type is treated as a plain Window (codebehind ignored), and
+                // type is treated as a plain Window (codebehind ignored), except the
+                // converted TestUserControl root below, and
                 // other nested custom types are a precise boundary.
-                if (_stack.Count == 0 && typeId < _types.Count) return new Window();
+                if (_stack.Count == 0 && typeId < _types.Count)
+                {
+                    // Converted-component root contract (0x1F75 wall): a
+                    // root per-file type naming the converted
+                    // TestApp.TestUserControl element parses as a detached
+                    // plain engine UserControl stand-in -- never the
+                    // converted constructor (that ctor is itself running
+                    // LoadComponent and would recurse). WpfAppBoot hydrates
+                    // the stand-in onto the live component instance. The
+                    // main-window root path (plain Window) is unchanged.
+                    var (rootAsmId, rootTypeName) = _types[typeId];
+                    var rootAsm = rootAsmId >= 0 && rootAsmId < _assemblies.Count ? _assemblies[rootAsmId] : string.Empty;
+                    if (DockingIntegration.IsTestUserControlElement(rootTypeName, rootAsm))
+                        return new UserControl();
+                    if (rootTypeName is "System.Windows.Controls.UserControl" or "System.Windows.Controls.ContentControl")
+                        return new UserControl();
+                    return new Window();
+                }
                 if (typeId < _types.Count)
                 {
                     var (asmId, typeName) = _types[typeId];
@@ -7752,16 +8806,92 @@ public static class BamlReader
                         if (typeName is "System.Windows.Controls.ComboBoxItem") return new ComboBoxItem();
                         if (typeName is "System.Windows.Controls.ListView") return new ListView();
                         if (typeName is "System.Windows.Controls.ListViewItem") return new ListViewItem();
+                        if (typeName is "System.Windows.Documents.Span") return new Span();
+                        if (typeName is "System.Windows.Documents.Run") return new Run();
+                        if (typeName is "System.Windows.Documents.Hyperlink") return new Hyperlink();
+                        if (typeName is "System.Windows.Documents.Bold") return new Bold();
+                        if (typeName is "System.Windows.Documents.Italic") return new Italic();
+                        if (typeName is "System.Windows.Documents.Underline") return new Underline();
+                        if (typeName is "System.Windows.Documents.LineBreak") return new LineBreak();
+                        if (typeName is "System.Windows.Controls.UserControl") return new UserControl();
+                    }
+                    // Converted AvalonDock DockingManager: the declared
+                    // joint-closure member resolves exactly and constructs as
+                    // a real engine UIElement (DockingIntegration); anything
+                    // else keeps the precise boundary below.
+                    if (DockingIntegration.IsDockingManagerElement(typeName, asm))
+                    {
+                        var resolved = DockingIntegration.TryResolve(typeName);
+                        if (resolved is null)
+                        {
+                            Fail<object>(offset, DockingIntegration.MissingClosureMessage(typeName));
+                            throw new InvalidOperationException("unreachable");
+                        }
+                        if (!DockingIntegration.TryCreate(resolved, out var hosted, out var failure))
+                        {
+                            Fail<object>(offset, failure!);
+                            throw new InvalidOperationException("unreachable");
+                        }
+                        return hosted!;
+                    }
+                    else if (DockingIntegration.IsHostedValueElement(typeName, asm))
+                    {
+                        // Converted values (theme objects, layout parts): exact
+                        // closure member, concrete public contract type with a
+                        // default constructor; the attach site decides placement.
+                        if (!DockingIntegration.TryCreateValue(typeName, asm, out var valued, out var valueFailure))
+                        {
+                            Fail<object>(offset, valueFailure!);
+                            throw new InvalidOperationException("unreachable");
+                        }
+                        return valued!;
+                    }
+                    else if (DockingIntegration.IsBridgeHostElement(typeName, asm))
+                    {
+                        // Real fork-backed bridge activation (HOST-CALL-1425):
+                        // the exact joint-interface pair resolves through the
+                        // engine-facing registry to the existing provider —
+                        // never a scan, substitute or swallowed failure.
+                        if (!WindowsFormsHostActivation.TryCreate(DockingIntegration.SimpleAssemblyName(asm), typeName, out var bridged, out var bridgeFailure))
+                        {
+                            Fail<object>(offset, bridgeFailure!);
+                            throw new InvalidOperationException("unreachable");
+                        }
+                        return bridged!;
+                    }
+                    else if (DockingIntegration.IsTestUserControlElement(typeName, asm))
+                    {
+                        // Converted TestApp.TestUserControl (0x1F75 wall):
+                        // the declared joint-closure member constructs as
+                        // a real engine UserControl (DockingIntegration);
+                        // anything else keeps the precise boundary below.
+                        var resolved = DockingIntegration.TryResolveUserControl(typeName);
+                        if (resolved is null)
+                        {
+                            Fail<object>(offset, DockingIntegration.MissingClosureMessage(typeName, DockingIntegration.TestUserControlAssemblyName));
+                            throw new InvalidOperationException("unreachable");
+                        }
+                        if (!DockingIntegration.TryCreate(resolved, out var hosted, out var failure))
+                        {
+                            Fail<object>(offset, failure!);
+                            throw new InvalidOperationException("unreachable");
+                        }
+                        return hosted!;
                     }
                 }
                 var name = typeId < _types.Count ? _types[typeId].Name : "?";
                 Fail<object>(offset, $"cannot instantiate custom CLR type '{name}' in the browser engine (v1 supports Window/Grid/TextBlock/TextBox/ScrollViewer/ListBox/TreeView/Menu/DockPanel/DataGrid/DataGridTextColumn/ItemsControl/HeaderedItemsControl/ComboBox/ComboBoxItem/ListView/ListViewItem)");
                 throw new InvalidOperationException("unreachable");
             }
+            if (typeId == KnownBinding) return new Binding();
+            if (typeId == KnownRelativeSource) return new RelativeSource();
+            if (typeId == KnownRowDefinition) return new RowDefinition();
+            if (typeId == KnownColumnDefinition) return new ColumnDefinition();
             return typeId switch
             {
                 KnownWindow => new Window(),
                 KnownGrid => new Grid(),
+                KnownButton => new Button(),
                 KnownTextBlock => new TextBlock(),
                 KnownTextBox => new TextBox(),
                 KnownScrollViewer => new ScrollViewer(),
@@ -7771,8 +8901,12 @@ public static class BamlReader
                 KnownTreeViewItem => new TreeViewItem(),
                 KnownMenu => new Menu(),
                 KnownMenuItem => new MenuItem(),
+                KnownSeparator => new Separator(),
                 KnownDockPanel => new DockPanel(),
-                _ => Fail<UIElement>(offset, $"unknown well-known BAML type id {typeId} (v1 maps Window/Grid/TextBlock/TextBox/ScrollViewer/ListBox/TreeView/Menu/DockPanel only)"),
+                KnownStackPanel => new StackPanel(),
+                KnownDataTemplate => new DataTemplate(),
+                KnownImage => new Image(),
+                _ => Fail<UIElement>(offset, $"unknown well-known BAML type id {typeId} (v1 maps Window/Grid/TextBlock/TextBox/ScrollViewer/ListBox/TreeView/Menu/MenuItem/Separator/DockPanel/DataTemplate/Image/StackPanel only)"),
             };
         }
 
@@ -7788,16 +8922,84 @@ public static class BamlReader
                 { columnsOwner.AddColumn(column); return; }
                 Fail<object>(offset, $"<Columns> list child {Describe(element)} on {Describe(parent)} (v1 supports DataGridTextColumn columns on a DataGrid only)");
             }
+            if (_gridListOwner is Grid gridListOwner)
+            {
+                // Open <Grid.RowDefinitions>/<Grid.ColumnDefinitions> list:
+                // only definition elements attach here.
+                if (ReferenceEquals(parent, gridListOwner) && element is RowDefinition row && _gridListRows)
+                { gridListOwner.RowDefinitions.Add(row); return; }
+                if (ReferenceEquals(parent, gridListOwner) && element is ColumnDefinition col && !_gridListRows)
+                { gridListOwner.ColumnDefinitions.Add(col); return; }
+                Fail<object>(offset, $"<Grid> list child {Describe(element)} on {Describe(parent)} (v1 supports RowDefinition/ColumnDefinition rows only)");
+            }
+            if (_modelListOwner is object modelListOwner && ReferenceEquals(parent, modelListOwner))
+            {
+                // Open converted-model list: elements add in document order.
+                if (_modelList is System.Collections.IList modelItems)
+                {
+                    try { modelItems.Add(element); return; }
+                    catch (Exception ex) { Fail<object>(offset, $"model list rejected a child ({ex.GetBaseException().Message})"); }
+                }
+                Fail<object>(offset, $"model list child on a converted model (converted model lists take children only)");
+            }
+            if (member is short contentId && contentId >= 0 && contentId < _attrs.Count
+                && DockingIntegration.IsHostedInstance(parent))
+            {
+                // Converted content value (verified: the real TestApp
+                // mainwindow.baml sets the converted LayoutRoot model as
+                // content member 26 "Layout" on the hosted DockingManager):
+                // the converted DP type-checks the real converted instance;
+                // anything else fails precise. Mirrors the complex-property
+                // route in AttachComplexChild.
+                var (_, contentName) = _attrs[contentId];
+                if (DockingIntegration.TryApplyConvertedValue(parent, contentName, element, out var contentFailure))
+                    return;
+                Fail<object>(offset, contentFailure!);
+                throw new InvalidOperationException("unreachable");
+            }
+            if (member is short modelContentId && modelContentId >= 0 && modelContentId < _attrs.Count
+                && DockingIntegration.IsConvertedModelInstance(parent))
+            {
+                // Converted layout-model content child (verified: member 27
+                // RootPanel on the converted LayoutRoot in the real TestApp
+                // mainwindow.baml): the real CLR setter applies the parsed
+                // converted instance; anything else fails precise. Convertible
+                // hosts keep the converted-DP route above; engine parents
+                // keep every branch below.
+                var (_, modelContentName) = _attrs[modelContentId];
+                if (DockingIntegration.TrySetConvertedModelMember(parent, modelContentName, element, out var modelContentFailure))
+                    return;
+                Fail<object>(offset, modelContentFailure!);
+                throw new InvalidOperationException("unreachable");
+            }
             if (member == KnownContent)
             {
                 if (parent is Window w && element is UIElement wContent) { w.Content = wContent; return; }
                 if (parent is ScrollViewer sv && element is UIElement svContent) { sv.Content = svContent; return; }
-                Fail<object>(offset, $"Content member on {Describe(parent)} (v1 supports Window/ScrollViewer Content only)");
+                // Converted-component root contract (0x69F wall): the real
+                // testusercontrol.baml sets its child as Content on the
+                // UserControl root; the parsed stand-in carries it so
+                // WpfAppBoot can hydrate it onto the live component.
+                if (parent is UserControl uc && element is UIElement ucContent) { uc.Content = ucContent; return; }
+                Fail<object>(offset, $"Content member on {Describe(parent)} (v1 supports Window/ScrollViewer/UserControl Content only)");
             }
             else if (member == KnownChildren)
             {
                 if (parent is Panel or Border) { AddPanelChild(offset, parent, element); return; }
                 Fail<object>(offset, $"Children member on {Describe(parent)} (v1 supports Grid/StackPanel/Canvas/Border)");
+            }
+            else if (member == KnownVisualTree)
+            {
+                if (parent is DataTemplate dataTemplate)
+                {
+                    var visual = element as UIElement
+                        ?? Fail<UIElement>(offset, $"VisualTree content member on <DataTemplate> holds {Describe(element)} (data templates take one visual)");
+                    if (dataTemplate.VisualRoot is not null)
+                        Fail<object>(offset, $"second visual on <DataTemplate> (data templates take one visual)");
+                    dataTemplate.SetVisualRoot(visual);
+                    return;
+                }
+                Fail<object>(offset, $"VisualTree content member on {Describe(parent)} (data templates take one visual; style-surface follow-up)");
             }
             else if (member == KnownItems)
             {
@@ -7818,13 +9020,13 @@ public static class BamlReader
                 }
                 if (parent is Menu menu)
                 {
-                    if (element is MenuItem top) { menu.AddChild(top); return; }
-                    Fail<object>(offset, $"Items member child {Describe(element)} on <Menu> (v1 supports MenuItem entries only)");
+                    if (element is UIElement topRow && (topRow is MenuItem || topRow is Separator)) { menu.AddChild(topRow); return; }
+                    Fail<object>(offset, $"Items member child {Describe(element)} on <Menu> (v1 supports MenuItem/Separator entries only)");
                 }
                 if (parent is MenuItem sub)
                 {
-                    if (element is MenuItem entry) { sub.AddChild(entry); return; }
-                    Fail<object>(offset, $"Items member child {Describe(element)} on <MenuItem> (v1 supports MenuItem entries only)");
+                    if (element is UIElement subRow && (subRow is MenuItem || subRow is Separator)) { sub.AddChild(subRow); return; }
+                    Fail<object>(offset, $"Items member child {Describe(element)} on <MenuItem> (v1 supports MenuItem/Separator entries only)");
                 }
                 if (parent is ItemsControl ic)
                 {
@@ -7838,19 +9040,30 @@ public static class BamlReader
                 // Default content member by container type.
                 if (parent is Window w && element is UIElement wContent) { w.Content = wContent; return; }
                 if (parent is ScrollViewer sv && element is UIElement svContent) { sv.Content = svContent; return; }
+                if (parent is UserControl uc && element is UIElement ucContent) { uc.Content = ucContent; return; }
                 if (parent is ListBox lb && element is ListBoxItem item) { lb.AddChild(item); return; }
                 if (parent is TreeView tv && element is TreeViewItem node) { tv.AddChild(node); return; }
                 if (parent is TreeViewItem tvi && element is TreeViewItem child) { tvi.AddChild(child); return; }
-                if (parent is Menu menu && element is MenuItem top) { menu.AddChild(top); return; }
-                if (parent is MenuItem sub && element is MenuItem entry) { sub.AddChild(entry); return; }
+                if (parent is Menu menu && element is UIElement dTop && (dTop is MenuItem || dTop is Separator)) { menu.AddChild(dTop); return; }
+                if (parent is MenuItem sub && element is UIElement dSub && (dSub is MenuItem || dSub is Separator)) { sub.AddChild(dSub); return; }
                 if (parent is Panel) { AddPanelChild(offset, parent, element); return; }
                 if (parent is ItemsControl icc && element is UIElement iccContent) { icc.AddItem(iccContent); return; }
+                if ((parent is TextBlock || parent is Span) && (element is TextBlock || element is Span))
+                {
+                    // Nested TextBlock / Span default content (verified: the genuine
+                    // fw132 fixture nests a bold "0." TextBlock inside a
+                    // wrapping TextBlock, and the real testusercontrol.baml
+                    // carries it at 0x6D0): accepted here; child text and styling
+                    // transfer lands at ElementEnd when the child run is complete
+                    // via reader attachment contract (AddInline / AppendLiteral).
+                    return;
+                }
                 if (parent is Border b && element is UIElement bContent)
                 {
                     if (b.LogicalChildren.Count == 0) { b.AddChild(bContent); return; }
                     Fail<object>(offset, "Border accepts a single child");
                 }
-                Fail<object>(offset, $"default content inside {Describe(parent)} (v1 supports Window/ScrollViewer/ListBoxItem-on-ListBox/TreeViewItem-on-TreeView/MenuItem-on-Menu/MenuItem/Grid/StackPanel/Canvas/DockPanel/Border/ItemsControl content)");
+                Fail<object>(offset, $"default content inside {Describe(parent)} (v1 supports Window/ScrollViewer/UserControl/ListBoxItem-on-ListBox/TreeViewItem-on-TreeView/MenuItem/Separator-on-Menu/MenuItem/Grid/StackPanel/Canvas/DockPanel/Border/ItemsControl content)");
             }
             else
             {
@@ -7879,21 +9092,47 @@ public static class BamlReader
             var attrId = (int)ReadU16();
             if (_stack.Count == 0) Fail(offset, "property list outside any element");
             if (_columnsOwner is not null) Fail(offset, "nested property lists are not supported");
+            if (_gridListOwner is not null) Fail(offset, "nested property lists are not supported");
             var parent = _stack.Peek().Element;
             if (attrId < _attrs.Count)
             {
                 var (_, name) = _attrs[attrId];
                 if (parent is DataGrid dg && name == "Columns") { _columnsOwner = dg; return; }
+                if (parent is Grid gr && name == "RowDefinitions") { _gridListOwner = gr; _gridListRows = true; return; }
+                if (parent is Grid gc && name == "ColumnDefinitions") { _gridListOwner = gc; _gridListRows = false; return; }
+                if (DockingIntegration.IsConvertedModelInstance(parent))
+                {
+                    // Converted-model Children-style list: the named CLR property
+                    // must be a live IList; elements Add in document order.
+                    try
+                    {
+                        var listProperty = parent.GetType().GetProperty(name, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                        if (listProperty is not null && listProperty.CanRead
+                            && listProperty.GetValue(parent) is System.Collections.IList modelList)
+                        {
+                            _modelListOwner = parent;
+                            _modelList = modelList;
+                            return;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Fail<object>(offset, $"model list is unavailable on a converted model ({ex.GetBaseException().Message})");
+                    }
+                }
             }
             var what = attrId < _attrs.Count ? $"'{_attrs[attrId].Name}'" : $"id {attrId}";
-            Fail<object>(offset, $"unsupported property list {what} on {Describe(parent)} (v1 supports DataGrid.Columns only)");
+            Fail<object>(offset, $"unsupported property list {what} on {Describe(parent)} (v1 supports DataGrid.Columns and Grid RowDefinitions/ColumnDefinitions only)");
         }
 
         private void ReadPropertyIListEnd(int offset)
         {
             // PropertyIListEnd is a bare 0x0C byte with no payload.
-            if (_columnsOwner is null) Fail(offset, "unbalanced BAML property-list end");
+            if (_columnsOwner is null && _gridListOwner is null && _modelListOwner is null) Fail(offset, "unbalanced BAML property-list end");
             _columnsOwner = null;
+            _gridListOwner = null;
+            _modelListOwner = null;
+            _modelList = null;
         }
 
         private void ApplyProperty(int offset, object element, short attrId, string value, short conv)
@@ -7905,16 +9144,142 @@ public static class BamlReader
                 ApplyDictionaryProperty(offset, dictionary, attrId, value, conv);
                 return;
             }
+            if (element is UIElement rowFe && conv == ConvInt32 && attrId == KnownGridRowMember)
+            {
+                // Grid.Row attached property (verified: the main menu
+                // carries Grid.Row 1 in the TestApp main window BAML).
+                if (int.TryParse(value, out var row)) { Grid.SetRow(rowFe, row); return; }
+                Fail<object>(offset, $"Grid.Row value is not an integer: {value}");
+            }
+            if (element is RowDefinition rowDef && (attrId == KnownRowHeightMember || (attrId >= 0 && attrId < _attrs.Count && _attrs[attrId].Name == "Height")))
+            {
+                try { rowDef.Height = GridLength.Parse(value); return; }
+                catch (Exception ex) { Fail<object>(offset, $"'{value}' is not a grid length (RowDefinition.Height) ({ex.Message})"); }
+            }
+            if (element is ColumnDefinition colDef && (attrId >= 0 && attrId < _attrs.Count && _attrs[attrId].Name == "Width"))
+            {
+                try { colDef.Width = GridLength.Parse(value); return; }
+                catch (Exception ex) { Fail<object>(offset, $"'{value}' is not a grid length (ColumnDefinition.Width) ({ex.Message})"); }
+            }
             if (attrId >= 0)
             {
-                // Per-file attribute (AttributeInfo table): Title/Icon so far.
+                if (DockingIntegration.IsConvertedModelInstance(element) && attrId < _attrs.Count)
+                {
+                    // Converted layout-model text value (LayoutPanel Orientation,
+                    // DockWidth, titles and flags travel as per-file simples on model
+                    // objects): converts through the shared set and applies via the
+                    // real CLR setter; anything else fails precise.
+                    var (_, modelAttrName) = _attrs[attrId];
+                    if (DockingIntegration.TrySetConvertedModelText(element, modelAttrName, value, conv, out var modelTextFailure))
+                        return;
+                    Fail<object>(offset, modelTextFailure!);
+                    throw new InvalidOperationException("unreachable");
+                }
+                // Per-file attribute (AttributeInfo table): Title/Icon/Name so far.
                 if (attrId >= _attrs.Count)
                     Fail<object>(offset, $"BAML attribute id {attrId} has no AttributeInfo record");
                 var (owner, name) = _attrs[attrId];
+                if (element is MenuItem row)
+                {
+                    // In-content menu rows (verified: the TestApp main window
+                    // carries converted Command values plus inline Header,
+                    // Tag, IsCheckable and IsChecked values on MenuItem
+                    // elements; Header itself rides the well-known member).
+                    if (owner == KnownMenuItem && name == "Command")
+                    {
+                        row.Command = ReadMenuItemCommand(offset, $"BAML+0x{offset:X}", attrId, value, conv, "menu row");
+                        return;
+                    }
+                    if (owner == KnownMenuItem && name == "IsCheckable" && conv == ConvBool)
+                    {
+                        if (bool.TryParse(value, out var checkable)) { row.IsCheckable = checkable; return; }
+                        Fail<object>(offset, $"'{value}' is not a boolean for IsCheckable");
+                    }
+                    if (owner == KnownMenuItem && name == "IsChecked" && conv == ConvBool)
+                    {
+                        if (bool.TryParse(value, out var @checked)) { row.IsChecked = @checked; return; }
+                        Fail<object>(offset, $"'{value}' is not a boolean for IsChecked");
+                    }
+                    if (name == "Name" && conv == ConvString) { row.Name = value; RegisterDocumentName(row, value, offset); return; }
+                    if (owner == KnownFrameworkElement && name == "Tag" && conv == ConvString)
+                    { row.Tag = value; return; }
+                    Fail<object>(offset, $"BAML attribute '{name}' on <MenuItem> (menu rows take Command/Header/Name/Tag/IsCheckable/IsChecked; menu-surface follow-up)");
+                    throw new InvalidOperationException("unreachable");
+                }
+                if (name == "Name" && conv == ConvString && element is FrameworkElement namedFe)
+                { namedFe.Name = value; RegisterDocumentName(element, value, offset); return; }
+                if (DockingIntegration.IsHostedInstance(element))
+                {
+                    // Converted-DP apply for the real hosted instance:
+                    // the converted type's own DependencyProperty converts
+                    // the literal through the engine converter; unknown DPs,
+                    // mismatched converters and bad values fail precise.
+                    if (!DockingIntegration.TryApplyConvertedProperty(element, name, value, conv, out var hostedFailure))
+                    {
+                        Fail<object>(offset, hostedFailure!);
+                        throw new InvalidOperationException("unreachable");
+                    }
+                    return;
+                }
+                if (element is StackPanel stackPanel && owner == KnownStackPanel && name == "Orientation" && conv == ConvEnum)
+                {
+                    // StackPanel.Orientation travels as a per-file enum
+                    // simple (verified: the #104 FlipClock template visual
+                    // plus the real TestApp DocumentHeaderTemplate visual at
+                    // BAML+0x13DB, both "Horizontal"/EnumConverter).
+                    if (value == "Horizontal") { stackPanel.Orientation = Orientation.Horizontal; return; }
+                    if (value == "Vertical") { stackPanel.Orientation = Orientation.Vertical; return; }
+                    Fail<object>(offset, $"'{value}' is not an Orientation for StackPanel.Orientation");
+                }
+                if (element is Binding modeBinding && name == "Mode" && conv == ConvEnum)
+                {
+                    // Binding.Mode travels as a per-file EnumConverter
+                    // simple (verified: the genuine fw127 fixture compiling
+                    // Mode=OneWay emits it exactly so, and the real TestApp
+                    // file carries it at BAML+0x1CFF).
+                    try { modeBinding.Mode = Enum.Parse<BindingMode>(value, ignoreCase: false); }
+                    catch (ArgumentException)
+                    {
+                        Fail<object>(offset, $"'{value}' is not a BindingMode for Mode (binding modes take Default/TwoWay/OneWay/OneTime/OneWayToSource; follow-up)");
+                    }
+                    return;
+                }
+                if (element is Binding fmtBinding && name == "StringFormat" && conv == ConvString)
+                {
+                    // Binding.StringFormat travels as a per-file
+                    // StringConverter simple (verified: the genuine fw128
+                    // fixture compiling StringFormat='Document: {0}' emits
+                    // it exactly so, and the real TestApp file carries it
+                    // at BAML+0x1D20): lands verbatim, braces included.
+                    fmtBinding.StringFormat = value;
+                    return;
+                }
+                if (element is RelativeSource rss && name == "AncestorLevel" && conv == ConvInt32)
+                {
+                    // RelativeSource.AncestorLevel travels as a per-file
+                    // int32 simple (verified: the genuine fw126 fixture
+                    // compiling FindAncestor/Window/1 emits it exactly so;
+                    // sits with the pre-guard per-file arms since the guard
+                    // below allowlists only visual hosts).
+                    if (int.TryParse(value, System.Globalization.NumberStyles.Integer,
+                            System.Globalization.CultureInfo.InvariantCulture, out var level))
+                    { rss.AncestorLevel = level; return; }
+                    Fail<object>(offset, $"'{value}' is not an integer for AncestorLevel");
+                }
+                if (element is UIElement visibilityElement && name == "Visibility" && conv == ConvEnum)
+                {
+                    // UIElement.Visibility travels as a per-file enum
+                    // simple (real TestApp DocumentHeaderTemplate Title text
+                    // carries "Collapsed"/EnumConverter).
+                    if (value == "Visible") { visibilityElement.Visibility = Visibility.Visible; return; }
+                    if (value == "Hidden") { visibilityElement.Visibility = Visibility.Hidden; return; }
+                    if (value == "Collapsed") { visibilityElement.Visibility = Visibility.Collapsed; return; }
+                    Fail<object>(offset, $"'{value}' is not a Visibility on {Describe(element)}");
+                }
                 if (element is not Window && element is not ListBox && element is not TreeViewItem
                     && element is not DataGrid && element is not DataGridTextColumn
-                    && element is not ItemsControl)
-                    Fail<object>(offset, $"BAML attribute '{name}' on {Describe(element)} (v1 supports Window.Title/Icon, ListBox/DataGrid/Selector.SelectedIndex, TreeViewItem.IsExpanded, DataGridTextColumn.Header/Width, ComboBox.Text/IsDropDownOpen/IsEditable, ComboBoxItem.Content and ItemsControl.DisplayMemberPath only)");
+                    && element is not ItemsControl && element is not Binding)
+                    Fail<object>(offset, $"BAML attribute '{name}' on {Describe(element)} (v1 supports Window.Title/Icon, ListBox/DataGrid/Selector.SelectedIndex, TreeViewItem.IsExpanded, DataGridTextColumn.Header/Width, ComboBox.Text/IsDropDownOpen/IsEditable, ComboBoxItem.Content, ItemsControl.DisplayMemberPath and Binding.ElementName/Path only)");
                 if (name == "Title" && conv == ConvString) { ((Window)element).Title = value; return; }
                 if (name == "Icon" && conv == ConvImage)
                 {
@@ -7981,6 +9346,17 @@ public static class BamlReader
                 }
                 if (element is ItemsControl icp && name == "DisplayMemberPath" && conv == ConvString)
                 { icp.DisplayMemberPath = value; return; }
+                if (element is Binding bb && name == "ElementName" && conv == ConvString)
+                { bb.ElementName = value; return; }
+                if (element is Binding bbp && name == "Path" && conv == ConvString)
+                { bbp.Path = new PropertyPath(value); return; }
+                // UIElement.UseLayoutRounding takes the bool converter (verified:
+                // the TestApp main window carries it as a per-file attribute).
+                if (element is UIElement uie && name == "UseLayoutRounding" && conv == ConvBool)
+                {
+                    if (bool.TryParse(value, out var round)) { uie.UseLayoutRounding = round; return; }
+                    Fail<object>(offset, $"'{value}' is not a boolean for UseLayoutRounding");
+                }
                 // DataGridTextColumn.Header takes the StringConverter.
                 if (element is DataGridTextColumn col && name == "Header" && conv == ConvString)
                 { col.Header = value; return; }
@@ -7993,7 +9369,7 @@ public static class BamlReader
                     catch (Exception ex) when (ex is FormatException or OverflowException or ArgumentNullException)
                     { Fail<object>(offset, $"'{value}' is not a grid length for Width"); }
                 }
-                Fail<object>(offset, $"unsupported BAML attribute '{name}' with converter {conv} (v1 supports Title/StringConverter, Icon/ImageSourceConverter, SelectedIndex/int32, IsExpanded/bool, Header/StringConverter, Width/DataGridLengthConverter, ComboBox.Text/StringConverter, ComboBox.IsDropDownOpen+IsEditable/bool, ComboBoxItem.Content+IsSelected and ItemsControl.DisplayMemberPath/StringConverter)");
+                Fail<object>(offset, $"unsupported BAML attribute '{name}' with converter {conv} (v1 supports Title/StringConverter, Icon/ImageSourceConverter, SelectedIndex/int32, IsExpanded/bool, Header/StringConverter, Width/DataGridLengthConverter, ComboBox.Text/StringConverter, ComboBox.IsDropDownOpen+IsEditable/bool, ComboBoxItem.Content+IsSelected, ItemsControl.DisplayMemberPath/StringConverter, UseLayoutRounding/bool, StackPanel.Orientation/EnumConverter and Visibility/EnumConverter)");
                 throw new InvalidOperationException("unreachable");
             }
             switch (attrId)
@@ -8010,6 +9386,42 @@ public static class BamlReader
                     catch (FormatException)
                     {
                         Fail<object>(offset, $"'{value}' is not a number for Height/Width");
+                    }
+                    break;
+                case KnownMinHeightMember when conv == ConvLength:
+                    var feMin = element as FrameworkElement
+                        ?? Fail<FrameworkElement>(offset, $"MinHeight member on {Describe(element)}");
+                    try { feMin.MinHeight = double.Parse(value, System.Globalization.CultureInfo.InvariantCulture); }
+                    catch (FormatException)
+                    {
+                        Fail<object>(offset, $"'{value}' is not a number for MinHeight");
+                    }
+                    break;
+                case KnownMinWidthMember when conv == ConvLength:
+                    var feMinW = element as FrameworkElement
+                        ?? Fail<FrameworkElement>(offset, $"MinWidth member on {Describe(element)}");
+                    try { feMinW.MinWidth = double.Parse(value, System.Globalization.CultureInfo.InvariantCulture); }
+                    catch (FormatException)
+                    {
+                        Fail<object>(offset, $"'{value}' is not a number for MinWidth");
+                    }
+                    break;
+                case KnownTextWrappingMember when conv == ConvEnum:
+                    var wrapBlock = element as TextBlock
+                        ?? Fail<TextBlock>(offset, $"BAML member -113 (TextBlock.TextWrapping) on {Describe(element)}");
+                    try { wrapBlock.TextWrapping = Enum.Parse<TextWrapping>(value, ignoreCase: false); }
+                    catch (ArgumentException)
+                    {
+                        Fail<object>(offset, $"'{value}' is not a TextWrapping for TextWrapping (text wrapping takes WrapWithOverflow/NoWrap/Wrap; follow-up)");
+                    }
+                    break;
+                case KnownFontWeightMember when conv == ConvFontWeight:
+                    var fwBlock = element as TextBlock
+                        ?? Fail<TextBlock>(offset, $"BAML member -108 (TextBlock.FontWeight) on {Describe(element)}");
+                    try { fwBlock.FontWeight = (FontWeight)new FontWeightConverter().ConvertFrom(null, System.Globalization.CultureInfo.InvariantCulture, value)!; }
+                    catch (Exception ex) when (ex is FormatException or ArgumentException or NotSupportedException)
+                    {
+                        Fail<object>(offset, $"'{value}' is not a FontWeight for FontWeight ({ex.GetBaseException().Message}; follow-up)");
                     }
                     break;
                 case KnownHAlign when conv == ConvEnum:
@@ -8035,6 +9447,7 @@ public static class BamlReader
                 case KnownContent when conv == ConvString:
                     if (element is ListBoxItem lbi) { lbi.Content = value; break; }
                     if (element is ComboBoxItem cbiContent) { cbiContent.Content = value; break; }
+                    if (element is Button btn) { btn.Content = value; break; }
                     Fail<object>(offset, $"BAML member -14 (ContentControl.Content) on {Describe(element)}");
                     break;
                 case KnownHeader when conv == ConvString:
@@ -8061,6 +9474,32 @@ public static class BamlReader
                     if (DockPanel.TryParseDock(value, out var dock)) { DockPanel.SetDock(docked, dock); break; }
                     Fail<object>(offset, $"'{value}' is not a Dock (Left/Top/Right/Bottom)");
                     break;
+                case KnownTextTrimmingMember when conv == ConvEnum:
+                    var trimBlock = element as TextBlock
+                        ?? Fail<TextBlock>(offset, $"TextTrimming member on {Describe(element)}");
+                    if (value == "None") { trimBlock.TextTrimming = TextTrimming.None; break; }
+                    if (value == "CharacterEllipsis") { trimBlock.TextTrimming = TextTrimming.CharacterEllipsis; break; }
+                    if (value == "WordEllipsis") { trimBlock.TextTrimming = TextTrimming.WordEllipsis; break; }
+                    Fail<object>(offset, $"'{value}' is not a TextTrimming");
+                    break;
+                case KnownMarginAttribute when conv == ConvThickness:
+                    var marginFe = element as FrameworkElement
+                        ?? Fail<FrameworkElement>(offset, $"Margin member on {Describe(element)}");
+                    try { marginFe.Margin = Thickness.Parse(value); }
+                    catch (FormatException)
+                    {
+                        Fail<object>(offset, $"'{value}' is not a Thickness for Margin");
+                    }
+                    break;
+                case KnownTextBoxBorderThicknessMember when conv == ConvThickness:
+                    var btBox = element as TextBox
+                        ?? Fail<TextBox>(offset, $"BAML member -26 (TextBox.BorderThickness) on {Describe(element)}");
+                    try { btBox.BorderThickness = Thickness.Parse(value); }
+                    catch (FormatException)
+                    {
+                        Fail<object>(offset, $"'{value}' is not a Thickness for BorderThickness");
+                    }
+                    break;
                 case KnownLastChildFill when conv == ConvBool:
                     var dp = element as DockPanel
                         ?? Fail<DockPanel>(offset, $"BAML member -40 (DockPanel.LastChildFill) on {Describe(element)}");
@@ -8068,7 +9507,7 @@ public static class BamlReader
                     Fail<object>(offset, $"'{value}' is not a boolean for LastChildFill");
                     break;
                 case KnownName when conv == ConvString:
-                    if (element is FrameworkElement named) named.Name = value;
+                    if (element is FrameworkElement named) { named.Name = value; RegisterDocumentName(element, value, offset); }
                     else
                         Fail<object>(offset, $"Name on {Describe(element)} (FrameworkElement only)");
                     break;
@@ -8165,3 +9604,5 @@ public static class BamlReader
         private UIElement Fail(int offset, string message) => Fail<UIElement>(offset, message);
     }
 }
+
+

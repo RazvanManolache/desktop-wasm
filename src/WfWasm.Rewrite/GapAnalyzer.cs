@@ -181,6 +181,72 @@ public static class GapAnalyzer
     }
 
     /// <summary>
+    /// A reference the rewriter cannot honestly route: the member exists in
+    /// the replacement closure (so no missing-member gap fires) but the
+    /// implementation is platform-blocked and throws at runtime on the
+    /// browser host. Reported with the exact call site instead of a generic
+    /// gap, so a runtime PlatformNotSupportedException never surprises.
+    /// </summary>
+    public sealed record PlatformBlock(string Scope, string DeclaringType, string Member, string Reason);
+
+    /// <summary>
+    /// Windows-only cryptographic service providers. The concrete *Csp types
+    /// are CAPI wrappers: every member throws PlatformNotSupportedException
+    /// off-Windows, including .ctor and the key-storage surface
+    /// (UseMachineKeyStore/CspKeyContainerInfo) which has no abstract
+    /// contract equivalent. The abstract RSA/DSA bases expose Create()
+    /// factories, but whether the browser runtime honors them is a runtime
+    /// question this analysis does not answer: it reports the block.
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, string> PlatformBlockedTypes =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["System.Security.Cryptography.RSACryptoServiceProvider"] =
+                "Windows CAPI implementation; every member throws PlatformNotSupportedException off-Windows. " +
+                "Abstract System.Security.Cryptography.RSA exposes Create(), unverified on the browser runtime.",
+            ["System.Security.Cryptography.DSACryptoServiceProvider"] =
+                "Windows CAPI implementation; every member throws PlatformNotSupportedException off-Windows. " +
+                "Abstract System.Security.Cryptography.DSA exposes Create(), unverified on the browser runtime.",
+        };
+
+    /// <summary>
+    /// Scans member references and type positions for platform-blocked
+    /// implementations. Pure: never mutates the module. Distinct from
+    /// <see cref="Analyze(string, IReadOnlyDictionary{string, string})"/>:
+    /// these types resolve fine, which is exactly why the runtime throw
+    /// would otherwise arrive unannounced.
+    /// </summary>
+    public static List<PlatformBlock> AnalyzePlatformBlocks(Mono.Cecil.ModuleDefinition module)
+    {
+        ArgumentNullException.ThrowIfNull(module);
+        var blocks = new List<PlatformBlock>();
+        foreach (Mono.Cecil.MemberReference memberRef in module.GetMemberReferences())
+        {
+            string declaring = memberRef.DeclaringType.FullName.Replace('/', '+');
+            if (!PlatformBlockedTypes.TryGetValue(declaring, out string? reason))
+                continue;
+            string scope = (memberRef.DeclaringType.Scope as Mono.Cecil.AssemblyNameReference)?.Name
+                ?? module.Assembly.Name.Name;
+            blocks.Add(new PlatformBlock(scope, declaring, memberRef.Name, reason));
+        }
+        foreach (Mono.Cecil.TypeReference typeRef in module.GetTypeReferences())
+        {
+            string full = typeRef.FullName.Replace('/', '+');
+            if (!PlatformBlockedTypes.TryGetValue(full, out string? reason))
+                continue;
+            string scope = (typeRef.Scope as Mono.Cecil.AssemblyNameReference)?.Name
+                ?? module.Assembly.Name.Name;
+            blocks.Add(new PlatformBlock(scope, full, "", reason));
+        }
+        return blocks
+            .Distinct()
+            .OrderBy(b => b.Scope)
+            .ThenBy(b => b.DeclaringType)
+            .ThenBy(b => b.Member)
+            .ToList();
+    }
+
+    /// <summary>
     /// Drafts a type map automatically: every app type reference in a mapped
     /// framework assembly whose simple name exists in the replacement
     /// assembly maps to it (nested names included). The rewriter's hand map

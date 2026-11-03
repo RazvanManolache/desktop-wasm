@@ -23,7 +23,7 @@ public sealed class ApplicationPackageLoader : IDisposable
     }
 
     public static async Task<ApplicationPackageLoader> CreateAsync(ApplicationPackage package, string slug,
-        Func<string, Task<byte[]>> fetch, Func<string, Task>? report = null)
+        Func<string, Task<byte[]>> fetch, Func<string, Task>? report = null, Func<string, Task>? reportStart = null)
     {
         package.Validate(slug, WpfAppBoot.MapVersion);
         if (package.Status != "converted")
@@ -34,16 +34,25 @@ public sealed class ApplicationPackageLoader : IDisposable
         var images = await Task.WhenAll(package.Assemblies.Select(async assembly =>
         {
             await concurrency.WaitAsync();
+            byte[] bytes;
             try
             {
-                var bytes = await fetch(assembly.File);
+                // Fetch-start phase (tiered-timer contract): emitted after
+                // the semaphore acquire, before the fetch, so no inter-file
+                // gap is silent even when a fetch stalls.
+                if (reportStart is not null)
+                    await reportStart($"fetch-start {assembly.Name}");
+                bytes = await fetch(assembly.File);
                 if (!string.Equals(Convert.ToHexString(SHA256.HashData(bytes)), assembly.Sha256, StringComparison.OrdinalIgnoreCase))
                     throw new InvalidDataException($"{slug}: hash mismatch in '{assembly.Name}'.");
-                if (report is not null)
-                    await report($"{assembly.Name} ({bytes.Length / 1024} KB fetched, hash verified)");
-                return (assembly.Name, Bytes: bytes);
             }
             finally { concurrency.Release(); }
+            // Released before the verify report: a stalled report callback
+            // (JS interop round-trip) must never pin a fetch slot and
+            // serialize the tail. Fetch concurrency stays capped at 4.
+            if (report is not null)
+                await report($"{assembly.Name} ({bytes.Length / 1024} KB fetched, hash verified)");
+            return (assembly.Name, Bytes: bytes);
         }));
         foreach (var item in images) loader._images.Add(item.Name, item.Bytes);
         AppDomain.CurrentDomain.AssemblyResolve += loader._resolve;

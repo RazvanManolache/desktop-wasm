@@ -526,11 +526,21 @@ public class ItemContainerGenerator
     private readonly IItemContainerOwner _owner;
     private readonly Dictionary<object, DependencyObject> _containers = new(ContainerIdentityComparer.Instance);
     private readonly Dictionary<DependencyObject, object> _items = new();
+    /// <summary>Recycling pool keyed by serving template (or <see cref="PlainShellKey"/>
+    /// for template-free shells), so a recycled container only ever serves an item
+    /// needing the same template kind.</summary>
+    private readonly Dictionary<object, Queue<DependencyObject>> _recyclePool = new();
+    /// <summary>Pool key for containers produced without a template (plain shells).</summary>
+    private static readonly object PlainShellKey = new();
+    /// <summary>Serving template (or <see cref="PlainShellKey"/>) recorded per realized container.</summary>
+    private readonly Dictionary<DependencyObject, object> _poolKeyByContainer = new();
     private GeneratorStatus _status = GeneratorStatus.NotStarted;
 
     internal ItemContainerGenerator(ItemsControl owner) => _owner = owner;
 
     internal ItemContainerGenerator(IItemContainerOwner owner) => _owner = owner;
+
+    public System.Collections.IList ContainerItems => _owner.ContainerItems;
 
     /// <summary>Generation state (starts NotStarted; Error only on a generation throw).</summary>
     public GeneratorStatus Status => _status;
@@ -540,6 +550,15 @@ public class ItemContainerGenerator
 
     /// <summary>Container-set change notice (matches ItemContainerGenerator.ItemsChanged).</summary>
     public event ItemsChangedEventHandler? ItemsChanged;
+
+    /// <summary>Number of containers currently waiting in the recycling pool.</summary>
+    public int RecycledCount => _recyclePool.Values.Sum(q => q.Count);
+
+    /// <summary>Total number of heap containers instantiated by this generator.</summary>
+    public int ContainersCreatedCount { get; private set; }
+
+    /// <summary>Checks or sets whether container recycling is enabled on the generator.</summary>
+    public bool RecyclingEnabled { get; set; }
 
     private void SetStatus(GeneratorStatus status)
     {
@@ -559,7 +578,60 @@ public class ItemContainerGenerator
     internal bool TryGetItem(DependencyObject container, out object? item) =>
         _items.TryGetValue(container, out item);
 
-    /// <summary>Container for a data item (created on demand via the owner overrides).</summary>
+    private bool TryDequeueRecycled(object key, out DependencyObject? container)
+    {
+        container = null;
+        return _recyclePool.TryGetValue(key, out var queue) && queue.Count > 0 &&
+               (container = queue.Dequeue()) is not null;
+    }
+
+    private void EnqueueRecycled(object key, DependencyObject container)
+    {
+        if (!_recyclePool.TryGetValue(key, out var queue))
+        {
+            queue = new Queue<DependencyObject>();
+            _recyclePool[key] = queue;
+        }
+        queue.Enqueue(container);
+    }
+
+    /// <summary>Mints a plain shell container (counted; the caller records its pool key).</summary>
+    private DependencyObject CreateShell()
+    {
+        ContainersCreatedCount++;
+        return _owner.GetContainerForItem();
+    }
+
+    /// <summary>
+    /// Resolves the container for an item needing template-selector service: a pooled
+    /// plain shell doubles as the selector context (so steady-state scrolling allocates
+    /// nothing just to ask), and the unused context shell is parked back in the pool
+    /// instead of being dropped.
+    /// </summary>
+    private DependencyObject GetOrCreateSelectorContainer(object item, DataTemplateSelector selector)
+    {
+        var contextShell = TryDequeueRecycled(PlainShellKey, out var pooledShell) && pooledShell is not null
+            ? pooledShell
+            : CreateShell();
+        var chosen = selector.SelectTemplate(item, contextShell);
+        if (chosen is null)
+        {
+            _poolKeyByContainer[contextShell] = PlainShellKey;
+            return contextShell;
+        }
+        EnqueueRecycled(PlainShellKey, contextShell);
+        if (TryDequeueRecycled(chosen, out var pooled) && pooled is not null)
+        {
+            _poolKeyByContainer[pooled] = chosen;
+            return pooled;
+        }
+        ContainersCreatedCount++;
+        var fresh = chosen.LoadContent();
+        _poolKeyByContainer[fresh] = chosen;
+        return fresh;
+    }
+
+    /// <summary>Container for a data item (created on demand or recycled via owner overrides).</summary>
     public virtual DependencyObject? ContainerFromItem(object? item)
     {
         if (item is null) return null;
@@ -571,12 +643,23 @@ public class ItemContainerGenerator
         try
         {
             var isOwnContainer = _owner.IsItemItsOwnContainer(item) && item is DependencyObject;
-            DependencyObject container = isOwnContainer && item is DependencyObject own
-                ? own
-                : _owner.GetContainerForItem();
-            if (!isOwnContainer && _owner.ItemTemplate is null &&
-                _owner.ItemTemplateSelector?.SelectTemplate(item, container) is { } chosen)
-                container = chosen.LoadContent();
+            DependencyObject container;
+            if (isOwnContainer && item is DependencyObject own)
+            {
+                container = own;
+            }
+            else if (_owner.ItemTemplate is null && _owner.ItemTemplateSelector is { } selector)
+            {
+                container = GetOrCreateSelectorContainer(item, selector);
+            }
+            else
+            {
+                var key = (object?)_owner.ItemTemplate ?? PlainShellKey;
+                if (!TryDequeueRecycled(key, out var pooled) || pooled is null)
+                    pooled = CreateShell();
+                container = pooled;
+                _poolKeyByContainer[container] = key;
+            }
             _owner.PrepareContainerForItem(container, item);
             _containers[item] = container;
             _items[container] = item;
@@ -614,6 +697,44 @@ public class ItemContainerGenerator
         return item is null ? -1 : _owner.ContainerItems.IndexOf(item);
     }
 
+    /// <summary>Checks whether container at item index is currently realized.</summary>
+    public bool IsRealized(int index)
+    {
+        if ((uint)index >= (uint)_owner.ContainerItems.Count) return false;
+        var item = _owner.ContainerItems[index];
+        return item is not null && _containers.ContainsKey(item);
+    }
+
+    /// <summary>Number of currently realized containers.</summary>
+    public int RealizedCount => _containers.Count;
+
+    /// <summary>Removes / un-realizes container at the specified item index.</summary>
+    public void Remove(int index) => Remove(index, recycle: RecyclingEnabled);
+
+    /// <summary>Recycles container at the specified item index into the container pool.</summary>
+    public void Recycle(int index) => Remove(index, recycle: true);
+
+    /// <summary>Removes or recycles container at the specified item index.</summary>
+    public void Remove(int index, bool recycle)
+    {
+        if ((uint)index >= (uint)_owner.ContainerItems.Count) return;
+        var item = _owner.ContainerItems[index];
+        if (item is not null && _containers.TryGetValue(item, out var container))
+        {
+            _owner.ClearContainerForItem(container, item);
+            _owner.RemoveGeneratedChild(container);
+            _containers.Remove(item);
+            _items.Remove(container);
+            _poolKeyByContainer.TryGetValue(container, out var recordedKey);
+            _poolKeyByContainer.Remove(container);
+            // Only a container whose serving template is known rejoins the pool:
+            // an unclassified container is never handed to another item.
+            if (recycle && recordedKey is not null && !_owner.IsItemItsOwnContainer(item))
+                EnqueueRecycled(recordedKey, container);
+            RaiseItemsChanged(System.Collections.Specialized.NotifyCollectionChangedAction.Remove, index, 1, 1);
+        }
+    }
+
     internal void Refresh()
     {
         foreach (var container in _containers.Values)
@@ -621,10 +742,51 @@ public class ItemContainerGenerator
             _owner.ClearContainerForItem(container, _items[container]);
             _owner.RemoveGeneratedChild(container);
         }
+        ResetMappings(clearPool: true);
+        RaiseItemsChanged(System.Collections.Specialized.NotifyCollectionChangedAction.Reset, -1, 0, 0);
+    }
+
+    /// <summary>
+    /// Parks every realized container in the recycle pool without raising change
+    /// events (a source rebuild unparents rows; parking lets the next measure
+    /// reuse shells instead of minting a fresh window). Own-containers are
+    /// unmapped but never pooled. Returns the number parked.
+    /// </summary>
+    internal int ParkRealizedContainers()
+    {
+        var parked = 0;
+        var items = _owner.ContainerItems;
+        for (var i = 0; i < items.Count; i++)
+        {
+            var item = items[i];
+            if (item is null || !_containers.TryGetValue(item, out var container)) continue;
+            _owner.ClearContainerForItem(container, item);
+            _owner.RemoveGeneratedChild(container);
+            _containers.Remove(item);
+            _items.Remove(container);
+            _poolKeyByContainer.TryGetValue(container, out var recordedKey);
+            _poolKeyByContainer.Remove(container);
+            if (recordedKey is not null && !_owner.IsItemItsOwnContainer(item))
+            {
+                EnqueueRecycled(recordedKey, container);
+                parked++;
+            }
+        }
+        return parked;
+    }
+
+    /// <summary>
+    /// Drops realized item-to-container mappings (stale after the owner unparents
+    /// rows, e.g. a source rebuild) without raising change events. The pool is kept
+    /// unless template-kind reuse would serve stale visuals.
+    /// </summary>
+    internal void ResetMappings(bool clearPool)
+    {
         _containers.Clear();
         _items.Clear();
+        _poolKeyByContainer.Clear();
+        if (clearPool) _recyclePool.Clear();
         SetStatus(GeneratorStatus.NotStarted);
-        RaiseItemsChanged(System.Collections.Specialized.NotifyCollectionChangedAction.Reset, -1, 0, 0);
     }
 
     /// <summary>
@@ -637,6 +799,12 @@ public class ItemContainerGenerator
         ItemsChanged?.Invoke(this, new ItemsChangedEventArgs(
             System.Collections.Specialized.NotifyCollectionChangedAction.Reset,
             new GeneratorPosition(-1, 0), new GeneratorPosition(-1, 0), 0, 0));
+
+    internal void OnItemsAdded(int index, int count) =>
+        RaiseItemsChanged(System.Collections.Specialized.NotifyCollectionChangedAction.Add, index, count, 0);
+
+    internal void OnItemsRemoved(int index, int count) =>
+        RaiseItemsChanged(System.Collections.Specialized.NotifyCollectionChangedAction.Remove, index, count, count);
 
     private void RaiseItemsChanged(System.Collections.Specialized.NotifyCollectionChangedAction action, int index, int itemCount, int itemUICount) =>
         ItemsChanged?.Invoke(this, new ItemsChangedEventArgs(action, new GeneratorPosition(index, 0), new GeneratorPosition(-1, 0), itemCount, itemUICount));
@@ -699,8 +867,22 @@ public class ItemsControl : Control, IItemContainerOwner
         return (int)(element.GetValue(AlternationIndexProperty) ?? 0);
     }
 
-    /// <summary>Property path rendered for data items (stored; container text binding stays a boundary).</summary>
-    public string? DisplayMemberPath { get; set; }
+    private string? _displayMemberPath;
+
+    /// <summary>
+    /// Property path rendered for data items (re-prepares generated containers
+    /// on change so realized and recycled rows follow the new path).
+    /// </summary>
+    public string? DisplayMemberPath
+    {
+        get => _displayMemberPath;
+        set
+        {
+            if (string.Equals(_displayMemberPath, value, StringComparison.Ordinal)) return;
+            _displayMemberPath = value;
+            Regenerate();
+        }
+    }
 
     /// <summary>
     /// Item-format identity (matches System.Windows.Controls.ItemsControl.ItemStringFormatProperty;
@@ -722,6 +904,7 @@ public class ItemsControl : Control, IItemContainerOwner
             if (string.Equals(_itemStringFormat, value, StringComparison.Ordinal)) return;
             _itemStringFormat = value;
             SetValue(ItemStringFormatProperty, value);
+            Regenerate();
         }
     }
 
@@ -768,6 +951,105 @@ public class ItemsControl : Control, IItemContainerOwner
 
     private NotifyCollectionChangedEventHandler? _viewSourceHandler;
 
+    private void HandleSourceCollectionChanged(NotifyCollectionChangedEventArgs e)
+    {
+        if (_bulkUpdate) return;
+        switch (e.Action)
+        {
+            case NotifyCollectionChangedAction.Add:
+                if (e.NewStartingIndex >= 0 && e.NewItems is not null)
+                {
+                    var at = e.NewStartingIndex;
+                    foreach (var item in e.NewItems)
+                        Items.Insert(at++, item);
+                }
+                else if (e.NewItems is not null)
+                {
+                    foreach (var item in e.NewItems)
+                        Items.Add(item);
+                }
+                if (_itemsHost is VirtualizingStackPanel vspAdd)
+                    vspAdd.OnItemsAdded(e.NewStartingIndex >= 0 ? e.NewStartingIndex : Items.Count - (e.NewItems?.Count ?? 1), e.NewItems?.Count ?? 1);
+                ItemContainerGenerator.OnItemsAdded(e.NewStartingIndex >= 0 ? e.NewStartingIndex : Items.Count - (e.NewItems?.Count ?? 1), e.NewItems?.Count ?? 1);
+                OnItemsChanged(e);
+                InvalidateMeasure();
+                break;
+
+            case NotifyCollectionChangedAction.Remove:
+                if (e.OldStartingIndex >= 0 && e.OldItems is not null)
+                {
+                    for (var i = 0; i < e.OldItems.Count; i++)
+                    {
+                        if (ItemContainerGenerator.IsRealized(e.OldStartingIndex))
+                            ItemContainerGenerator.Remove(e.OldStartingIndex);
+                        Items.RemoveAt(e.OldStartingIndex);
+                    }
+                }
+                else if (e.OldItems is not null)
+                {
+                    foreach (var item in e.OldItems)
+                    {
+                        var idx = Items.IndexOf(item);
+                        if (idx >= 0)
+                        {
+                            if (ItemContainerGenerator.IsRealized(idx))
+                                ItemContainerGenerator.Remove(idx);
+                            Items.RemoveAt(idx);
+                        }
+                    }
+                }
+                if (_itemsHost is VirtualizingStackPanel vspRem)
+                    vspRem.OnItemsRemoved(e.OldStartingIndex, e.OldItems?.Count ?? 1);
+                ItemContainerGenerator.OnItemsRemoved(e.OldStartingIndex, e.OldItems?.Count ?? 1);
+                OnItemsChanged(e);
+                InvalidateMeasure();
+                break;
+
+            case NotifyCollectionChangedAction.Replace:
+                if (e.NewStartingIndex >= 0 && e.NewItems is not null && e.NewItems.Count > 0)
+                {
+                    if (ItemContainerGenerator.IsRealized(e.NewStartingIndex))
+                        ItemContainerGenerator.Remove(e.NewStartingIndex);
+                    Items[e.NewStartingIndex] = e.NewItems[0];
+                }
+                OnItemsChanged(e);
+                InvalidateMeasure();
+                break;
+
+            case NotifyCollectionChangedAction.Move:
+                if (e.OldStartingIndex >= 0 && e.NewStartingIndex >= 0)
+                {
+                    var item = Items[e.OldStartingIndex];
+                    if (ItemContainerGenerator.IsRealized(e.OldStartingIndex))
+                        ItemContainerGenerator.Remove(e.OldStartingIndex);
+                    Items.RemoveAt(e.OldStartingIndex);
+                    Items.Insert(e.NewStartingIndex, item);
+                }
+                OnItemsChanged(e);
+                InvalidateMeasure();
+                break;
+
+            case NotifyCollectionChangedAction.Reset:
+            default:
+                try
+                {
+                    _bulkUpdate = true;
+                    Items.Clear();
+                    if (_itemsSource is not null)
+                        foreach (var item in _itemsSource) Items.Add(item!);
+                }
+                finally
+                {
+                    _bulkUpdate = false;
+                }
+                if (_itemsHost is VirtualizingStackPanel vspReset)
+                    vspReset.OnItemsReset();
+                Regenerate();
+                InvalidateMeasure();
+                break;
+        }
+    }
+
     /// <summary>
     /// Live view tracking (matches ItemsControl listening to its default
     /// collection view): a bound ICollectionView repaints containers when the
@@ -778,30 +1060,27 @@ public class ItemsControl : Control, IItemContainerOwner
     {
         if (value is ICollectionView view)
         {
-            NotifyCollectionChangedEventHandler handler = (_, _) =>
-            {
-                try
-                {
-                    _bulkUpdate = true;
-                    Items.Clear();
-                    foreach (var item in view) Items.Add(item!);
-                }
-                finally
-                {
-                    _bulkUpdate = false;
-                }
-                Regenerate();
-                InvalidateMeasure();
-            };
+            NotifyCollectionChangedEventHandler handler = (_, e) => HandleSourceCollectionChanged(e);
             _viewSourceHandler = handler;
             view.CollectionChanged += handler;
+        }
+        else if (value is System.Collections.Specialized.INotifyCollectionChanged incc)
+        {
+            NotifyCollectionChangedEventHandler handler = (_, e) => HandleSourceCollectionChanged(e);
+            _viewSourceHandler = handler;
+            incc.CollectionChanged += handler;
         }
     }
 
     private void DetachViewSource()
     {
-        if (_itemsSource is ICollectionView oldView && _viewSourceHandler is not null)
-            oldView.CollectionChanged -= _viewSourceHandler;
+        if (_viewSourceHandler is not null)
+        {
+            if (_itemsSource is ICollectionView oldView)
+                oldView.CollectionChanged -= _viewSourceHandler;
+            else if (_itemsSource is System.Collections.Specialized.INotifyCollectionChanged oldIncc)
+                oldIncc.CollectionChanged -= _viewSourceHandler;
+        }
         _viewSourceHandler = null;
     }
 
@@ -847,6 +1126,9 @@ public class ItemsControl : Control, IItemContainerOwner
 
     private DataTemplate? _itemTemplate;
     private Panel? _itemsHost;
+
+    /// <summary>Active host panel (matches ItemsControl.ItemsHost).</summary>
+    public Panel? ItemsHost => _itemsHost;
 
     /// <summary>
     /// Per-item visual factory (matches ItemsControl.ItemTemplate): when set,
@@ -896,7 +1178,17 @@ public class ItemsControl : Control, IItemContainerOwner
     /// </summary>
     public static readonly DependencyProperty ItemsPanelProperty =
         DependencyProperty.Register("ItemsPanel", typeof(ItemsPanelTemplate), typeof(ItemsControl),
-            new FrameworkPropertyMetadata((ItemsPanelTemplate?)null, (d, _) => ((ItemsControl)d).Regenerate()));
+            new FrameworkPropertyMetadata((ItemsPanelTemplate?)null, (d, _) => ((ItemsControl)d).OnItemsPanelChanged()));
+
+    private void OnItemsPanelChanged()
+    {
+        if (_itemsHost is not null)
+        {
+            base.RemoveChild(_itemsHost);
+            _itemsHost = null;
+        }
+        Regenerate();
+    }
 
     public ItemsPanelTemplate? ItemsPanel
     {
@@ -935,13 +1227,24 @@ public class ItemsControl : Control, IItemContainerOwner
         }
     }
 
+    private StyleSelector? _itemContainerStyleSelector;
+
     /// <summary>
     /// Item-container style picker (matches ItemsControl.ItemContainerStyleSelector):
     /// converted ButtonGroup.OnRender re-selects each item style through it
-    /// (null keeps the current style, like WPF). Plain auto-property; the
-    /// picker itself is the engine StyleSelector converted AvalonDock already binds.
+    /// (null keeps the current style, like WPF). Changing it regenerates so
+    /// realized and recycled containers follow the new picker.
     /// </summary>
-    public StyleSelector? ItemContainerStyleSelector { get; set; }
+    public StyleSelector? ItemContainerStyleSelector
+    {
+        get => _itemContainerStyleSelector;
+        set
+        {
+            if (ReferenceEquals(_itemContainerStyleSelector, value)) return;
+            _itemContainerStyleSelector = value;
+            Regenerate();
+        }
+    }
 
     /// <summary>
     /// Replays the items-child walk for converted ElementGroup/ButtonGroup
@@ -960,12 +1263,25 @@ public class ItemsControl : Control, IItemContainerOwner
     }
 
     /// <summary>Owning ItemsControl above a container (null outside item trees).</summary>
-    public static ItemsControl? ItemsControlFromItemContainer(DependencyObject container)
+    public static ItemsControl? ItemsControlFromItemContainer(DependencyObject container) => GetItemsOwner(container);
+
+    /// <summary>Returns the owning ItemsControl for an items panel or container (matches ItemsControl.GetItemsOwner).</summary>
+    public static ItemsControl? GetItemsOwner(DependencyObject element)
     {
-        for (var node = container; node is not null; node = (node as FrameworkElement)?.Parent)
-            if (node is ItemsControl owner && !ReferenceEquals(node, container))
+        ArgumentNullException.ThrowIfNull(element);
+        for (var node = (DependencyObject?)element; node is not null; node = (node as FrameworkElement)?.Parent)
+            if (node is ItemsControl owner && !ReferenceEquals(node, element))
                 return owner;
         return null;
+    }
+
+    private StyleApplyContext GeneratedStyleContext()
+    {
+        var ancestry = new List<FrameworkElement>();
+        for (var node = (FrameworkElement?)this; node is not null; node = node.Parent as FrameworkElement)
+            ancestry.Add(node);
+        ancestry.Reverse();
+        return new StyleApplyContext { Scope = ancestry };
     }
 
     protected internal virtual DependencyObject GetContainerForItemOverride()
@@ -978,20 +1294,59 @@ public class ItemsControl : Control, IItemContainerOwner
 
     protected internal virtual void PrepareContainerForItemOverride(DependencyObject container, object item)
     {
+        var selectedStyle = ItemContainerStyleSelector?.SelectStyle(item, container);
+        var style = selectedStyle ?? ItemContainerStyle;
+        // A selector choice is re-applied on every reuse (its per-item decision
+        // follows the new item; same-instance writes are no-ops in the Style DP).
+        // A fixed style keeps the null guard so local styles survive recycling.
+        if (style is not null && container is FrameworkElement styled &&
+            (selectedStyle is not null || styled.Style is null))
+        {
+            styled.Style = style;
+        }
+
+        if (container is ContentControl cc)
+        {
+            if (!ReferenceEquals(cc, item)) cc.Content = item;
+            if (ItemTemplate is not null && cc.ContentTemplate is null) cc.ContentTemplate = ItemTemplate;
+            if (ItemTemplateSelector is not null && cc.ContentTemplateSelector is null) cc.ContentTemplateSelector = ItemTemplateSelector;
+        }
+        else if (container is ContentPresenter cp)
+        {
+            if (!ReferenceEquals(cp, item)) cp.Content = item;
+            if (ItemTemplate is not null && cp.ContentTemplate is null) cp.ContentTemplate = ItemTemplate;
+            if (ItemTemplateSelector is not null && cp.ContentTemplateSelector is null) cp.ContentTemplateSelector = ItemTemplateSelector;
+        }
+
         if (ItemTemplate is not null || ItemTemplateSelector is not null)
         {
             if (container is FrameworkElement templated) templated.DataContext = item;
             return;
         }
+
         if (container is Label label && item is not UIElement)
-            label.Content = item;
+        {
+            if (!string.IsNullOrEmpty(DisplayMemberPath) && BindingExpression.TryRead(item, DisplayMemberPath, out var val))
+                label.Content = val;
+            else if (!string.IsNullOrEmpty(ItemStringFormat))
+                label.Content = string.Format(ItemStringFormat, item);
+            else
+                label.Content = item;
+        }
     }
 
     protected internal virtual void ClearContainerForItemOverride(DependencyObject container, object item)
     {
-        if (ItemTemplate is not null) return;
-        if (container is Label label && item is not UIElement)
+        if (container is ContentControl cc && !ReferenceEquals(cc, item))
+        {
+            cc.Content = null;
+            cc.DataContext = null;
+        }
+        else if (container is Label label && item is not UIElement)
+        {
             label.Content = string.Empty;
+            label.DataContext = null;
+        }
     }
 
     protected virtual void OnItemsChanged(System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
@@ -1005,24 +1360,33 @@ public class ItemsControl : Control, IItemContainerOwner
         InvalidateMeasure();
     }
 
-    private void Regenerate()
+    private void EnsureItemsHost()
     {
-        ItemContainerGenerator.Refresh();
-        if (_itemsHost is not null)
-        {
-            base.RemoveChild(_itemsHost);
-            _itemsHost = null;
-        }
-        if (ItemsPanel is not null)
+        if (_itemsHost is null && ItemsPanel is not null)
         {
             var host = ItemsPanel.LoadContent();
             if (host is not Panel panel)
                 throw new InvalidOperationException(
                     $"ItemsPanel content must be a Panel (have <{host.GetType().Name}>).");
             _itemsHost = panel;
+            _itemsHost.IsItemsHost = true;
             base.AddChild(panel);
         }
-        for (var i = 0; i < Items.Count; i++) ItemContainerGenerator.ContainerFromIndex(i);
+    }
+
+    private void Regenerate()
+    {
+        ItemContainerGenerator.Refresh();
+        EnsureItemsHost();
+        var isVirtualizing = _itemsHost is VirtualizingPanel &&
+                             VirtualizingPanel.GetIsVirtualizing(this) &&
+                             VirtualizingStackPanel.GetIsVirtualizing(this) &&
+                             VirtualizingPanel.GetIsVirtualizing(_itemsHost) &&
+                             VirtualizingStackPanel.GetIsVirtualizing(_itemsHost);
+        if (!isVirtualizing)
+        {
+            for (var i = 0; i < Items.Count; i++) ItemContainerGenerator.ContainerFromIndex(i);
+        }
         OnItemsChanged(new System.Collections.Specialized.NotifyCollectionChangedEventArgs(
             System.Collections.Specialized.NotifyCollectionChangedAction.Reset));
     }
@@ -1098,15 +1462,57 @@ public class ItemsControl : Control, IItemContainerOwner
 /// retains the template root markup; LoadContent inflates a fresh bound visual
 /// per item. Template event wires and x:Name scopes have no codebehind owner
 /// and stay a boundary (content inflates without them).
+/// BAML-built templates retain the parsed live root instead (like the
+/// BAML-retained ControlTemplate/ItemsPanelTemplate roots); the retained
+/// instance is never shared across parents.
 /// </summary>
 public class DataTemplate : FrameworkTemplate
 {
     private readonly string _visualXml;
+    private UIElement? _visualRoot;
 
     public DataTemplate(string visualXml)
     {
         ArgumentException.ThrowIfNullOrEmpty(visualXml);
         _visualXml = visualXml;
+    }
+
+    /// <summary>BAML-reader hook: a retained template root is installed by the
+    /// parser, never by markup authors (mirrors the BAML-retained
+    /// ControlTemplate/ItemsPanelTemplate roots).</summary>
+    internal DataTemplate()
+    {
+        _visualXml = string.Empty;
+    }
+
+    /// <summary>Retained template visual root (null on markup-built templates).</summary>
+    public UIElement? VisualRoot => _visualRoot;
+
+    /// <summary>Slice offset of this template's ElementStart inside the BAML
+    /// it was parsed from (-1 for markup/engine-built templates).</summary>
+    internal int BamlStartOffset { get; set; } = -1;
+
+    /// <summary>Retained reparse source captured when a BAML complex-child
+    /// template closes (null until then, and always null on markup-built
+    /// templates).</summary>
+    internal BamlReader.BamlTemplateSource? TemplateSource { get; private set; }
+
+    /// <summary>Installs the retained reparse source (BAML reader hook;
+    /// single-shot like the visual root).</summary>
+    internal void SetRetainedSource(BamlReader.BamlTemplateSource source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        TemplateSource ??= source;
+    }
+
+    /// <summary>Installs the single retained visual root (BAML VisualTree
+    /// content; a second visual is a malformed template).</summary>
+    internal void SetVisualRoot(UIElement visual)
+    {
+        ArgumentNullException.ThrowIfNull(visual);
+        if (_visualRoot is not null)
+            throw new InvalidOperationException("DataTemplate takes one visual root (templates take the VisualTree content plus one visual).");
+        _visualRoot = visual;
     }
 
     /// <summary>Optional DataType filter (stored; type-based selection stays a boundary).</summary>
@@ -1123,12 +1529,45 @@ public class DataTemplate : FrameworkTemplate
     /// </summary>
     public IReadOnlyList<FrameworkElement>? LoadScope { get; set; }
 
-    /// <summary>Inflates one fresh visual from the retained markup (new namescope per call).</summary>
+    /// <summary>Inflates one fresh visual per call (new namescope per call):
+    /// BAML-parsed templates reparse their retained slice (independent
+    /// instances, namescope and bindings every time, never a shared live
+    /// root); markup templates reload their XML; engine-built retained roots
+    /// without a BAML source fail precise.</summary>
     public override UIElement LoadContent()
     {
+        if (TemplateSource is not null)
+        {
+            var root = BamlReader.InflateRetained(TemplateSource);
+            TemplateApplier.ApplyDataTemplateTriggers(root, CollectNames(root), Triggers);
+            return root;
+        }
+        if (_visualRoot is not null)
+            throw new InvalidOperationException("DataTemplate has a retained visual tree but no BAML source (only BAML-parsed templates inflate; engine-built roots cannot reparse).");
         var loaded = XamlLoader.Load(_visualXml, LoadScope);
         TemplateApplier.ApplyDataTemplateTriggers(loaded.Root, loaded.Names, Triggers);
         return loaded.Root;
+    }
+
+    /// <summary>Collects the x:Name scope of an inflated tree (BAML names
+    /// arrive as Name properties; the walk rebuilds the per-call scope the
+    /// XAML loader returns as Names).</summary>
+    private static IReadOnlyDictionary<string, object> CollectNames(UIElement root)
+    {
+        var names = new Dictionary<string, object>(StringComparer.Ordinal);
+        CollectInto(root);
+        return names;
+
+        void CollectInto(UIElement node)
+        {
+            if (node is FrameworkElement fe)
+            {
+                if (!string.IsNullOrEmpty(fe.Name))
+                    names.TryAdd(fe.Name, fe);
+                foreach (var child in fe.LogicalChildren)
+                    CollectInto(child);
+            }
+        }
     }
 }
 
@@ -1157,11 +1596,19 @@ public sealed class ItemsPanelTemplate
 {
     private readonly string _visualXml;
     private readonly Panel? _panelRoot;
+    private readonly Func<UIElement>? _factory;
 
     public ItemsPanelTemplate(string visualXml)
     {
         ArgumentException.ThrowIfNullOrEmpty(visualXml);
         _visualXml = visualXml;
+    }
+
+    public ItemsPanelTemplate(Func<UIElement> factory)
+    {
+        ArgumentNullException.ThrowIfNull(factory);
+        _visualXml = string.Empty;
+        _factory = factory;
     }
 
     /// <summary>BAML-retained panel root (the BAML reader lands keyed
@@ -1182,9 +1629,11 @@ public sealed class ItemsPanelTemplate
     /// roots throw a precise no-inflation boundary instead of sharing one
     /// instance across controls, like the BAML-retained ControlTemplate
     /// roots.</summary>
-    public UIElement LoadContent() => _panelRoot is not null
-        ? throw new InvalidOperationException("ItemsPanelTemplate has a retained panel but no inflation markup (BAML-tree inflation is a precise follow-up).")
-        : XamlLoader.Load(_visualXml).Root;
+    public UIElement LoadContent() =>
+        _factory is not null ? _factory() :
+        _panelRoot is not null
+            ? throw new InvalidOperationException("ItemsPanelTemplate has a retained panel but no inflation markup (BAML-tree inflation is a precise follow-up).")
+            : XamlLoader.Load(_visualXml).Root;
 }
 
 /// <summary>Legacy row-model template contract: ListBoxItem and ListViewItem
@@ -1197,6 +1646,50 @@ internal interface IRowTemplateTarget;
 /// <summary>Single-selection items host (matches System.Windows.Controls.Primitives.Selector).</summary>
 public abstract class Selector : ItemsControl
 {
+    /// <summary>Container selection state (matches Selector.IsSelectedProperty: attached, false default, TwoWay binding).</summary>
+    public static readonly DependencyProperty IsSelectedProperty =
+        DependencyProperty.RegisterAttached("IsSelected", typeof(bool), typeof(Selector),
+            new FrameworkPropertyMetadata(false, FrameworkPropertyMetadataOptions.BindsTwoWayByDefault));
+
+    public static bool GetIsSelected(DependencyObject element)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        return (bool)(element.GetValue(IsSelectedProperty) ?? false);
+    }
+
+    public static void SetIsSelected(DependencyObject element, bool value)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        element.SetValue(IsSelectedProperty, value);
+    }
+
+    internal static void SetContainerSelected(DependencyObject container, bool selected)
+    {
+        if (container is ListBoxItem lbi) lbi.IsSelected = selected;
+        else if (container is ListViewItem lvi) lvi.IsSelected = selected;
+        else if (container is ComboBoxItem cbi) cbi.IsSelected = selected;
+        SetIsSelected(container, selected);
+    }
+
+    protected internal override void PrepareContainerForItemOverride(DependencyObject container, object item)
+    {
+        base.PrepareContainerForItemOverride(container, item);
+        var index = Items.IndexOf(item);
+        var isPreSelected = IsRowSelected(item) || (container is ComboBoxItem cbi && cbi.IsSelected) || (container is ListViewItem lvi && lvi.IsSelected);
+        if (_selectedIndex < 0 && isPreSelected && index >= 0)
+        {
+            _selectedIndex = index;
+        }
+        var isSelected = (_selectedIndex >= 0 && index == _selectedIndex) || (item is not null && Equals(item, EffectiveSelectedItem())) || isPreSelected;
+        SetContainerSelected(container, isSelected);
+    }
+
+    protected internal override void ClearContainerForItemOverride(DependencyObject container, object item)
+    {
+        base.ClearContainerForItemOverride(container, item);
+        SetContainerSelected(container, false);
+    }
+
     public static readonly DependencyProperty SelectedIndexProperty =
         DependencyProperty.Register("SelectedIndex", typeof(int), typeof(Selector),
             new FrameworkPropertyMetadata(-1));
@@ -1249,9 +1742,16 @@ public abstract class Selector : ItemsControl
         set
         {
             if (_selectedIndex == value) return;
+            var oldIndex = _selectedIndex;
             var oldItem = EffectiveSelectedItem();
             _selectedIndex = value;
             var newItem = EffectiveSelectedItem();
+
+            if (oldIndex >= 0 && ItemContainerGenerator.ContainerFromIndex(oldIndex) is { } oldContainer)
+                SetContainerSelected(oldContainer, false);
+            if (value >= 0 && ItemContainerGenerator.ContainerFromIndex(value) is { } newContainer)
+                SetContainerSelected(newContainer, true);
+
             if (!ReferenceEquals(oldItem, newItem) || oldItem is null != (newItem is null))
                 OnSelectionChanged(new SelectionChangedEventArgs(SelectionChangedEvent, AddedRemoved(oldItem), AddedRemoved(newItem))
                 {
@@ -1335,7 +1835,12 @@ public abstract class Selector : ItemsControl
         };
         SelectionChanged?.Invoke(this, args);
         InvokeRoutedHandlers(SelectionChangedEvent, args);
-        for (var i = 0; i < Items.Count; i++) SetRowSelected(Items[i], i == SelectedIndex);
+        for (var i = 0; i < Items.Count; i++)
+        {
+            SetRowSelected(Items[i], i == SelectedIndex);
+            if (ItemContainerGenerator.TryGetContainer(Items[i], out var c) && c is not null)
+                SetContainerSelected(c, i == SelectedIndex);
+        }
     }
 
     /// <summary>Honors a pre-selected row added after its IsSelected flag was set.</summary>
@@ -1353,6 +1858,34 @@ public abstract class Selector : ItemsControl
     /// </summary>
     protected override void OnItemsChanged(NotifyCollectionChangedEventArgs e)
     {
+        base.OnItemsChanged(e);
+        switch (e.Action)
+        {
+            case NotifyCollectionChangedAction.Add:
+                if (e.NewStartingIndex <= _selectedIndex && _selectedIndex >= 0 && e.NewStartingIndex < Items.Count - 1)
+                {
+                    _selectedIndex += e.NewItems?.Count ?? 1;
+                }
+                break;
+            case NotifyCollectionChangedAction.Remove:
+                if (e.OldStartingIndex < _selectedIndex && _selectedIndex >= 0)
+                {
+                    _selectedIndex -= e.OldItems?.Count ?? 1;
+                }
+                else if (e.OldStartingIndex == _selectedIndex)
+                {
+                    var oldItem = EffectiveSelectedItem();
+                    _selectedIndex = -1;
+                    OnSelectionChanged(new SelectionChangedEventArgs(SelectionChangedEvent, AddedRemoved(oldItem), Array.Empty<object>())
+                    {
+                        Source = this,
+                        OriginalSource = this,
+                    });
+                }
+                break;
+            case NotifyCollectionChangedAction.Reset:
+                break;
+        }
         SyncBoundSelectedItem();
     }
 
@@ -1504,6 +2037,60 @@ public class ComboBox : Selector
 
     private bool _isDropDownOpen;
 
+    /// <summary>Type-ahead prefix (resets after a quiet second).</summary>
+    private string _typePrefix = string.Empty;
+
+    /// <summary>Tick of the last type-ahead keystroke.</summary>
+    private int _lastTypeTick;
+
+    /// <summary>
+    /// Jumps selection to the next item whose text starts with the
+    /// accumulated prefix (case-insensitive, wraps; a repeated single
+    /// character cycles that letter's items). Closed-box jumps and open-drop
+    /// moves share it; the drop stays as it was. Returns false when nothing
+    /// matches (key stays unhandled).
+    /// </summary>
+    private bool TypeAhead(char ch)
+    {
+        var count = Items.Count;
+        if (count == 0) return false;
+        if (Environment.TickCount - _lastTypeTick > 1000) _typePrefix = string.Empty;
+        _lastTypeTick = Environment.TickCount;
+        _typePrefix += char.ToLowerInvariant(ch);
+        string needle;
+        int start;
+        if (_typePrefix.Length > 1 && _typePrefix.All(c => c == _typePrefix[0]))
+        {
+            needle = _typePrefix[..1];
+            start = SelectedIndex < 0 ? 0 : (SelectedIndex + 1) % count;
+        }
+        else
+        {
+            needle = _typePrefix;
+            start = SelectedIndex < 0 ? 0 : SelectedIndex + 1;
+        }
+        for (var n = 0; n < count; n++)
+        {
+            var at = (start + n) % count;
+            var text = ResolveItemText(Items[at]);
+            if (text.StartsWith(needle, StringComparison.OrdinalIgnoreCase))
+            {
+                SelectedIndex = at;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>Selection live when the drop opened (Escape restores it).</summary>
+    private object? _dropOpenSelection;
+
+    /// <summary>Raised after the drop opens (matches ComboBox.DropDownOpened).</summary>
+    public event EventHandler? DropDownOpened;
+
+    /// <summary>Raised after the drop closes (matches ComboBox.DropDownClosed).</summary>
+    public event EventHandler? DropDownClosed;
+
     public bool IsDropDownOpen
     {
         get => _isDropDownOpen;
@@ -1511,18 +2098,73 @@ public class ComboBox : Selector
         {
             if (_isDropDownOpen == value) return;
             _isDropDownOpen = value;
-            if (!value) ClearHighlight();
+            // Native parity: opening stashes the live selection so Escape
+            // can cancel back to it; every other close commits instead.
+            if (value)
+            {
+                _dropOpenSelection = SelectedItem;
+                DropDownOpened?.Invoke(this, EventArgs.Empty);
+            }
+            else
+            {
+                ClearHighlight();
+                DropDownClosed?.Invoke(this, EventArgs.Empty);
+            }
             InvalidateVisual();
         }
+    }
+
+    /// <summary>
+    /// Paging stride (drop rows per drop height; the paint/click row stride
+    /// is 24px, so the drop height already encodes the visible count; at
+    /// least one so paging always moves, even pre-layout).
+    /// </summary>
+    private int PageSize() => Math.Max(1, (int)(DropRect.Height / 24));
+
+    /// <summary>First visible drop row (native drops scroll the selection
+    /// into view; paint/click/hover all address rows through it).</summary>
+    private int _dropFirst;
+
+    /// <summary>Visible drop rows from the drop height (at least one).</summary>
+    private int VisibleRowCount() =>
+        Math.Max(1, (int)(Math.Min(Math.Max(0, MaxDropDownHeight), Items.Count * 24) / 24));
+
+    /// <summary>Live-clamped first visible row (items may shrink under it).</summary>
+    private int FirstVisibleRow()
+    {
+        var count = Items.Count;
+        if (count == 0) return 0;
+        return Math.Clamp(_dropFirst, 0, Math.Max(0, count - VisibleRowCount()));
+    }
+
+    /// <summary>
+    /// Scrolls the selection into the drop view (matches the native drop
+    /// following keyboard/programmatic selection; the list BringIntoView
+    /// analogue for the owner-drawn drop surface).
+    /// </summary>
+    private void ScrollDropToSelection()
+    {
+        var count = Items.Count;
+        if (count == 0) { _dropFirst = 0; return; }
+        var visible = VisibleRowCount();
+        var sel = SelectedIndex < 0 ? 0 : SelectedIndex;
+        if (sel < _dropFirst) _dropFirst = sel;
+        else if (sel > _dropFirst + visible - 1) _dropFirst = sel - visible + 1;
+        _dropFirst = Math.Clamp(_dropFirst, 0, Math.Max(0, count - visible));
+        InvalidateVisual();
     }
 
     /// <summary>Highlights the hovered drop-down row (none when closed or outside).</summary>
     internal void TrackHighlight(WpfPoint point)
     {
         var index = IsDropDownOpen && Inside(DropRect, point)
-            ? (int)((point.Y - DropRect.Y) / 24)
+            ? FirstVisibleRow() + (int)((point.Y - DropRect.Y) / 24)
             : -1;
         if ((uint)index >= (uint)Items.Count) index = -1;
+        // Native parity: disabled rows raise no hover (same rule as J46
+        // presses); the slot maps to none so no flag is set anywhere.
+        if (index >= 0 && Children[index] is FrameworkElement hovered && !hovered.IsEffectivelyEnabled)
+            index = -1;
         for (var i = 0; i < Children.Count; i++)
             if (Children[i] is ComboBoxItem row)
                 row.IsHighlighted = i == index;
@@ -1537,13 +2179,27 @@ public class ComboBox : Selector
 
     public override bool Focusable => true;
 
-    private string DisplayText()
+    private string DisplayText() => ResolveItemText(SelectedItem);
+
+    /// <summary>
+    /// Item text with path support (mirrors the ListBox resolver: a set
+    /// DisplayMemberPath reads through generated Label content and data
+    /// items alike; containers without a resolvable path keep their
+    /// Content/Header contract).
+    /// </summary>
+    private string ResolveItemText(object? item)
     {
-        var item = SelectedItem;
+        if (item is null) return string.Empty;
+        if (!string.IsNullOrEmpty(DisplayMemberPath))
+        {
+            var data = item is ContentControl cc && cc.Content is not null ? cc.Content : item;
+            if (BindingExpression.TryRead(data, DisplayMemberPath, out var value))
+                return value?.ToString() ?? string.Empty;
+        }
         if (item is ComboBoxItem ci) return ci.Content ?? ci.Header?.ToString() ?? string.Empty;
-        if (item is ContentControl cc) return cc.Content?.ToString() ?? string.Empty;
+        if (item is ContentControl cc2) return cc2.Content?.ToString() ?? string.Empty;
         if (item is UIElement) return item.GetType().Name;
-        return item?.ToString() ?? string.Empty;
+        return item.ToString() ?? string.Empty;
     }
 
     protected override WpfSize MeasureCore(WpfSize available)
@@ -1567,6 +2223,15 @@ public class ComboBox : Selector
     public override bool HitTest(WpfPoint point) =>
         Visibility == Visibility.Visible && (base.HitTest(point) || (IsDropDownOpen && Inside(DropRect, point)));
 
+    /// <summary>
+    /// Overlay hit: the open drop-down panel, so routing reaches drop rows
+    /// even when later siblings (page content below the box) overlap the
+    /// panel area — the same owned-overlay treatment as menu drop-downs.
+    /// Header hits return null and route through the normal children walk.
+    /// </summary>
+    public override UIElement? HitTestOverlay(WpfPoint point) =>
+        IsDropDownOpen && Inside(DropRect, point) && !Inside(HeaderRect, point) ? this : null;
+
     protected override void OnRender(DrawingContext dc)
     {
         var header = HeaderRect;
@@ -1589,39 +2254,113 @@ public class ComboBox : Selector
         dc.DrawRectangle((float)drop.X, (float)drop.Y, (float)drop.Width, (float)drop.Height, 0xFFFFFFFFu);
         dc.DrawRectangle((float)drop.X, (float)drop.Y, (float)drop.Width, (float)drop.Height, 0x707070FFu);
         var y = drop.Y;
-        for (var i = 0; i < Children.Count && y < drop.Y + drop.Height; i++)
+        var first = FirstVisibleRow();
+        for (var i = first; i < Children.Count && y < drop.Y + drop.Height; i++)
         {
             var child = Children[i];
             if (i == SelectedIndex)
                 dc.DrawRectangle((float)drop.X + 1, (float)y, (float)drop.Width - 2, 24, 0x3390FFFFu);
-            var text = ItemText(child);
+            // Native parity: the hovered row shows its own lighter band so
+            // pointer position reads with no selection; selection wins ties.
+            else if (child is ComboBoxItem hovered && hovered.IsHighlighted)
+                dc.DrawRectangle((float)drop.X + 1, (float)y, (float)drop.Width - 2, 24, 0xCCE8FFFFu);
+            var text = ResolveItemText(child);
             if (!string.IsNullOrEmpty(text))
-                dc.DrawText(text, (float)drop.X + 6, (float)(y + 12), "14px sans-serif", 0x000000FFu, 0, 2, -1);
+                dc.DrawText(text, (float)drop.X + 6, (float)(y + 12), "14px sans-serif",
+                    child is FrameworkElement row && !row.IsEffectivelyEnabled ? 0x707070FFu : 0x000000FFu, 0, 2, -1);
             y += 24;
         }
     }
 
-    private static string ItemText(UIElement child) =>
-        child is ComboBoxItem ci ? ci.Content ?? ci.Header?.ToString() ?? string.Empty :
-        child is ContentControl cc ? cc.Content?.ToString() ?? string.Empty : child.GetType().Name;
-
     public override void OnRoutedEvent(WasmRoutedEvent e)
     {
         if (e.Handled || e.Phase != WasmRoutedPhase.Bubbling || !IsEffectivelyEnabled) return;
+        // Native parity: the wheel over an open drop scrolls its rows
+        // (viewer idiom: pixels through the 24px row stride, minimum a row
+        // so small trackpad ticks still move). A closed box leaves the
+        // wheel bubbling to the page scroller.
+        if (e.Name == WasmRoutedEvent.WheelName && e.Source is Core.WasmInputEvent.Wheel w)
+        {
+            if (!IsDropDownOpen || w.Args.DeltaY == 0) return;
+            var lines = (int)(w.Args.DeltaY / 24);
+            if (lines == 0) lines = w.Args.DeltaY > 0 ? 1 : -1;
+            _dropFirst = Math.Clamp(_dropFirst + lines, 0, Math.Max(0, Items.Count - VisibleRowCount()));
+            InvalidateVisual();
+            e.Handled = true;
+            return;
+        }
         if (e.Name == WasmRoutedEvent.KeyDownName && e.Source is Core.WasmInputEvent.Key k && k.Args.IsDown)
         {
             switch (k.Args.Key)
             {
+                // Native parity: F4 toggles the drop (closed opens it, open
+                // closes it) without moving the selection.
+                case "F4":
+                    IsDropDownOpen = !IsDropDownOpen;
+                    e.Handled = true;
+                    return;
+                // Native parity: Escape cancels the open drop (the live
+                // selection reverts to the pre-open stash; a removed item
+                // restores to nothing via the identity lookup).
                 case "Escape" when IsDropDownOpen:
+                    SelectedItem = _dropOpenSelection;
                     IsDropDownOpen = false;
                     e.Handled = true;
                     return;
+                // Native parity: Enter commits the open drop (arrows already
+                // move the live selection, so closing keeps it). A closed
+                // box leaves Enter unhandled for dialog default buttons.
+                case "Enter" when IsDropDownOpen:
+                    IsDropDownOpen = false;
+                    e.Handled = true;
+                    return;
+                // Native parity: Home/End jump to the first/last item
+                // (closed box and open drop share it; the drop stays as is).
+                case "Home":
+                    SelectedIndex = Items.Count == 0 ? -1 : 0;
+                    e.Handled = true;
+                    return;
+                case "End":
+                    SelectedIndex = Items.Count == 0 ? -1 : Items.Count - 1;
+                    e.Handled = true;
+                    return;
+                // Native parity: paging moves the selection (closed box and
+                // open drop share it; the drop stays as is).
+                case "PageDown":
+                    SelectedIndex = Items.Count == 0 ? -1 : SelectedIndex < 0 ? Math.Min(Items.Count - 1, PageSize() - 1) : Math.Min(Items.Count - 1, SelectedIndex + PageSize());
+                    e.Handled = true;
+                    return;
+                case "PageUp":
+                    SelectedIndex = Items.Count == 0 ? -1 : SelectedIndex < 0 ? 0 : Math.Max(0, SelectedIndex - PageSize());
+                    e.Handled = true;
+                    return;
+                // Native parity: type-ahead jumps to the next prefix match
+                // (closed box and open drop share it; misses keep bubbling).
+                // Ctrl/Alt combinations stay for shortcuts.
+                default:
+                    // Native parity: TextSearch matches any printable
+                    // prefix (spaces, hyphens), not just letters/digits.
+                    if (!k.Args.Ctrl && !k.Args.Alt && k.Args.Key.Length == 1 && !char.IsControl(k.Args.Key[0]))
+                        e.Handled = TypeAhead(k.Args.Key[0]);
+                    break;
+                // Native parity: the Alt chord drives the drop (Alt+Down
+                // opens, Alt+Up closes); the selection never moves under Alt.
+                case "ArrowDown" when k.Args.Alt:
+                    IsDropDownOpen = true;
+                    e.Handled = true;
+                    return;
+                case "ArrowUp" when k.Args.Alt:
+                    IsDropDownOpen = false;
+                    e.Handled = true;
+                    return;
+                // Native parity: arrows clamp at the ends (no wrap), mirroring
+                // the ListBox gate (Down from empty starts at 0, Up at last).
                 case "ArrowDown":
-                    SelectedIndex = Items.Count == 0 ? -1 : (SelectedIndex + 1) % Items.Count;
+                    SelectedIndex = Items.Count == 0 ? -1 : SelectedIndex < 0 ? 0 : Math.Min(Items.Count - 1, SelectedIndex + 1);
                     e.Handled = true;
                     return;
                 case "ArrowUp":
-                    SelectedIndex = Items.Count == 0 ? -1 : (SelectedIndex - 1 + Items.Count) % Items.Count;
+                    SelectedIndex = Items.Count == 0 ? -1 : SelectedIndex < 0 ? Items.Count - 1 : Math.Max(0, SelectedIndex - 1);
                     e.Handled = true;
                     return;
             }
@@ -1644,14 +2383,100 @@ public class ComboBox : Selector
         }
         if (IsDropDownOpen && Inside(DropRect, at))
         {
-            var index = (int)((at.Y - DropRect.Y) / 24);
+            var index = FirstVisibleRow() + (int)((at.Y - DropRect.Y) / 24);
             if ((uint)index < (uint)Items.Count)
             {
+                // Native parity: a disabled row ignores the press (keeps
+                // the selection, keeps the drop open); the press is still
+                // swallowed so it never starts a parent drag.
+                if (Children[index] is FrameworkElement pressed && !pressed.IsEffectivelyEnabled)
+                {
+                    e.Handled = true;
+                    return;
+                }
                 SelectedIndex = index;
                 IsDropDownOpen = false;
                 e.Handled = true;
             }
         }
+    }
+
+    /// <summary>
+    /// Light-dismiss: an outside press moves keyboard focus away (implicit
+    /// focus follows the pointer), which closes the open drop like native
+    /// WPF. Row presses keep focus on the box itself — drop rows carry no
+    /// hit rect, so they never become the focus target — and selection
+    /// still lands before any close.
+    /// </summary>
+    public override void OnLostFocus()
+    {
+        base.OnLostFocus();
+        if (IsDropDownOpen) IsDropDownOpen = false;
+    }
+
+    /// <summary>
+    /// Keeps the open drop on the selection (every selection path converges
+    /// on the Selector setter, so one override covers keyboard, pointer,
+    /// programmatic and bound changes).
+    /// </summary>
+    protected override void OnSelectionChanged(SelectionChangedEventArgs e)
+    {
+        base.OnSelectionChanged(e);
+        _trackedItem = SelectedItem;
+        ScrollDropToSelection();
+    }
+
+    /// <summary>Last effectively selected item (reseats selection across
+    /// item mutations that keep it).</summary>
+    private object? _trackedItem;
+
+    /// <summary>Item count after the last collection reset (distinguishes
+    /// removals, which may strand the raw index, from bulk arrivals, which
+    /// must preserve a pending index).</summary>
+    private int _knownCount;
+
+    /// <summary>
+    /// Tracks selection across item mutations (engine removal convention,
+    /// matching ListBox/DataGrid: the selected item survives removals
+    /// elsewhere via re-seat; a removed selection slides into its raw slot
+    /// through clear+select so rows, bindings and the drop resync; nothing
+    /// to slide into clears like native. Native-oracle note: raw WPF clears
+    /// on ANY selected-removal while the engine slides in — kept for
+    /// sibling consistency; realignment needs a cross-lane decision with
+    /// converted-app audit, not a unilateral change here.)
+    /// </summary>
+    protected override void OnItemsChanged(NotifyCollectionChangedEventArgs e)
+    {
+        base.OnItemsChanged(e);
+        var count = Items.Count;
+        var tracked = _trackedItem;
+        if (tracked is not null && Items.Contains(tracked))
+        {
+            SelectedIndex = Items.IndexOf(tracked);
+        }
+        else
+        {
+            _trackedItem = null;
+            // Arrivals (count steady or growing) preserve a pending raw
+            // index for materialization; only a shrink may strand it.
+            // A stranded selection slides into its raw slot (clear+select
+            // resyncs rows, bindings and the drop); nothing to slide into
+            // clears like native.
+            if (count < _knownCount)
+            {
+                if (tracked is not null && SelectedIndex < count)
+                {
+                    var raw = SelectedIndex;
+                    SelectedIndex = -1;
+                    SelectedIndex = raw;
+                }
+                else if (SelectedIndex >= count)
+                {
+                    SelectedIndex = -1;
+                }
+            }
+        }
+        _knownCount = count;
     }
 
 }
@@ -1668,6 +2493,32 @@ public class ListView : Selector
     {
         get => (ViewBase?)GetValue(ViewProperty);
         set => SetValue(ViewProperty, value);
+    }
+
+    protected internal override DependencyObject GetContainerForItemOverride() => new ListViewItem();
+
+    protected internal override bool IsItemItsOwnContainerOverride(object item) => item is ListViewItem;
+
+    protected internal override void PrepareContainerForItemOverride(DependencyObject container, object item)
+    {
+        base.PrepareContainerForItemOverride(container, item);
+        if (container is ListViewItem lvi && !ReferenceEquals(lvi, item))
+        {
+            if (!string.IsNullOrEmpty(DisplayMemberPath) && BindingExpression.TryRead(item, DisplayMemberPath, out var val))
+                lvi.Content = val?.ToString();
+            else
+                lvi.Content = item?.ToString();
+        }
+    }
+
+    protected internal override void ClearContainerForItemOverride(DependencyObject container, object item)
+    {
+        base.ClearContainerForItemOverride(container, item);
+        if (container is ListViewItem lvi)
+        {
+            lvi.Content = null;
+            lvi.IsSelected = false;
+        }
     }
 }
 
@@ -1705,5 +2556,29 @@ public class ListViewItem : HeaderedItemsControl, IRowTemplateTarget
             if (value && Parent is Selector selector && !ReferenceEquals(selector.SelectedItem, this))
                 selector.SelectedItem = this;
         }
+    }
+
+    protected override WpfSize MeasureCore(WpfSize available)
+    {
+        var text = Content ?? string.Empty;
+        var (textW, textH) = TryMeasure(text, "14px sans-serif", Math.Max(0, text.Length * 8), 16);
+        return new WpfSize(Math.Max(120, textW + 16), Math.Max(24, textH + 8));
+    }
+
+    protected override void OnRender(DrawingContext dc)
+    {
+        var r = RenderRect;
+        if (r.Width <= 0 || r.Height <= 0) return;
+        if (IsSelected)
+        {
+            dc.DrawRectangle((float)r.X, (float)r.Y, (float)r.Width, (float)r.Height,
+                !IsEffectivelyEnabled ? 0x909090FFu : 0x0078D4FFu);
+        }
+        if (!string.IsNullOrEmpty(Content))
+        {
+            dc.DrawText(Content, (float)(r.X + 6), (float)(r.Y + r.Height / 2), "14px sans-serif",
+                !IsEffectivelyEnabled ? 0x707070FFu : IsSelected ? 0xFFFFFFFFu : 0x000000FFu, 0, 2, -1);
+        }
+        base.OnRender(dc);
     }
 }

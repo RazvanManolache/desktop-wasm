@@ -228,6 +228,62 @@ public static class BrowserErrorReporter
         }
     }
 
+    // WD-1730-IMP: first-chance/console-only path. Same console formatting
+    // and shared rate gate as Report, but never touches the JS or HTTP
+    // transports: neither a live stack capture nor an HTTP send may run on
+    // the first-chance dispatch thread (both fail-fast the runtime over
+    // hostile PDN frames, uncatchably). Report itself is unchanged.
+    public static void ReportConsole(string source, Exception ex, string? topFrame = null)
+    {
+        string signature;
+        try
+        {
+            string frame = topFrame ?? "";
+            string line = (ex.Message ?? "").Split('\n')[0].Trim();
+            signature = $"{ex.GetType().Name}|{frame}|{line}";
+        }
+        catch
+        {
+            signature = "unknown||";
+        }
+
+        // Same key formula as Report: budgets are shared, so a storm is
+        // capped once no matter which entry point reports it.
+        string? reportApp = Capture(AppProvider);
+        string? reportSession = Capture(SessionProvider);
+        string rateKey = reportApp + "\n" + reportSession + "\n" + signature;
+        lock (s_rateGate)
+        {
+            s_sentCounts.TryGetValue(rateKey, out int sent);
+            if (sent >= MaxPostsPerSignature)
+            {
+                Console.WriteLine($"[report:{source}] suppressed-rate {signature}");
+                return;
+            }
+
+            s_sentCounts[rateKey] = sent + 1;
+        }
+
+        Console.WriteLine(reportApp == null
+            ? $"[report:{source}] {signature}"
+            : $"[report:{source}] app={reportApp} {signature}");
+        BuildInnerChainText(ex, out string[] innerLines);
+        foreach (string innerLine in innerLines)
+            Console.WriteLine($"[report:{source}] inner: {innerLine}");
+        string? inputContext = null;
+        try
+        {
+            inputContext = InputContextProvider?.Invoke();
+            if (!string.IsNullOrEmpty(inputContext))
+                Console.WriteLine($"[report:{source}] recent-input:\n{inputContext}");
+        }
+        catch
+        {
+            // Trace collection must never break reporting.
+        }
+        Console.WriteLine($"[report:{source}] console-only {signature}");
+    }
+
     // Single-batch report payload, shared by the JS and HTTP transports so
     // both post byte-identical bodies (same field order, Web JSON defaults).
     public static string BuildReportJson(string signature, string? message, string stack, string source,

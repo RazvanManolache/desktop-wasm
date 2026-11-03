@@ -1,6 +1,5 @@
-using System.Net;
-using System.Net.Http.Json;
-using System.Text.Json;
+using DesktopWasm.AppModel;
+using DesktopWasm.Catalog;
 using DesktopWasm.Host.Server;
 using Microsoft.AspNetCore.Builder;
 using Xunit;
@@ -9,8 +8,9 @@ namespace DesktopWasm.Shell.Tests;
 
 /// <summary>
 /// In-process Kestrel host for the unified shell with synthetic fixture apps
-/// only (test-* ids). Fixtures exercise registry mechanics; they never
-/// impersonate real upstream apps.
+/// only (test-* ids) built as shared <see cref="AppDescriptor"/> records and
+/// serialized with <see cref="CatalogSerializer"/>. Fixtures exercise registry
+/// mechanics; they never impersonate real upstream apps.
 /// </summary>
 public sealed class ShellHost : IAsyncLifetime
 {
@@ -22,16 +22,49 @@ public sealed class ShellHost : IAsyncLifetime
     public string WebRoot => Path.Combine(CatalogDir, "wwwroot");
     public HttpClient Client { get; private set; } = new();
 
-    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+    public static IReadOnlyList<AppDescriptor> FixtureDescriptors() => new[]
+    {
+        new AppDescriptor(
+            "test-color-lab", ["/demo/test-color-lab"],
+            "Color lab (fixture)", "Fixture color explorer", "Fixtures", "",
+            new AppProvenance("wpf", "native-demo", null, null, null, null, null, null, false),
+            new AppEntry("native-demo", "test-color-lab", null, null),
+            AppCapability.Wpf, "wpf-convert-v1", null,
+            AppAvailability.MissingInput, "ready",
+            "Engine-native demo; staged host pending.",
+            [], ["Engine-native demo; staged host pending."]),
+        new AppDescriptor(
+            "test-gif-recorder", [],
+            "Recorder (fixture)", "Fixture unavailable app", "Fixtures", "",
+            new AppProvenance("wpf", "original", "https://example.invalid/repo",
+                "https://example.invalid/repo", "abc123", "Rec/Rec.csproj", "MIT",
+                "Fixture boundary note.", true),
+            new AppEntry("converted-app", "Rec", null, "No package staged."),
+            AppCapability.Wpf, "wpf-convert-v1", null,
+            AppAvailability.NotConverted, "not-converted",
+            "Fixture boundary note.", [], ["Fixture boundary note."]),
+        new AppDescriptor(
+            "test-mixed-fixture", ["test-mixedfixture"],
+            "Mixed fixture", "Fixture declaring both frameworks", "Fixtures", "",
+            new AppProvenance("mixed", "pilot", null, null, null, null, null,
+                "Fixture pilot; no bridge proven.", false),
+            new AppEntry("mixed-session", "MixedPilot", null, "Fixture pilot entry."),
+            AppCapability.Mixed, "mixed-v1", null,
+            AppAvailability.MissingInput, "pilot",
+            "Proven mixed session pending (interop lane).",
+            [], ["Proven mixed session pending (interop lane)."]),
+        new AppDescriptor(
+            "test-smoke-form", ["test-smokeform", "/app/test-smokeform"],
+            "Smoke form (fixture)", "Fixture smoke form", "Fixtures", "",
+            new AppProvenance("winforms", "original", null, null, null, null, null, null, false),
+            new AppEntry("native-demo", "test-smoke-form", null, null),
+            AppCapability.WinForms, "wf-rewrite-v1", null,
+            AppAvailability.MissingInput, "ready",
+            "App folder 'test-smoke-form' not staged in this root.",
+            [], ["App folder 'test-smoke-form' not staged in this root."]),
+    };
 
-    public static string FixtureCatalog() => """
-        [
-          {"id":"test-color-lab","aliases":[],"label":"Color lab (fixture)","description":"Fixture color explorer","category":"Fixtures","frameworks":["wpf"],"kind":"demo","status":"ready","available":true,"gaps":[],"provenance":null,"launch":{"route":"/launch/test-color-lab","legacyRoutes":["/demo/test-color-lab"]}},
-          {"id":"test-gif-recorder","aliases":[],"label":"Recorder (fixture)","description":"Fixture unavailable app","category":"Fixtures","frameworks":["wpf"],"kind":"original","status":"not-converted","available":false,"gaps":["capture APIs unavailable in browser"],"provenance":{"sourceUrl":"https://example.invalid/repo","repository":"https://example.invalid/repo","commit":"abc123","project":"Rec/Rec.csproj","license":"MIT","boundary":"Fixture boundary note."},"launch":{"route":"/launch/test-gif-recorder","legacyRoutes":[]}},
-          {"id":"test-mixed-fixture","aliases":["test-mixedfixture"],"label":"Mixed fixture","description":"Fixture declaring both frameworks","category":"Fixtures","frameworks":["winforms","wpf"],"kind":"demo","status":"ready","available":true,"gaps":[],"provenance":null,"launch":{"route":"/launch/test-mixed-fixture","legacyRoutes":[]}},
-          {"id":"test-smoke-form","aliases":["test-smokeform"],"label":"Smoke form (fixture)","description":"Fixture smoke form","category":"Fixtures","frameworks":["winforms"],"kind":"demo","status":"ready","available":true,"gaps":[],"provenance":null,"launch":{"route":"/launch/test-smoke-form","legacyRoutes":["/app/test-smokeform"]}}
-        ]
-        """;
+    public static string FixtureCatalog() => CatalogSerializer.Serialize(FixtureDescriptors());
 
     public async Task InitializeAsync()
     {
@@ -68,8 +101,6 @@ public sealed class ShellHost : IAsyncLifetime
             await _app.DisposeAsync();
         try { Directory.Delete(CatalogDir, recursive: true); } catch { }
     }
-
-    public static JsonElement Body(JsonElement root, string property) => root.GetProperty(property);
 }
 
 [CollectionDefinition("shell-host")]

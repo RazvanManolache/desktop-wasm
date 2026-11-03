@@ -19,7 +19,7 @@ param(
   [string]$WpfRoot = '',
   [string]$DestRoot = (Split-Path -Parent $PSScriptRoot | Split-Path -Parent)
 )
-# Publication portability: source roots have no portable default; pass both
+# Portability: source roots have no portable default; pass both
 # explicitly (e.g. -WinformsRoot <path> -WpfRoot <path>).
 if ([string]::IsNullOrWhiteSpace($WinformsRoot) -or [string]::IsNullOrWhiteSpace($WpfRoot)) {
   throw 'Copy-ImportedSources requires explicit -WinformsRoot and -WpfRoot (no portable default).'

@@ -21,10 +21,10 @@ public sealed class FontFamily : IEquatable<FontFamily>, IDisposable
     public static FontFamily GenericMonospace { get; } = new("Courier New");
 
     /// <summary>
-    /// Installed families (cf. FontFamily.Families). No font enumeration
-    /// exists on web, so this reports the three generic families.
+    /// Families available to the browser, plus the generic fallbacks.
+    /// Uses the same catalog as InstalledFontCollection.
     /// </summary>
-    public static FontFamily[] Families { get; } = new[] { GenericSansSerif, GenericSerif, GenericMonospace };
+    public static FontFamily[] Families => BrowserFontCatalog.Families;
 
     public FontFamily(string name, Text.FontCollection fontCollection)
         : this(name)

@@ -118,4 +118,18 @@ public static class JointMap
         "SkiaSharp.HarfBuzz",
         "HarfBuzzSharp",
     };
+
+    /// <summary>
+    /// Joint-interface assemblies the DesktopWasm runtime itself provides
+    /// through the real interop bridge (DesktopWasm.Interop's
+    /// System.Windows.Forms.Integration.WindowsFormsHost over real fork
+    /// controls): never packaged from disk, never rewritten by Convert/
+    /// Rewrite passes (pinned untouched by AvalonDockClosureTests), never
+    /// demanded as files. Only assemblies with a real provider belong here;
+    /// anything else stays a visible missing-dependency gap.
+    /// </summary>
+    public static IReadOnlySet<string> RuntimeProvidedJointInterfaces { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "WindowsFormsIntegration",
+    };
 }

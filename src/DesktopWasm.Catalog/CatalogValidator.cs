@@ -126,6 +126,22 @@ public static class CatalogValidator
             ValidatePackage(app.Id, app.TransformVersion, app.Entry.EntryAssembly, app.Package);
         if (app.Availability == AppAvailability.Available && app.Gaps.Length != 0)
             throw new InvalidDataException($"Available entry '{app.Id}' must not carry gaps.");
+        if (app.Availability == AppAvailability.Staged)
+        {
+            // Bytes-verified staging is never readiness: it must trace to
+            // hash-pinned local evidence, carry no gaps, and say unverified.
+            // A mixed staged entry still names its typed bridge identity.
+            if (app.Gaps.Length != 0)
+                throw new InvalidDataException($"Staged entry '{app.Id}' must not carry gaps.");
+            if (!app.Evidence.Any(e => e.StartsWith("local:", StringComparison.Ordinal)))
+                throw new InvalidDataException($"Staged entry '{app.Id}' must trace to hash-pinned local staging evidence.");
+            if (!app.AvailabilityNote.Contains("unverified", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException($"Staged entry '{app.Id}' must record that serving + behavior are unverified.");
+            if (app.Capabilities == AppCapability.Mixed &&
+                (app.Entry.Bridge is null || string.IsNullOrWhiteSpace(app.Entry.Bridge.Provider) ||
+                 string.IsNullOrWhiteSpace(app.Entry.Bridge.Contract)))
+                throw new InvalidDataException($"Mixed staged entry '{app.Id}' needs a typed bridge identity (provider + contract); prose is not readiness.");
+        }
         if ((app.Availability is AppAvailability.MissingInput or AppAvailability.Unavailable) && string.IsNullOrWhiteSpace(app.AvailabilityNote))
             throw new InvalidDataException($"Blocked entry '{app.Id}' must name its concrete gap.");
     }

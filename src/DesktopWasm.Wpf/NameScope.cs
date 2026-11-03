@@ -29,6 +29,7 @@ public interface INameScope
 public sealed class NameScope : IDictionary<string, object>, INameScope
 {
     private readonly Dictionary<string, object> _names = new(StringComparer.Ordinal);
+    private readonly List<WeakReference<DependencyObject>> _attachedElements = new();
 
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<DependencyObject, INameScope> AttachedScopes = new();
 
@@ -55,7 +56,18 @@ public sealed class NameScope : IDictionary<string, object>, INameScope
     {
         ArgumentNullException.ThrowIfNull(element);
         AttachedScopes.Remove(element);
-        if (value is not null) AttachedScopes.Add(element, value);
+        if (value is not null)
+        {
+            AttachedScopes.Add(element, value);
+            if (value is NameScope ns)
+            {
+                lock (ns._attachedElements)
+                {
+                    ns._attachedElements.Add(new WeakReference<DependencyObject>(element));
+                }
+            }
+        }
+        if (element is FrameworkElement fe) fe.RefreshBindingsTree();
     }
 
     /// <inheritdoc />
@@ -72,13 +84,33 @@ public sealed class NameScope : IDictionary<string, object>, INameScope
         ArgumentNullException.ThrowIfNull(scopedElement);
         if (!_names.TryAdd(name, scopedElement))
             throw new ArgumentException($"Name '{name}' is already registered in this scope.", nameof(name));
+        NotifyAttachedElements();
     }
 
     /// <inheritdoc />
     public void UnregisterName(string name)
     {
         ArgumentNullException.ThrowIfNull(name);
-        _names.Remove(name);
+        if (_names.Remove(name))
+            NotifyAttachedElements();
+    }
+
+    private void NotifyAttachedElements()
+    {
+        lock (_attachedElements)
+        {
+            for (var i = _attachedElements.Count - 1; i >= 0; i--)
+            {
+                if (_attachedElements[i].TryGetTarget(out var target))
+                {
+                    if (target is FrameworkElement fe) fe.RefreshBindingsTree();
+                }
+                else
+                {
+                    _attachedElements.RemoveAt(i);
+                }
+            }
+        }
     }
 
     /// <inheritdoc />

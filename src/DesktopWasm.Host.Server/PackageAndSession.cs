@@ -1,7 +1,23 @@
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
+using DesktopWasm.Catalog;
 
 namespace DesktopWasm.Host.Server;
+
+/// <summary>Shell-side id normalization. Validation itself stays in the shared
+/// <see cref="CatalogValidator"/> (catalog lane owns the token rules).</summary>
+internal static class ShellIds
+{
+    public static string Normalize(string idOrAlias) => (idOrAlias ?? "").Trim().ToLowerInvariant();
+
+    public static string RequireValidId(string appId)
+    {
+        string id = Normalize(appId);
+        if (!CatalogValidator.IsValidId(id))
+            throw new FileNotFoundException($"unknown app '{appId}'");
+        return id;
+    }
+}
 
 public sealed class PackageUnavailableException(string message) : Exception(message);
 public sealed class ContentMismatchException(string message) : Exception(message);
@@ -28,9 +44,7 @@ public sealed class PackageService(string packagesRoot)
 
     public string AppDirectory(string appId)
     {
-        string id = CatalogVocabulary.Normalize(appId);
-        if (!CatalogVocabulary.IsValidId(id))
-            throw new FileNotFoundException($"unknown app '{appId}'");
+        string id = ShellIds.RequireValidId(appId);
         return Path.Combine(PackagesRoot, id);
     }
 
@@ -47,7 +61,7 @@ public sealed class PackageService(string packagesRoot)
                 string file = Path.GetFileName(path)!;
                 string hash = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)));
                 return new PackageFile(file, hash, new FileInfo(path).Length,
-                    $"/api/packages/{Uri.EscapeDataString(CatalogVocabulary.Normalize(appId))}/content?name={Uri.EscapeDataString(file)}&v={hash}");
+                    $"/api/packages/{Uri.EscapeDataString(ShellIds.Normalize(appId))}/content?name={Uri.EscapeDataString(file)}&v={hash}");
             })
             .ToList();
     }
@@ -89,8 +103,8 @@ public sealed class SessionService
 
     public ShellSession Create(string appId, string? requestedSession = null)
     {
-        string id = CatalogVocabulary.Normalize(appId);
-        if (!CatalogVocabulary.IsValidId(id))
+        string id = ShellIds.Normalize(appId);
+        if (!CatalogValidator.IsValidId(id))
             throw new ArgumentException($"unknown app '{appId}'", nameof(appId));
         string session = string.IsNullOrWhiteSpace(requestedSession)
             ? Guid.NewGuid().ToString("N")

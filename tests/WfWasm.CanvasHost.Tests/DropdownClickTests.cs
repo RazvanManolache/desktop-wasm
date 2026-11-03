@@ -49,8 +49,11 @@ public sealed class DropdownClickTests
                 if (s2 == s1) break;
                 s1 = s2;
             }
-            int lx = dlg.Left + strip.Left + drop.Location.X + leaf.Bounds.X + 5;
-            int ly = dlg.Top + 30 + strip.Top + drop.Location.Y + leaf.Bounds.Y + 5;
+            // USERFIX-shell single-origin contract: drop.Location is already
+            // virtual-screen space; the old form/strip offsets double-counted
+            // the owner origin (masked in unit tests, ~38px off in browsers).
+            int lx = drop.Location.X + leaf.Bounds.X + 5;
+            int ly = drop.Location.Y + leaf.Bounds.Y + 5;
             host.OnMouseDown(lx, ly);
             host.OnClick(lx, ly);
             Assert.True(clicked);

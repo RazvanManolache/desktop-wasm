@@ -334,7 +334,7 @@ public sealed class Slice150BamlTextColumnTests : IDisposable
             .Raw(0x04).ToArray();
         var error = Assert.Throws<XamlLoadException>(() => BamlReader.LoadDictionary(
             TextDictionary(body, "S")));
-        Assert.Contains("style targets beyond Path/Border/ContentControl/GridSplitter/Rectangle/RepeatButton/GroupBox/Thumb/ToolBarTray/ComboBox/TextBlock/ListBoxItem are a style-surface follow-up", error.Message);
+        Assert.Contains("style targets beyond Path/Border/ContentControl/GridSplitter/Rectangle/RepeatButton/GroupBox/Thumb/ToolBarTray/ComboBox/MenuItem/TextBlock/ListBoxItem are a style-surface follow-up", error.Message);
     }
 
     [Fact]

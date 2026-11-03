@@ -23,7 +23,7 @@ using WfWasm.Shim;
 
 namespace WfWasm.CanvasHost;
 
-public sealed class WinFormsAppHost : IDisposable
+public sealed partial class WinFormsAppHost : IDisposable
 {
 	private sealed record ElementLayoutMembers(Func<System.Windows.Forms.Control, object?> GetTree, Func<object, bool>? NeedsLayout, Action<object> Pump);
 
@@ -82,6 +82,9 @@ public sealed class WinFormsAppHost : IDisposable
 	private static readonly ConcurrentDictionary<string, byte> s_selfPaintLogged = new ConcurrentDictionary<string, byte>();
 
 	private static readonly ConcurrentDictionary<string, byte> s_firstPaintLogged = new ConcurrentDictionary<string, byte>();
+	private static readonly ConcurrentDictionary<string, byte> s_regionPaintLogged = new ConcurrentDictionary<string, byte>();
+	private static readonly ConcurrentDictionary<string, byte> s_labelRectLogged = new ConcurrentDictionary<string, byte>();
+	private static readonly ConcurrentDictionary<string, byte> s_comboPopupLogged = new ConcurrentDictionary<string, byte>();
 
 	private static long s_firstChanceCount;
 
@@ -139,6 +142,12 @@ public sealed class WinFormsAppHost : IDisposable
 
 	private readonly Dictionary<AppScene, System.Windows.Forms.Form> _forms = new Dictionary<AppScene, System.Windows.Forms.Form>();
 
+	// RV1745-DW-RUNTIME: per-scene creation-failure detail (form startup /
+	// window registration). Records WHY GetOrCreateForm produced no window so
+	// the shell can surface the actual constructor cause instead of a generic
+	// marker. Never an error-suppression path: reporters still fire.
+	private readonly Dictionary<AppScene, string> _formCreationErrors = new Dictionary<AppScene, string>();
+
 	private readonly HashSet<System.Windows.Forms.Form> _autoCentered = new HashSet<System.Windows.Forms.Form>();
 
 	private readonly HashSet<System.Windows.Forms.Form> _userPlaced = new HashSet<System.Windows.Forms.Form>();
@@ -146,6 +155,10 @@ public sealed class WinFormsAppHost : IDisposable
 	private System.Windows.Forms.Form? _activeForm;
 
 	private System.Windows.Forms.TextBox? _focusedTextBox;
+	private int _arrowCaretSnapshot = -1;
+	private int _arrowCaretLength = -1;
+	private int _shiftAnchor = -1;
+	private System.Windows.Forms.TextBox? _shiftAnchorBox;
 
 	private System.Windows.Forms.Control? _focusedControl;
 
@@ -200,6 +213,15 @@ public sealed class WinFormsAppHost : IDisposable
 	private bool _isDraggingTitle;
 
 	private System.Windows.Forms.Form? _dragForm;
+
+	// USERFIX-drag §1 diagnostics (bounded counters; shell-serialized).
+	private int _dragMovesThisGesture;
+
+	private static long s_dragDowns;
+
+	private static long s_dragMoves;
+
+	private static long s_dragUps;
 
 	private int _dragStartX;
 
@@ -454,6 +476,33 @@ public sealed class WinFormsAppHost : IDisposable
 		return method2 != null && method2.DeclaringType != null && method2.DeclaringType != typeFromHandle && typeFromHandle.IsAssignableFrom(method2.DeclaringType);
 	}
 
+	internal static bool IsRenderedAsButton(System.Windows.Forms.Control? control)
+	{
+		if (control == null)
+		{
+			return false;
+		}
+		if (control is System.Windows.Forms.Button)
+		{
+			return !ButtonPaintsItself(control.GetType());
+		}
+		if (control is System.Windows.Forms.IButtonControl || control.GetType().Name == "PdnPushButton")
+		{
+			return !ButtonPaintsItself(control.GetType());
+		}
+		return false;
+	}
+
+	internal static uint GetButtonBackColor(System.Windows.Forms.Control control, bool isPressed)
+	{
+		return isPressed ? 3437557759u : ToRgba(control.BackColor, 3789677055u);
+	}
+
+	internal static uint GetButtonForeColor(System.Windows.Forms.Control control)
+	{
+		return ToRgba(control.ForeColor, 255u);
+	}
+
 	private static void LogFirstPaint(System.Windows.Forms.Control c)
 	{
 		try
@@ -469,6 +518,10 @@ public sealed class WinFormsAppHost : IDisposable
 				if (text.Contains("RadGridView", StringComparison.Ordinal) || text.Contains("RadDiagram", StringComparison.Ordinal))
 				{
 					DumpInkCensus();
+				}
+				if (text.Contains("SfNumericTextBox", StringComparison.Ordinal))
+				{
+					DumpWatermarkDiagnostics(c);
 				}
 			}
 			if (!s_tileLateDumpDone && text.Contains("Panorama", StringComparison.Ordinal) && PanoramaHasGroups(c))
@@ -1386,21 +1439,25 @@ public sealed class WinFormsAppHost : IDisposable
 					CenterInViewport(form);
 					_autoCentered.Add(form);
 				}
+				_formCreationErrors.Remove(scene);
 				_forms[scene] = form;
 			}
 			else
 			{
+				_formCreationErrors[scene] = $"no-form: {scene} produced no window (missing switch case or type lookup failed)";
 				Console.WriteLine($"[WinFormsAppHost] No form created for scene {scene}: missing switch case or type lookup failed; canvas will stay blank.");
 			}
 		}
 		catch (Exception ex2)
 		{
+			_formCreationErrors[scene] = $"create-failed: {ex2.GetType().Name} <- {RootCause(ex2).GetType().Name}: {(RootCause(ex2).Message ?? "").Split('\n')[0]}";
 			Console.WriteLine($"[WinFormsAppHost] Error creating form for {scene}: {ex2.GetType().Name}: {ex2.Message.Split('\n')[0]} site={SiteOf(ex2)}");
 			Console.WriteLine($"[WinFormsAppHost] Error creating form for {scene}: root={RootCause(ex2).GetType().Name} site={SiteOf(RootCause(ex2))} msg={(RootCause(ex2).Message ?? "").Split('\n')[0]}");
 			try
 			{
-				Console.WriteLine("[diagstack] " + string.Join(" <- ", from f in new StackTrace(RootCause(ex2), fNeedFileInfo: false).GetFrames().Take(12)
-					select f.GetMethod()));
+				// WD-1740-IMP: null-frames diagnostic (no live method resolution over hostile frames).
+				foreach (string diagLine in FormatFirstChance(RootCause(ex2), frames: null).ConsoleLines)
+				    Console.WriteLine("[diagstack] " + diagLine);
 			}
 			catch
 			{
@@ -1478,9 +1535,18 @@ public sealed class WinFormsAppHost : IDisposable
 			clickCount++;
 			status.Text = $"Clicks: {clickCount} (Success!)";
 		};
+		System.Windows.Forms.TextBox smokeText = new System.Windows.Forms.TextBox
+		{
+			Name = "smokeText",
+			Left = 30,
+			Top = 140,
+			Width = 300,
+			Height = 30
+		};
 		form.Controls.Add(value);
 		form.Controls.Add(button);
 		form.Controls.Add(status);
+		form.Controls.Add(smokeText);
 		return form;
 	}
 
@@ -1558,14 +1624,15 @@ public sealed class WinFormsAppHost : IDisposable
 				{
 					try
 					{
-						StackFrame[]? frames = null;
-						try { frames = new StackTrace(0, fNeedFileInfo: false).GetFrames(); } catch { }
-						var (lines, topFrame) = FormatFirstChance(e.Exception, frames);
+						// WD-1730-IMP: no live StackTrace capture on the dispatch thread. Resolving
+						// the dispatch thread's frames over hostile PDN methods fail-fasts the runtime
+						// (uncatchable); FormatFirstChance is null-frames tolerant by WF-R-NRE-0730 design.
+						var (lines, topFrame) = FormatFirstChance(e.Exception, frames: null);
 						foreach (string line in lines)
 						{
 							Console.WriteLine(line);
 						}
-						BrowserErrorReporter.Report("first-chance", e.Exception, topFrame);
+						BrowserErrorReporter.ReportConsole("first-chance", e.Exception, topFrame);
 					}
 					catch
 					{
@@ -2034,6 +2101,30 @@ public sealed class WinFormsAppHost : IDisposable
 		}
 	}
 
+	// RV1745-DW-RUNTIME: actual creation-failure detail for the scene, so the
+	// shell can name the real constructor cause (e.g. Fiddler's <Module>
+	// initializer PlatformNotSupportedException) instead of a generic marker.
+	// Null when the scene has a live window or was never attempted.
+	internal string? GetFormCreationError(AppScene scene)
+	{
+		return _formCreationErrors.TryGetValue(scene, out string? detail) ? detail : null;
+	}
+
+	// FACTORY-shell-1: the suffix is user-facing (Home.razor failure overlay),
+	// so it carries plain language only: no machine codes (create-failed:/no-form:),
+	// no CLR type names, no <- chains. The full machine detail stays in
+	// GetFormCreationError/console/BrowserErrorReporter (App errors).
+	internal static string PlainCreationCause(string detail)
+	{
+		if (detail.Contains("PlatformNotSupportedException"))
+			return " This app needs Windows-only features that aren't available in the browser.";
+		return " Technical detail is in App errors.";
+	}
+	internal string FormCreationErrorSuffix(AppScene scene)
+	{
+		return GetFormCreationError(scene) is { } detail ? PlainCreationCause(detail) : "";
+	}
+
 	public void SelectScene(AppScene scene)
 	{
 		Interlocked.Increment(ref WasmFrameCounters.SceneEpoch);
@@ -2340,6 +2431,48 @@ public sealed class WinFormsAppHost : IDisposable
 		{
 			string text2 = Graphics.DumpDrawStringCensus();
 			Console.WriteLine("[INK] DS-CENSUS " + text2);
+		}
+		catch
+		{
+		}
+	}
+	// WC0732 grant (b): SF06 watermark resolution dump. Runs once per
+	// control type from LogFirstPaint when the first SfNumericTextBox
+	// paints: reports the configured WatermarkText plus the live resolved
+	// WatermarkForeColor ARGB (Transparent vs Empty vs gray decides the
+	// served gate), then the text censuses. Reflection-tolerant, never
+	// throws, no behavior change.
+	internal static void DumpWatermarkDiagnostics(System.Windows.Forms.Control c)
+	{
+		try
+		{
+			string wmText = "?";
+			string wmArgb = "?";
+			try
+			{
+				object? t = c?.GetType().GetProperty("WatermarkText")?.GetValue(c);
+				if (t is string s && s.Length > 0)
+				{
+					wmText = s.Length > 40 ? s.Substring(0, 40) : s;
+				}
+			}
+			catch
+			{
+			}
+			try
+			{
+				object? style = c?.GetType().GetProperty("Style")?.GetValue(c);
+				object? color = style?.GetType().GetProperty("WatermarkForeColor")?.GetValue(style);
+				if (color is System.Drawing.Color col)
+				{
+					wmArgb = col.ToArgb().ToString("X8");
+				}
+			}
+			catch
+			{
+			}
+			Console.WriteLine($"[WM] watermark control={c?.GetType().FullName} text='{wmText}' foreColor=0x{wmArgb}");
+			DumpInkCensus();
 		}
 		catch
 		{
@@ -3432,7 +3565,7 @@ public sealed class WinFormsAppHost : IDisposable
 	private static void DumpControlTree(System.Windows.Forms.Control c, int indent)
 	{
 		string value = new string(' ', indent * 2);
-		Console.WriteLine($"{value}- {c.GetType().Name} '{c.Name}' Bounds={c.Bounds} Visible={c.Visible} Dock={c.Dock} Children={c.Controls.Count}");
+		Console.WriteLine($"{value}- {c.GetType().Name} '{c.Name}' Bounds={c.Bounds} Visible={c.Visible} Enabled={c.Enabled} Dock={c.Dock} Children={c.Controls.Count}");
 		if (c is System.Windows.Forms.ToolStrip toolStrip)
 		{
 			foreach (System.Windows.Forms.ToolStripItem item in toolStrip.Items)
@@ -3604,13 +3737,19 @@ public sealed class WinFormsAppHost : IDisposable
 		value = ToRgba(_activeForm.BackColor, 4042322175u);
 		int num9 = y + num5;
 		canvas.FillRectangle(x, num9, width, height, value);
-		RenderControls(canvas, _activeForm.Controls, x, num9);
-		RenderShownWindows(canvas);
-		RenderOpenDropdowns(canvas);
-		RenderTrackedPopups(canvas);
-		EmitRetain(canvas);
-		s_frameDirty = null;
-		s_frameGlobal = false;
+		try
+		{
+			RenderControlsClipped(canvas, _activeForm.Controls, x, num9, new Rectangle(x, num9, width, height));
+			RenderShownWindows(canvas);
+			RenderOpenDropdowns(canvas);
+			RenderTrackedPopups(canvas);
+			EmitRetain(canvas);
+		}
+		finally
+		{
+			s_frameDirty = null;
+			s_frameGlobal = false;
+		}
 	}
 
 	internal static string LayerIdFor(object key)
@@ -3681,11 +3820,26 @@ public sealed class WinFormsAppHost : IDisposable
 	{
 		ulong num = 14695981039346656037uL;
 		int i = 0;
-		for (int num2 = data.Length & -4; i < num2; i += 4)
+		int wordBytes = data.Length & -4;
+		if (BitConverter.IsLittleEndian)
 		{
-			uint num3 = (uint)(data[i] | (data[i + 1] << 8) | (data[i + 2] << 16) | (data[i + 3] << 24));
-			num ^= num3;
-			num *= 1099511628211L;
+			// Preserve the existing word-wise hash while loading one u32 per
+			// pixel instead of four indexed bytes and three shifts in WASM.
+			foreach (uint word in System.Runtime.InteropServices.MemoryMarshal.Cast<byte, uint>(data.AsSpan(0, wordBytes)))
+			{
+				num ^= word;
+				num *= 1099511628211L;
+			}
+			i = wordBytes;
+		}
+		else
+		{
+			for (; i < wordBytes; i += 4)
+			{
+				uint word = (uint)(data[i] | (data[i + 1] << 8) | (data[i + 2] << 16) | (data[i + 3] << 24));
+				num ^= word;
+				num *= 1099511628211L;
+			}
 		}
 		for (; i < data.Length; i++)
 		{
@@ -3781,8 +3935,11 @@ public sealed class WinFormsAppHost : IDisposable
 		foreach (var (toolStripDropDown, num, num2) in GetOpenDropdowns().ToList())
 		{
 			Console.WriteLine($"[Host] Dropdown open: {toolStripDropDown.Name} Bounds={toolStripDropDown.Bounds} Visible={toolStripDropDown.Visible}");
-			int num3 = num + toolStripDropDown.Location.X;
-			int num4 = num2 + toolStripDropDown.Location.Y;
+			// USERFIX-shell: tracked origin IS the screen location (see
+			// TrackDropdown); adding Location again rendered every dropdown
+			// twice-offset (~38px gap). Render + hit-test share one origin.
+			int num3 = num;
+			int num4 = num2;
 			int width = toolStripDropDown.Width;
 			int height = toolStripDropDown.Height;
 			if (width > 0 && height > 0)
@@ -3941,7 +4098,7 @@ public sealed class WinFormsAppHost : IDisposable
 				}
 				uint rgba = ToRgba(form.BackColor, 4042322175u);
 				canvas.FillRectangle(x, y + num8, width, height, rgba);
-				RenderControls(canvas, form.Controls, x, y + num8);
+				RenderControlsClipped(canvas, form.Controls, x, y + num8, new Rectangle(x, y + num8, width, height));
 			}
 		}
 	}
@@ -3961,6 +4118,10 @@ public sealed class WinFormsAppHost : IDisposable
 			{
 				continue;
 			}
+			// Native popup ShowWindow may create only the top-level handle.
+			// Complete the managed child lifecycle before vendor layout/paint:
+			// virtualized lists initialize their element tree in OnCreateControl.
+			control.CreateControl();
 			int x = control.Location.X;
 			int y = control.Location.Y;
 			canvas.FillRectangle(x + 3, y + 3, control.Width, control.Height, 96u);
@@ -3974,7 +4135,7 @@ public sealed class WinFormsAppHost : IDisposable
 			}
 			if (control.Controls.Count > 0)
 			{
-				RenderControls(canvas, control.Controls, x, y);
+				RenderControlsClipped(canvas, control.Controls, x, y, new Rectangle(x, y, control.Width, control.Height));
 			}
 		}
 	}
@@ -4075,10 +4236,20 @@ public sealed class WinFormsAppHost : IDisposable
 		}
 	}
 
-	private static void DismissPopupsForOutsideDown(int x, int y)
+	private void DismissPopupsForOutsideDown(int x, int y)
 	{
 		try
 		{
+			// Generic / Syncfusion / custom popup outside click dismissal:
+			foreach (System.Windows.Forms.Control popup in System.Windows.Forms.WasmPopupHost.Snapshot())
+			{
+				if (x < popup.Location.X || x >= popup.Location.X + popup.Width ||
+				    y < popup.Location.Y || y >= popup.Location.Y + popup.Height)
+				{
+					ClosePopupControlForOutsideClick(popup);
+				}
+			}
+
 			Assembly[] assemblies = AppDomain.CurrentDomain.GetAssemblies();
 			foreach (Assembly assembly in assemblies)
 			{
@@ -4093,11 +4264,38 @@ public sealed class WinFormsAppHost : IDisposable
 					break;
 				}
 			}
+
+			if (_focusedControl != null && (!_focusedControl.Visible || !IsInsideActiveFormOrTrackedPopup(_focusedControl)))
+			{
+				_focusedControl = null;
+			}
 		}
 		catch
 		{
 		}
 		WasmRepaintGate.MarkGlobalDirty();
+	}
+
+	private static bool ClosePopupControlForOutsideClick(System.Windows.Forms.Control popup)
+	{
+		try
+		{
+			if (popup.IsDisposed || popup.Disposing || !popup.Visible) return false;
+			System.Reflection.MethodInfo? closeMethod = null;
+			foreach (System.Reflection.MethodInfo m in popup.GetType().GetMethods(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
+			{
+				if (m.ContainsGenericParameters || m.GetParameters().Length != 0) continue;
+				if (m.Name == "ClosePopup" || m.Name == "HidePopup") { closeMethod = m; break; }
+			}
+			if (closeMethod != null)
+			{
+				closeMethod.Invoke(popup, null);
+				try { Console.WriteLine("[Host] Outside click closed vendor popup " + popup.GetType().FullName); } catch { }
+				return true;
+			}
+		}
+		catch { }
+		return false;
 	}
 
 	private bool TopModalWindow(out System.Windows.Forms.Form? modal)
@@ -4193,6 +4391,9 @@ public sealed class WinFormsAppHost : IDisposable
 			_dragInitialFormX = x2;
 			_dragInitialFormY = y2;
 			_mouseTarget = null;
+			_dragMovesThisGesture = 0;
+			System.Threading.Interlocked.Increment(ref s_dragDowns);
+			VirtualWindowDrag.Begin(dlg);
 			return true;
 		}
 		return false;
@@ -4245,6 +4446,10 @@ public sealed class WinFormsAppHost : IDisposable
 			{
 				modal.Close();
 			}
+			// Some vendor dialogs hide/dispose themselves in their OK handler,
+			// bypassing FormClosed. Complete the noted async continuation once.
+			if (modal.DialogResult != System.Windows.Forms.DialogResult.None && (!modal.Visible || modal.IsDisposed))
+				CpuPaint.ResumeEffectApplyIfNoted(modal);
 		}
 		catch (Exception ex)
 		{
@@ -4262,10 +4467,12 @@ public sealed class WinFormsAppHost : IDisposable
 		{
 			if (!win.GetType().Name.Contains("Popup", StringComparison.Ordinal))
 				return false;
-			System.Windows.Forms.Control? list = FindControlByNamePart(win.Controls, "SfListView");
+			// R1: served combo popup hosts a ComboListBox (not an SfListView),
+			// or a plain ListBox inside a ComboListBoxPopup container.
+			System.Windows.Forms.Control? list = FindControlByNamePart(win.Controls, "SfListView")
+				?? FindControlByNamePart(win.Controls, "ComboListBox")
+				?? FindListBoxInComboPopup(win.Controls);
 			if (list is null || control != list)
-				return false;
-			if (list is null)
 				return false;
 			int lx = win.Location.X;
 			int ly = win.Location.Y + ChromeHeight(win);
@@ -4340,6 +4547,31 @@ public sealed class WinFormsAppHost : IDisposable
 			return true;
 		}
 		catch (Exception ex) { Console.WriteLine("[VAPI] sflist-throw " + ex.GetType().Name); return false; }
+		static System.Windows.Forms.Control? FindListBoxInComboPopup(System.Windows.Forms.Control.ControlCollection cs)
+		{
+			foreach (System.Windows.Forms.Control c in cs)
+			{
+				try
+				{
+					if (c.GetType().Name.Contains("ComboListBoxPopup", StringComparison.Ordinal))
+					{
+						foreach (System.Windows.Forms.Control k in c.Controls)
+						{
+							if (k is System.Windows.Forms.ListBox)
+								return k;
+						}
+						System.Windows.Forms.Control? deep = FindListBoxInComboPopup(c.Controls);
+						if (deep is not null)
+							return deep;
+					}
+				}
+				catch { }
+				System.Windows.Forms.Control? r = FindListBoxInComboPopup(c.Controls);
+				if (r is not null)
+					return r;
+			}
+			return null;
+		}
 	}
 	private static System.Windows.Forms.Control? FindControlByNamePart(System.Windows.Forms.Control.ControlCollection cs, string part)
 	{
@@ -4358,6 +4590,153 @@ public sealed class WinFormsAppHost : IDisposable
 		return null;
 	}
 	
+	private static bool IsVerticalImageStrip(System.Windows.Forms.Control control)
+	{
+		// LayersStrip et al derive from VerticalImageStrip; match by hierarchy,
+		// not by concrete name (LayersStrip does not contain the base name).
+		for (Type? t = control.GetType(); t != null && t != typeof(object); t = t.BaseType)
+		{
+			if (t.Name.Contains("VerticalImageStrip", StringComparison.Ordinal))
+				return true;
+		}
+		return false;
+	}
+	private bool TryPerformStripCheckClick(System.Windows.Forms.Control control, int x, int y, System.Windows.Forms.MouseButtons clickedButton)
+	{
+		// FACTORY-shell-6: PDN VerticalImageStrip derivatives (Layers/History)
+		// owner-draw their rows; the visibility eye is ItemPart.CheckBox hit
+		// through PerformItemClick. Reflection only: the host must not take a
+		// compile dependency on PaintDotNet assemblies. Any reflection miss
+		// fails open to the legacy synthetic-event path below. Row geometry
+		// comes from ClientRectToViewRect + ViewPointToItemIndex (PDN's own
+		// hit-test entry point); the eye is gated to the row leading edge so
+		// row-body clicks keep their legacy select behavior.
+		try
+		{
+			if (_activeForm == null || !IsVerticalImageStrip(control))
+				return false;
+			Type t = control.GetType();
+			var all = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic;
+			var countP = t.GetProperty("ItemCount", all);
+			if (countP == null)
+				return false;
+			int count = (int)countP.GetValue(control)!;
+			if (count <= 0)
+				return false;
+			System.Reflection.MethodInfo? c2vM = null;
+			System.Reflection.MethodInfo? v2iM = null;
+			System.Reflection.MethodInfo? itemM = null;
+			System.Reflection.MethodInfo? clickM = null;
+			foreach (var m in t.GetMethods(all))
+			{
+				if (m.Name == "ClientRectToViewRect" && m.GetParameters().Length == 1)
+					c2vM = m;
+				else if (m.Name == "ViewPointToItemIndex" && m.GetParameters().Length == 1)
+					v2iM = m;
+				else if (m.Name == "ItemIndexToItem" && m.GetParameters().Length == 1)
+					itemM = m;
+				else if (m.Name == "PerformItemClick" && m.GetParameters().Length == 3 && m.GetParameters()[0].ParameterType == typeof(int))
+					clickM = m;
+			}
+			if (c2vM == null || v2iM == null || itemM == null || clickM == null)
+				return false;
+			var ps = clickM.GetParameters();
+			object partBox = System.Enum.Parse(ps[1].ParameterType, "CheckBox");
+			object btnBox;
+			try
+			{
+				btnBox = System.Enum.Parse(ps[2].ParameterType, clickedButton.ToString());
+			}
+			catch
+			{
+				btnBox = System.Enum.Parse(ps[2].ParameterType, "Left");
+			}
+			int x2 = _activeForm.Location.X;
+			int formClientY = _activeForm.Location.Y + ChromeHeight(_activeForm);
+			System.Windows.Forms.Form? form = control as System.Windows.Forms.Form;
+			System.Windows.Forms.Control? parent = control.Parent;
+			while (parent != null && form == null)
+			{
+				if (parent is System.Windows.Forms.Form form2)
+					form = form2;
+				parent = parent.Parent;
+			}
+			if (form != null && form.Parent == null)
+			{
+				x2 = form.Location.X;
+				formClientY = form.Location.Y + ChromeHeight(form);
+			}
+			int relX = x - GetControlAbsX(control, x2);
+			int relY = y - GetControlAbsY(control, formClientY);
+			// Eye zone: rows span the strip width from its left edge, so
+			// relX is already edge-relative. Gate to the leading 20px.
+			if (relX < 0 || relX >= 20)
+				return false;
+			var rectT = c2vM.GetParameters()[0].ParameterType;
+			var ptT = v2iM.GetParameters()[0].ParameterType;
+			object? viewRect = c2vM.Invoke(control, new object[] { System.Activator.CreateInstance(rectT, relX, relY, 1, 1)! });
+			if (viewRect == null || !TryReadRect(viewRect, out int vx, out int vy, out _, out _))
+				return false;
+			object? rowObj = v2iM.Invoke(control, new object[] { System.Activator.CreateInstance(ptT, vx, vy)! });
+			if (rowObj == null)
+				return false;
+			int row = (int)rowObj;
+			if (row < 0 || row >= count)
+				return false;
+			bool before = ReadItemChecked(itemM.Invoke(control, new object[] { row }));
+			clickM.Invoke(control, new object[] { row, partBox, btnBox });
+			bool after = ReadItemChecked(itemM.Invoke(control, new object[] { row }));
+			System.Console.WriteLine("[Host] strip-click TOGGLE row=" + row + " before=" + before + " after=" + after + " rel=" + relX + "," + relY);
+			RecordInput("click", $"{x},{y} strip-check={control.Name}[{row}]");
+			return true;
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
+	private static bool ReadItemChecked(object? item)
+	{
+		if (item == null)
+			return false;
+		var p = item.GetType().GetProperty("IsChecked", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+		if (p == null || p.PropertyType != typeof(bool))
+			return false;
+		try { return (bool)p.GetValue(item)!; }
+		catch { return false; }
+	}
+
+	private static bool TryReadRect(object? rect, out int rx, out int ry, out int rw, out int rh)
+	{
+		rx = ry = rw = rh = 0;
+		if (rect == null)
+			return false;
+		try
+		{
+			Type rt = rect.GetType();
+			rx = ReadRectField(rt, rect, "X");
+			ry = ReadRectField(rt, rect, "Y");
+			rw = ReadRectField(rt, rect, "Width");
+			rh = ReadRectField(rt, rect, "Height");
+			return rw > 0 && rh > 0;
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
+	private static int ReadRectField(Type rt, object rect, string name)
+	{
+		var p = rt.GetProperty(name, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+		if (p != null)
+			return Convert.ToInt32(p.GetValue(rect));
+		var f = rt.GetField(name, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+		if (f != null)
+			return Convert.ToInt32(f.GetValue(rect));
+		throw new MissingMemberException(rt.FullName, name);
+	}
 	private void ModalOnClick(System.Windows.Forms.Form modal, int x, int y, string tag = "modal", System.Windows.Forms.MouseButtons clickedButton = System.Windows.Forms.MouseButtons.Left, int clicks = 1)
 	{
 		int x2 = modal.Location.X;
@@ -4399,6 +4778,14 @@ public sealed class WinFormsAppHost : IDisposable
 			return;
 		}
 		if (TryCommitSfListItem(modal, control, x, y))
+			return;
+		// FACTORY-shell-6: owner-drawn PDN strips (Layers/History) expose no
+		// CheckBox controls; their visibility eyes toggle only through
+		// PerformItemClick(index, CheckBox). A real mouse-down already arrived
+		// via the dock down path, so the generic synthetic down below would
+		// flip such a box twice (net no-op). Route checkbox hits through
+		// their own click entry point and skip the synthetic events.
+		if (TryPerformStripCheckClick(control, x, y, clickedButton))
 			return;
 		if (control is System.Windows.Forms.Button button)
 		{
@@ -4482,11 +4869,25 @@ public sealed class WinFormsAppHost : IDisposable
 		_openDropdowns.RemoveAll(((System.Windows.Forms.ToolStripDropDown Drop, int Ox, int Oy) d) => d.Drop == drop || !d.Drop.Visible);
 		if (drop.Visible)
 		{
-			_openDropdowns.Add((drop, ox, oy));
+			// USERFIX-shell menu displacement: ToolStripDropDown.Bounds is
+			// already virtual-screen (canvas-absolute) space — WinForms
+			// positions the drop, not the host. Storing the caller owner
+			// origin again double-counted it in render + hit-test (~38px
+			// menu gap, ~10px shift). Track the screen location itself so
+			// render, hit-test and item-local math share one origin.
+			// (ox, oy) retained for call-site compatibility; intentionally unused.
+			_openDropdowns.Add((drop, drop.Location.X, drop.Location.Y));
 		}
 	}
 
-	private void RenderControls(ICanvas canvas, System.Windows.Forms.Control.ControlCollection controls, int parentAbsX, int parentAbsY)
+	internal void RenderControls(ICanvas canvas, System.Windows.Forms.Control.ControlCollection controls, int parentAbsX, int parentAbsY)
+	{
+		// Back-compat entry for direct unit-test-style callers (including
+		// reflection): no ancestor clip, exactly the historical behavior.
+		// Production paint paths pass the real client rectangle below.
+		RenderControlsClipped(canvas, controls, parentAbsX, parentAbsY, new Rectangle(-1000000, -1000000, 2000000, 2000000));
+	}
+	internal void RenderControlsClipped(ICanvas canvas, System.Windows.Forms.Control.ControlCollection controls, int parentAbsX, int parentAbsY, Rectangle clientClip)
 	{
 		for (int i = 0; i < controls.Count; i++)
 		{
@@ -4499,23 +4900,43 @@ public sealed class WinFormsAppHost : IDisposable
 			int num2 = parentAbsY + control.Top;
 			int width = control.Width;
 			int height = control.Height;
-			if (control is System.Windows.Forms.Button button && !ButtonPaintsItself(control.GetType()))
+			// Native client clipping: children fully outside the ancestor
+			// client rectangle never paint (floating-window collapse relies
+			// on this, not on hiding every child). ICanvas has no clip
+			// primitive, so fully-outside skips; partial overlap keeps
+			// today's full paint.
+			Rectangle bounds = new Rectangle(num, num2, width, height);
+			bounds.Intersect(clientClip);
+			if (bounds.IsEmpty)
 			{
-				uint rgba = ((button == _pressedButton) ? 3437557759u : ToRgba(button.BackColor, 3789677055u));
+				continue;
+			}
+			if (TryRenderPortablePropertyControl(canvas, control, num, num2, width, height)) continue;
+			else if (IsRenderedAsButton(control))
+			{
+				uint rgba = ((control == _pressedButton) ? 3437557759u : ToRgba(control.BackColor, 3789677055u));
 				canvas.FillRoundedRectangle(num, num2, width, height, 3f, rgba);
 				canvas.DrawLine(num, num2, num + width, num2, 1f, 2913840639u);
 				canvas.DrawLine(num, num2 + height, num + width, num2 + height, 1f, 2913840639u);
 				canvas.DrawLine(num, num2, num, num2 + height, 1f, 2913840639u);
 				canvas.DrawLine(num + width, num2, num + width, num2 + height, 1f, 2913840639u);
-				uint rgba2 = ToRgba(button.ForeColor, 255u);
-				string fontCss = GetFontCss(button.Font);
-				canvas.DrawTextAligned(button.Text, (float)num + (float)width / 2f, (float)num2 + (float)height / 2f, fontCss, rgba2, TextHAlign.Center, TextVAlign.Middle);
-				if (button.Image is Bitmap bmp)
+				uint rgba2 = ToRgba(control.ForeColor, 255u);
+				string fontCss = GetFontCss(control.Font);
+				canvas.DrawTextAligned(control.Text, (float)num + (float)width / 2f, (float)num2 + (float)height / 2f, fontCss, rgba2, TextHAlign.Center, TextVAlign.Middle);
+				Bitmap? bmp = (control as System.Windows.Forms.Button)?.Image as Bitmap;
+				if (bmp != null)
 				{
-					PaintCenteredBitmap(canvas, bmp, num, num2, width, height, button);
+					PaintCenteredBitmap(canvas, bmp, num, num2, width, height, control);
+				}
+				if (control.Controls.Count > 0)
+				{
+					RenderControlsClipped(canvas, control.Controls, num, num2, Rectangle.Intersect(clientClip, new Rectangle(num, num2, width, height)));
 				}
 			}
-			else if (control is System.Windows.Forms.TextBox textBox)
+			// WC1100 grant: SfNumericTextBox overrides OnPaint (watermark);
+			// the canvas TextBox fast path would bypass it, so route
+			// SfNumericTextBox-likes to the generic dispatch below.
+			else if (control is System.Windows.Forms.TextBox textBox && control.GetType().FullName?.Contains("SfNumericTextBox") != true)
 			{
 				uint rgba3 = ToRgba(textBox.BackColor, uint.MaxValue);
 				canvas.FillRectangle(num, num2, width, height, rgba3);
@@ -4547,6 +4968,99 @@ public sealed class WinFormsAppHost : IDisposable
 					canvas.DrawTextAligned(text, num + 5, (float)num2 + (float)height / 2f, fontCss2, rgba5, TextHAlign.Left, TextVAlign.Middle);
 				}
 			}
+			else if (control is System.Windows.Forms.ComboBox comboBox)
+			{
+				// ADGV-COMBO hookup (item 1): stock ComboBox had no render
+				// branch (generic blank paint). Closed field + arrow button
+				// + GetItemText field text; overlay list rows while open.
+				// Same canvas primitives as the TextBox/ListView branches.
+				ComboBoxBrowserHook.EnsureDataSourceItems(comboBox);
+				bool comboFocused = false;
+				try { comboFocused = comboBox.Focused; } catch { }
+				bool comboOpen = false;
+				try { comboOpen = comboBox.DroppedDown && comboBox.DropDownStyle != System.Windows.Forms.ComboBoxStyle.Simple; } catch { }
+				bool comboEnabled = true;
+				try { comboEnabled = comboBox.Enabled; } catch { }
+				uint comboBack = ToRgba(comboBox.BackColor, uint.MaxValue);
+				canvas.FillRectangle(num, num2, width, height, comboBack);
+				uint comboBorder = (comboFocused ? 7919615u : 2141043199u);
+				float comboBw = (comboFocused ? 2 : 1);
+				canvas.DrawLine(num, num2, num + width, num2, comboBw, comboBorder);
+				canvas.DrawLine(num, num2 + height, num + width, num2 + height, comboBw, comboBorder);
+				canvas.DrawLine(num, num2, num, num2 + height, comboBw, comboBorder);
+				canvas.DrawLine(num + width, num2, num + width, num2 + height, comboBw, comboBorder);
+				int btnW = Math.Min(17, width - 2);
+				int btnX = num + width - btnW;
+				uint btnFace = comboOpen ? 0xBDD7EEFFu : 0xF0F0F0FFu;
+				canvas.FillRectangle(btnX, num2 + 1, btnW, height - 2, btnFace);
+				canvas.DrawLine(btnX, num2, btnX, num2 + height, 1f, comboBorder);
+				uint arrowInk = comboEnabled ? 0x222222FFu : 0x999999FFu;
+				float acx = btnX + btnW / 2f;
+				float acy = num2 + height / 2f;
+				canvas.DrawLine(acx - 4, acy - 2, acx, acy + 2, 2f, arrowInk);
+				canvas.DrawLine(acx, acy + 2, acx + 4, acy - 2, 2f, arrowInk);
+				uint comboInk = ToRgba(comboBox.ForeColor, 255u);
+				if (!comboEnabled)
+					comboInk = 0x999999FFu;
+				string comboFont = GetFontCss(comboBox.Font);
+				bool listStatic = false;
+				try { listStatic = comboBox.DropDownStyle == System.Windows.Forms.ComboBoxStyle.DropDownList; } catch { }
+				if (listStatic && comboOpen)
+					canvas.FillRectangle(num + 1, num2 + 1, width - btnW - 1, height - 2, 0x0078D7FFu);
+				string fieldText = ComboBoxBrowserHook.ForkFieldText(comboBox);
+				if (!string.IsNullOrEmpty(fieldText))
+					canvas.DrawTextAligned(fieldText, num + 4, (float)num2 + (float)height / 2f, comboFont, comboInk, TextHAlign.Left, TextVAlign.Middle);
+				if (comboFocused && !comboOpen)
+				{
+					canvas.DrawLine(num + 2, num2 + 2, num + width - btnW - 2, num2 + 2, 1f, comboBorder);
+					canvas.DrawLine(num + 2, num2 + height - 2, num + width - btnW - 2, num2 + height - 2, 1f, comboBorder);
+				}
+				bool simpleStyle = false;
+				try { simpleStyle = comboBox.DropDownStyle == System.Windows.Forms.ComboBoxStyle.Simple; } catch { }
+				if (comboOpen || simpleStyle)
+				{
+					int simpleField = height;
+					if (simpleStyle)
+					{
+						try { simpleField = Math.Min(height, Math.Max(17, (int)comboBox.Font.GetHeight() + 8)); } catch { }
+					}
+					int listY = simpleStyle ? num2 + simpleField + 2 : num2 + height;
+					int popW = width;
+					int listH = num2 + height - listY;
+					if (comboOpen && !simpleStyle)
+					{
+						(_, int popH) = ComboBoxBrowserHook.ForkPopupGeometry(comboBox);
+						try { if (comboBox.DropDownWidth > 0) popW = comboBox.DropDownWidth; } catch { }
+						listH = popH;
+						canvas.FillRectangle(num, listY, popW, listH, 0xFFFFFFFFu);
+						canvas.DrawLine(num, listY, num + popW, listY, 1f, comboBorder);
+						canvas.DrawLine(num, listY + listH, num + popW, listY + listH, 1f, comboBorder);
+						canvas.DrawLine(num, listY, num, listY + listH, 1f, comboBorder);
+						canvas.DrawLine(num + popW, listY, num + popW, listY + listH, 1f, comboBorder);
+						// WC1348 grant (1): open-list geometry log - pure observation.
+						LogComboPopup(comboBox, listH);
+					}
+					if (listH > 4)
+					{
+						int itemH = ComboBoxBrowserHook.ForkItemHeight(comboBox);
+						int rows = simpleStyle ? Math.Max(0, (num2 + height - listY) / Math.Max(1, itemH)) : comboBox.Items.Count;
+						for (int ri = 0; ri < rows; ri++)
+						{
+							int ry = listY + 1 + ri * itemH;
+							if (ry + itemH > listY + listH)
+								break;
+							bool hl = false;
+							try { hl = ri == comboBox.SelectedIndex; } catch { }
+							if (hl)
+								canvas.FillRectangle(num + 1, ry, popW - 2, itemH, 0x0078D7FFu);
+							string rowText = string.Empty;
+							try { rowText = comboBox.GetItemText(comboBox.Items[ri]); } catch { }
+							if (!string.IsNullOrEmpty(rowText))
+								canvas.DrawTextAligned(rowText, num + 4, ry + itemH / 2f, comboFont, hl ? 0xFFFFFFFFu : comboInk, TextHAlign.Left, TextVAlign.Middle);
+						}
+					}
+				}
+			}
 			else if (control is System.Windows.Forms.Label label)
 			{
 				if (label.BackColor != Color.Transparent && !label.BackColor.IsEmpty)
@@ -4555,7 +5069,11 @@ public sealed class WinFormsAppHost : IDisposable
 				}
 				uint rgba6 = ToRgba(label.ForeColor, 255u);
 				string fontCss3 = GetFontCss(label.Font);
-				canvas.DrawTextAligned(label.Text, num + 2, (float)num2 + (float)height / 2f, fontCss3, rgba6, TextHAlign.Left, TextVAlign.Middle);
+				// WC1241 grant: Label-branch rect census - log shape, never throws.
+				LogLabelRect(label, num, num2, width, height, fontCss3);
+				// WC1307 grant: clip Label ink to the label rect (desktop GDI parity).
+				canvas.DrawTextAligned(label.Text, num + 2, (float)num2 + (float)height / 2f, fontCss3, rgba6, TextHAlign.Left, TextVAlign.Middle,
+					-1, num, num2, width, height);
 			}
 			else if (control is System.Windows.Forms.ListView listView)
 			{
@@ -4584,15 +5102,25 @@ public sealed class WinFormsAppHost : IDisposable
 				for (int l = num9; l < count && l - num9 < num8; l++)
 				{
 					int num11 = num6 + (l - num9) * num7;
-					System.Windows.Forms.ListViewItem listViewItem = listView.Items[l];
-					if (listViewItem.Selected)
+					System.Windows.Forms.ListViewItem? listViewItem = null;
+					try
 					{
-						canvas.FillRectangle(num + 1, num11, num10 - 2, num7, 865730559u);
-						canvas.DrawTextAligned(listViewItem.Text, num + 6, (float)num11 + (float)num7 / 2f, "12px sans-serif", uint.MaxValue, TextHAlign.Left, TextVAlign.Middle);
+						listViewItem = listView.Items[l];
 					}
-					else
+					catch
 					{
-						canvas.DrawTextAligned(listViewItem.Text, num + 6, (float)num11 + (float)num7 / 2f, "12px sans-serif", 286331391u, TextHAlign.Left, TextVAlign.Middle);
+					}
+					if (listViewItem != null)
+					{
+						if (listViewItem.Selected)
+						{
+							canvas.FillRectangle(num + 1, num11, num10 - 2, num7, 865730559u);
+							canvas.DrawTextAligned(listViewItem.Text, num + 6, (float)num11 + (float)num7 / 2f, "12px sans-serif", uint.MaxValue, TextHAlign.Left, TextVAlign.Middle);
+						}
+						else
+						{
+							canvas.DrawTextAligned(listViewItem.Text, num + 6, (float)num11 + (float)num7 / 2f, "12px sans-serif", 286331391u, TextHAlign.Left, TextVAlign.Middle);
+						}
 					}
 				}
 				if (flag2)
@@ -4704,7 +5232,7 @@ public sealed class WinFormsAppHost : IDisposable
 				}
 				if (control.Controls.Count > 0)
 				{
-					RenderControls(canvas, control.Controls, num, num2);
+					RenderControlsClipped(canvas, control.Controls, num, num2, Rectangle.Intersect(clientClip, new Rectangle(num, num2, width, height)));
 				}
 			}
 			else if (control.GetType().Name.Contains("DocumentWorkspacesPanel"))
@@ -4818,7 +5346,7 @@ public sealed class WinFormsAppHost : IDisposable
 				}
 				if (control.Controls.Count > 0)
 				{
-					RenderControls(canvas, control.Controls, num, num2);
+					RenderControlsClipped(canvas, control.Controls, num, num2, Rectangle.Intersect(clientClip, new Rectangle(num, num2, width, height)));
 				}
 			}
 			else if (control.GetType().Name.Contains("StatusBar") || control is System.Windows.Forms.StatusStrip)
@@ -4828,7 +5356,7 @@ public sealed class WinFormsAppHost : IDisposable
 				canvas.DrawTextAligned("Ready", num + 12, (float)num2 + (float)height / 2f, "11px 'Segoe UI', sans-serif", 858993663u, TextHAlign.Left, TextVAlign.Middle);
 				if (control.Controls.Count > 0)
 				{
-					RenderControls(canvas, control.Controls, num, num2);
+					RenderControlsClipped(canvas, control.Controls, num, num2, Rectangle.Intersect(clientClip, new Rectangle(num, num2, width, height)));
 				}
 			}
 			else if (control.GetType().Name.Contains("SliderImpl"))
@@ -4843,7 +5371,7 @@ public sealed class WinFormsAppHost : IDisposable
 			{
 				if (control.Controls.Count > 0)
 				{
-					RenderControls(canvas, control.Controls, num, num2);
+					RenderControlsClipped(canvas, control.Controls, num, num2, Rectangle.Intersect(clientClip, new Rectangle(num, num2, width, height)));
 				}
 			}
 			else
@@ -4863,7 +5391,7 @@ public sealed class WinFormsAppHost : IDisposable
 				}
 				if (control.Controls.Count > 0)
 				{
-					RenderControls(canvas, control.Controls, num, num2);
+					RenderControlsClipped(canvas, control.Controls, num, num2, Rectangle.Intersect(clientClip, new Rectangle(num, num2, width, height)));
 				}
 			}
 			BlitOverlay(canvas, control, num, num2);
@@ -4957,6 +5485,9 @@ public sealed class WinFormsAppHost : IDisposable
 			_dragInitialFormX = x2;
 			_dragInitialFormY = y2;
 			_mouseTarget = null;
+			_dragMovesThisGesture = 0;
+			System.Threading.Interlocked.Increment(ref s_dragDowns);
+			VirtualWindowDrag.Begin(_activeForm);
 			return;
 		}
 		int parentAbsY = y2 + num;
@@ -4979,9 +5510,9 @@ public sealed class WinFormsAppHost : IDisposable
 		}
 		Console.WriteLine($"[Host] form loc={_activeForm.Location} size={_activeForm.Width}x{_activeForm.Height} kids={_activeForm.Controls.Count} chrome={ChromeHeight(_activeForm)} view={ViewWidth}x{ViewHeight}");
 		Console.WriteLine("[Host] kids=" + DescribeKids(_activeForm.Controls, 0));
-		if (control is System.Windows.Forms.Button pressedButton)
+		if (control != null && (control is System.Windows.Forms.Button || control is System.Windows.Forms.IButtonControl || control.GetType().Name == "PdnPushButton"))
 		{
-			_pressedButton = pressedButton;
+			_pressedButton = control;
 		}
 		NoteFocus(control);
 		if (control != null)
@@ -5003,6 +5534,28 @@ public sealed class WinFormsAppHost : IDisposable
 		if (control != null && !(control is System.Windows.Forms.ToolStrip))
 		{
 			Console.WriteLine("[Host] Invoking RaiseMouseEvent OnMouseDown on " + control.Name);
+						if (control is System.Windows.Forms.ComboBox fcombo)
+			{
+				// ADGV-COMBO hookup (items 2+4): open/commit/dismiss via
+				// the fork state machine; skip the native mouse dispatch.
+				ComboBoxBrowserHook.EnsureDataSourceItems(fcombo);
+				int comboAbsX = GetControlAbsX(fcombo, x2);
+				int comboAbsY = GetControlAbsY(fcombo, parentAbsY);
+				bool comboConsumed = false;
+				try { comboConsumed = ComboBoxBrowserHook.HandleForkMouseDown(fcombo, x - comboAbsX, y - comboAbsY); } catch (Exception comboEx) { Console.WriteLine("[Host][combo] mouse EX: " + comboEx.GetType().Name + ": " + comboEx.Message.Split('\n')[0]); }
+				Console.WriteLine("[Host][combo] mousedown " + fcombo.Name + " drop=" + fcombo.DroppedDown + " local=" + (x - comboAbsX) + "," + (y - comboAbsY) + " consumed=" + comboConsumed);
+				if (comboConsumed)
+				{
+					WasmRepaintGate.MarkGlobalDirty();
+					return;
+				}
+			}
+				if (control.GetType().Name == "TableControl")
+			{
+				// SF02-R2: arm the headless row-drag loop for Syncfusion grids;
+				// no-op unless a row-drag controller is present.
+				try { EnsureRowDragLoop(control); } catch (Exception dragLoopEx) { Console.WriteLine("[Host][dragloop] ensure EX: " + dragLoopEx.GetType().Name + ": " + dragLoopEx.Message.Split('\n')[0]); }
+			}
 			RaiseMouseEvent(s_onMouseDownMethod, control, buttons, 1, x, y);
 			Console.WriteLine("[Host] RaiseMouseEvent OnMouseDown done");
 		}
@@ -5012,6 +5565,8 @@ public sealed class WinFormsAppHost : IDisposable
 	{
 		WasmDialogHost.AdvanceTurn();
 		Console.WriteLine($"[Host] OnMouseUp(x={x}, y={y}, buttons={buttons} mod={ToKeys(shift, ctrl, alt)})");
+		if (_isDraggingTitle && _dragForm is not null)
+			VirtualWindowDrag.End(_dragForm);
 		_dragForm = null;
 		bool isDrawingOnDocument = _isDrawingOnDocument;
 		if (_isDrawingOnDocument)
@@ -5022,6 +5577,9 @@ public sealed class WinFormsAppHost : IDisposable
 			Console.WriteLine("[Host] PostStroke surface=" + DescribeActiveDocSurface());
 		}
 		_isDraggingTitle = false;
+		System.Threading.Interlocked.Increment(ref s_dragUps);
+		if (PerfTimeline.Enabled) Console.WriteLine($"[Host] DragUp movesThisGesture={_dragMovesThisGesture} totals={s_dragDowns}/{s_dragMoves}/{s_dragUps}");
+		_dragMovesThisGesture = 0;
 		_pressedButton = null;
 		_mouseButtons &= ~buttons;
 		WasmMouseState.SetModifiers(ToKeys(shift, ctrl, alt));
@@ -5037,6 +5595,28 @@ public sealed class WinFormsAppHost : IDisposable
 		PairClick(x, y, buttons);
 		RecordInput("up", isDrawingOnDocument ? $"{x},{y} {buttons} doc" : $"{x},{y} {buttons}");
 		UpdateHover(x, y);
+	}
+
+	public void OnPointerCanceled()
+	{
+		if (_isDraggingTitle && _dragForm is not null)
+			VirtualWindowDrag.End(_dragForm);
+		_dragForm = null;
+		_isDraggingTitle = false;
+		if (_isDrawingOnDocument)
+		{
+			Point point = WasmMouseState.Position;
+			ForwardDocumentPointer(point.X, point.Y, _mouseButtons, PointerEventKind.Released);
+			_isDrawingOnDocument = false;
+		}
+		if (_mouseTarget is not null) ResetButtonPress(_mouseTarget);
+		_mouseTarget = null;
+		_pressedButton = null;
+		_mouseButtons = System.Windows.Forms.MouseButtons.None;
+		Point pos = WasmMouseState.Position;
+		WasmMouseState.Update(pos.X, pos.Y, _mouseButtons);
+		WasmCaptureState.Clear();
+		WasmRepaintGate.MarkGlobalDirty();
 	}
 
 	public void OnMouseMove(int x, int y, bool shift = false, bool ctrl = false, bool alt = false)
@@ -5064,7 +5644,10 @@ public sealed class WinFormsAppHost : IDisposable
 			{
 				int num = x - _dragStartX;
 				int num2 = y - _dragStartY;
-				form.Location = new Point(_dragInitialFormX + num, _dragInitialFormY + num2);
+				long dragN = System.Threading.Interlocked.Increment(ref s_dragMoves);
+				_dragMovesThisGesture++;
+				if (PerfTimeline.Enabled) Console.WriteLine($"[Host] DragMove n={dragN} form={form.Name} from={form.Location.X},{form.Location.Y} d={num},{num2}");
+				form.Location = VirtualWindowDrag.Move(form, new Point(_dragInitialFormX + num, _dragInitialFormY + num2));
 				_userPlaced.Add(form);
 				WasmRepaintGate.MarkDirtyChain(form);
 			}
@@ -5210,8 +5793,24 @@ public sealed class WinFormsAppHost : IDisposable
 
 	private void NoteFocus(System.Windows.Forms.Control? control)
 	{
+		if (!ReferenceEquals(_focusedControl, control))
+		{
+			// The headless focus router does not receive native WM_KILLFOCUS.
+			// Commit numeric text before a dialog's OK handler reads its token.
+			for (var previous = _focusedControl; previous is not null; previous = previous.Parent)
+				if (previous is System.Windows.Forms.NumericUpDown || previous.GetType().FullName == "PaintDotNet.Controls.PdnNumericUpDown")
+				{
+					bool inside = false;
+					for (var next = control; next is not null; next = next.Parent)
+						if (ReferenceEquals(next, previous)) { inside = true; break; }
+					if (!inside) { if (previous is System.Windows.Forms.NumericUpDown numeric) _ = numeric.Value; else _ = previous.GetType().GetProperty("Value")?.GetValue(previous); }
+					break;
+				}
+		}
 		_focusedControl = control;
 		_focusedTextBox = control as System.Windows.Forms.TextBox;
+		_shiftAnchor = -1;
+		_shiftAnchorBox = null;
 		if (control == null)
 		{
 			return;
@@ -5333,8 +5932,9 @@ public sealed class WinFormsAppHost : IDisposable
 			Console.WriteLine("[WinFormsAppHost] Mouse enter/leave error: root=" + RootCause(ex).GetType().Name + " site=" + SiteOf(RootCause(ex)) + " msg=" + (RootCause(ex).Message ?? "").Split('\n')[0]);
 			try
 			{
-				Console.WriteLine("[diagstack] " + string.Join(" <- ", from f in new StackTrace(RootCause(ex), fNeedFileInfo: false).GetFrames().Take(12)
-					select f.GetMethod()));
+				// WD-1740-IMP: null-frames diagnostic (no live method resolution over hostile frames).
+				foreach (string diagLine in FormatFirstChance(RootCause(ex), frames: null).ConsoleLines)
+				    Console.WriteLine("[diagstack] " + diagLine);
 			}
 			catch
 			{
@@ -5485,8 +6085,9 @@ public sealed class WinFormsAppHost : IDisposable
 			Console.WriteLine("[WinFormsAppHost] Mouse event error: root=" + RootCause(ex).GetType().Name + " site=" + SiteOf(RootCause(ex)) + " msg=" + (RootCause(ex).Message ?? "").Split('\n')[0]);
 			try
 			{
-				Console.WriteLine("[diagstack] " + string.Join(" <- ", from f in new StackTrace(RootCause(ex), fNeedFileInfo: false).GetFrames().Take(12)
-					select f.GetMethod()));
+				// WD-1740-IMP: null-frames diagnostic (no live method resolution over hostile frames).
+				foreach (string diagLine in FormatFirstChance(RootCause(ex), frames: null).ConsoleLines)
+				    Console.WriteLine("[diagstack] " + diagLine);
 			}
 			catch
 			{
@@ -5857,6 +6458,9 @@ public sealed class WinFormsAppHost : IDisposable
 			return;
 		}
 		double num = ((deltaMode == 1) ? (deltaY / 3.0) : (deltaY / 100.0));
+		// A fractional tail from the previous direction must not swallow
+		// the first full notch after reversing (e.g. 4x120px then -120px).
+		if (num * _wheelRemainder < 0) _wheelRemainder = 0;
 		_wheelRemainder += num;
 		int num2 = 0;
 		while (_wheelRemainder >= 1.0)
@@ -5897,6 +6501,7 @@ public sealed class WinFormsAppHost : IDisposable
 			RaiseMouseEvent(s_onMouseWheelMethod, control, _mouseButtons, 0, x, y, num3);
 		}
 	}
+
 
 	private void NoteMoveForHover(int x, int y)
 	{
@@ -6431,7 +7036,12 @@ public sealed class WinFormsAppHost : IDisposable
 						// cannot toggle the popup shut; item clicks route
 						// through the popup path before reaching dispatch.
 					}
-					catch { return false; }
+					catch (Exception ex)
+					{
+						// WC1119 grant: ShowPopup-path suppress site - log type+stack, never throws.
+						LogSuppressedPopupException(control, ex);
+						return false;
+					}
 					RecordInput("vendor", $"dropdown {(isOpen ? (hide is not null ? "hide" : "keep-open") : "show")} {control.Name} {x},{y}");
 					control.Invalidate();
 					return true;
@@ -6778,6 +7388,22 @@ public sealed class WinFormsAppHost : IDisposable
 				return;
 			}
 		}
+		if (control is System.Windows.Forms.IButtonControl buttonControl)
+		{
+			RecordInput("click", $"{x},{y} pushbutton={control.Name}");
+			try
+			{
+				buttonControl.PerformClick();
+				RaiseMouseEvent(s_onMouseClickMethod, control, clickedButton, clicks, x, y);
+				return;
+			}
+			catch (Exception ex3)
+			{
+				Console.WriteLine($"[WinFormsAppHost] Button click error: {ex3.GetType().Name}: {ex3.Message.Split('\n')[0]} site={SiteOf(ex3)}");
+				BrowserErrorReporter.Report("button-click", ex3);
+				return;
+			}
+		}
 		if (control is System.Windows.Forms.ListView listView)
 		{
 			int num = 24;
@@ -6801,10 +7427,25 @@ public sealed class WinFormsAppHost : IDisposable
 				int num7 = num6 / num2 + num4;
 				if (num7 >= num4 && num7 < count)
 				{
-					System.Windows.Forms.ListViewItem listViewItem = listView.Items[num7];
-					RecordInput("click", $"{x},{y} listview={listView.Name} row={num7}");
-					listViewItem.Selected = !listViewItem.Selected;
-					RaiseMouseEvent(s_onMouseClickMethod, listView, clickedButton, clicks, x, y);
+					// Virtual-mode lists with no valid RetrieveVirtualItem
+					// item throw InvalidOperationException from the
+					// indexer (same fault the render path already
+					// contains). A row click must never let that escape
+					// into the input pump; skip selection quietly.
+					System.Windows.Forms.ListViewItem? listViewItem = null;
+					try
+					{
+						listViewItem = listView.Items[num7];
+					}
+					catch
+					{
+					}
+					if (listViewItem != null)
+					{
+						RecordInput("click", $"{x},{y} listview={listView.Name} row={num7}");
+						listViewItem.Selected = !listViewItem.Selected;
+						RaiseMouseEvent(s_onMouseClickMethod, listView, clickedButton, clicks, x, y);
+					}
 				}
 			}
 			return;
@@ -6836,8 +7477,9 @@ public sealed class WinFormsAppHost : IDisposable
 			Console.WriteLine("[WinFormsAppHost] Control click error: " + ex2.GetType().Name + ": " + ex2.Message.Split('\n')[0]);
 			try
 			{
-				Console.WriteLine("[diagstack] " + string.Join(" <- ", from f in new StackTrace(RootCause(ex2), fNeedFileInfo: false).GetFrames().Take(12)
-					select f.GetMethod()));
+				// WD-1740-IMP: null-frames diagnostic (no live method resolution over hostile frames).
+				foreach (string diagLine in FormatFirstChance(RootCause(ex2), frames: null).ConsoleLines)
+				    Console.WriteLine("[diagstack] " + diagLine);
 			}
 			catch
 			{
@@ -6979,6 +7621,19 @@ public sealed class WinFormsAppHost : IDisposable
 
 	private void OpenMenuDropdown(System.Windows.Forms.ToolStrip ts, System.Windows.Forms.ToolStripMenuItem mi, int ox, int oy)
 	{
+		// USERFIX-shell submenu usability: pressing an already-open item
+		// toggles its dropdown shut, and the open-count drop then
+		// cascade-closes the whole chain (clicking Open Recent killed File
+		// too). An open+tracked dropdown stays open; the press only opens.
+		bool alreadyOpen = false;
+		try { alreadyOpen = mi.DropDown.Visible && GetOpenDropdowns().Any(((System.Windows.Forms.ToolStripDropDown Drop, int Ox, int Oy) d) => d.Drop == mi.DropDown); }
+		catch { }
+		if (alreadyOpen)
+		{
+			TrackDropdown(mi.DropDown, ox, oy);
+			Console.WriteLine($"[Host] Menu kept open: {mi.Name} drop={mi.DropDown.Bounds} visible={mi.DropDown.Visible}");
+			return;
+		}
 		try
 		{
 			System.Windows.Forms.MouseEventArgs e = new System.Windows.Forms.MouseEventArgs(System.Windows.Forms.MouseButtons.Left, 1, 0, 0, 0);
@@ -7003,8 +7658,10 @@ public sealed class WinFormsAppHost : IDisposable
 			System.Windows.Forms.ToolStripDropDown item2 = tuple.Item1;
 			int item3 = tuple.Item2;
 			int item4 = tuple.Item3;
-			int num2 = item3 + item2.Location.X;
-			int num3 = item4 + item2.Location.Y;
+			// USERFIX-shell: the tracked origin IS the screen location now
+			// (see TrackDropdown); adding Location again double-counted it.
+			int num2 = item3;
+			int num3 = item4;
 			if (x >= num2 && x < num2 + item2.Width && y >= num3 && y < num3 + item2.Height)
 			{
 				drop = item2;
@@ -7030,9 +7687,15 @@ public sealed class WinFormsAppHost : IDisposable
 		if (item != null)
 		{
 			RecordInput("click", $"{x},{y} dropitem={DescribeItem(item)}");
-			int count = GetOpenDropdowns().Count;
+			// USERFIX-shell submenu usability: the old raw-count <= closed
+			// the chain even when nothing dismissed (equal counts), killing
+			// an owner re-press the OpenMenuDropdown guard had kept open.
+			// Count cannot encode command type, so decide explicitly: an
+			// owner click keeps the chain (guard established state); a leaf
+			// command click dismisses it (desktop parity + DropdownClickTests
+			// closed assertion).
 			ClickToolStripItem(drop, item, dx, dy, x - dx, y - dy);
-			if (GetOpenDropdowns().Count <= count)
+			if (item is not System.Windows.Forms.ToolStripMenuItem { HasDropDownItems: true })
 			{
 				CloseOpenDropdowns();
 			}
@@ -7110,7 +7773,17 @@ public sealed class WinFormsAppHost : IDisposable
 			typeName = popup.GetType().Name ?? string.Empty;
 		}
 		catch { return false; }
-		if (!typeName.Contains("Popup", System.StringComparison.Ordinal)
+		bool isTracked = false;
+		try
+		{
+			foreach (System.Windows.Forms.Control p in System.Windows.Forms.WasmPopupHost.Snapshot())
+			{
+				if (ReferenceEquals(p, popup)) { isTracked = true; break; }
+			}
+		}
+		catch { }
+		if (!isTracked
+			&& !typeName.Contains("Popup", System.StringComparison.Ordinal)
 			&& !typeName.Contains("DropDown", System.StringComparison.Ordinal)) return false;
 		System.Reflection.MethodInfo? hide = null;
 		try
@@ -7142,29 +7815,67 @@ public sealed class WinFormsAppHost : IDisposable
 		System.Windows.Forms.Control control = KeyTarget();
 		RecordInput("key", key + Mods(shift, ctrl, alt) + " target=" + DescribeControl(control));
 		Console.WriteLine("[Host] OnKeyDown(key=" + key + Mods(shift, ctrl, alt) + " target=" + DescribeControl(control) + ")");
+		KeyTrace.Mark("down:entry " + key + Mods(shift, ctrl, alt));
 		if (control == null)
 		{
 			return;
 		}
+		System.Windows.Forms.TextBox snapshotBox = _focusedTextBox;
+		_arrowCaretSnapshot = -1;
+		_arrowCaretLength = -1;
+		try
+		{
+			if (snapshotBox != null && control == snapshotBox)
+			{
+				_arrowCaretSnapshot = snapshotBox.SelectionStart;
+				_arrowCaretLength = snapshotBox.SelectionLength;
+			}
+		}
+		catch
+		{
+		}
 		System.Windows.Forms.KeyEventArgs e = new System.Windows.Forms.KeyEventArgs(item);
 		WasmMouseState.SetModifiers(ToKeys(shift, ctrl, alt));
+		KeyTrace.Mark("down:dropdown-in");
 		if (GetOpenDropdowns().Count > 0 && DropdownKeyNav(item))
 		{
 			return;
 		}
+		KeyTrace.Mark("down:dropdown-out");
+		// Text editors own Select All before application command routing.
+		// Otherwise Paint.NET's main menu can select the whole document
+		// while a modal numeric field is being edited.
+		if (item == (System.Windows.Forms.Keys.A | System.Windows.Forms.Keys.Control)
+			&& control is System.Windows.Forms.TextBoxBase localText && localText.ShortcutsEnabled)
+		{
+			KeyTrace.Mark("down:selectall-in");
+			localText.SelectAll();
+			KeyTrace.Mark("down:selectall-out");
+			_shiftAnchor = -1;
+			_shiftAnchorBox = null;
+			return;
+		}
+		KeyTrace.Mark("down:pump-in");
 		bool flag = PumpKeyFilters(control, alt ? 260 : 256, VkForPump(item, shift, ctrl, alt), (!alt) ? 1 : 536870912);
+		KeyTrace.Mark("down:pump-out");
 		if (flag)
 		{
 			e.Handled = true;
 			e.SuppressKeyPress = true;
 		}
+		KeyTrace.Mark("down:cmdkey-in");
 		if (!flag && (ctrl | alt) && PumpCommandKey(control, item, alt, shift, ctrl))
 		{
 			return;
 		}
+		KeyTrace.Mark("down:cmdkey-out");
 		if (!flag && (item & ~System.Windows.Forms.Keys.Shift) == (System.Windows.Forms.Keys.A | System.Windows.Forms.Keys.Control) && control is System.Windows.Forms.TextBoxBase textBoxBase)
 		{
+			KeyTrace.Mark("down:selectall2-in");
 			textBoxBase.SelectAll();
+			KeyTrace.Mark("down:selectall2-out");
+			_shiftAnchor = -1;
+			_shiftAnchorBox = null;
 			e.SuppressKeyPress = true;
 		}
 		System.Windows.Forms.Keys keys = item & System.Windows.Forms.Keys.KeyCode;
@@ -7183,13 +7894,34 @@ public sealed class WinFormsAppHost : IDisposable
 			e.SuppressKeyPress = true;
 			return;
 		}
+		KeyTrace.Mark("down:esc-in");
 		if (!flag && (item & System.Windows.Forms.Keys.KeyCode) == System.Windows.Forms.Keys.Escape && TryCloseVendorPopupForEscape())
 		{
+			if (_focusedControl != null && (!_focusedControl.Visible || !IsInsideActiveFormOrTrackedPopup(_focusedControl)))
+			{
+				_focusedControl = null;
+			}
 			e.Handled = true;
 			e.SuppressKeyPress = true;
 			return;
 		}
-		RaiseKey(s_onKeyDownMethod, control, e, "down");
+		KeyTrace.Mark("down:raise-in");
+					if (control is System.Windows.Forms.ComboBox fcombo2)
+			{
+				// ADGV-COMBO hookup (item 3): key consumed by the fork
+				// state machine wins over default dispatch; vendor pump
+				// and dialog keys already ran above unchanged.
+				ComboBoxBrowserHook.EnsureDataSourceItems(fcombo2);
+				if (ComboBoxBrowserHook.HandleForkBrowserKey(fcombo2, e))
+				{
+					e.SuppressKeyPress = true;
+					KeyTrace.Mark("down:combo-handled");
+					WasmRepaintGate.MarkGlobalDirty();
+					return;
+				}
+			}
+			RaiseKey(s_onKeyDownMethod, control, e, "down");
+		KeyTrace.Mark("down:raise-out");
 		if (e.Handled || e.SuppressKeyPress)
 		{
 			return;
@@ -7264,6 +7996,114 @@ public sealed class WinFormsAppHost : IDisposable
 			}
 			return;
 		}
+		case System.Windows.Forms.Keys.Left:
+		case System.Windows.Forms.Keys.Right:
+		{
+			System.Windows.Forms.TextBox arrowBox = _focusedTextBox;
+			if (arrowBox == null || control != arrowBox || arrowBox.IsDisposed)
+			{
+				return;
+			}
+			bool vendorMoved = arrowBox.SelectionStart != _arrowCaretSnapshot || arrowBox.SelectionLength != _arrowCaretLength;
+			if (vendorMoved)
+			{
+				_shiftAnchor = -1;
+				_shiftAnchorBox = null;
+				if ((item & System.Windows.Forms.Keys.Shift) == 0)
+				{
+					return;
+				}
+			}
+			{
+				string arrowText = arrowBox.Text ?? "";
+				int start = Math.Max(0, Math.Min(arrowBox.SelectionStart, arrowText.Length));
+				int length = Math.Max(0, Math.Min(arrowBox.SelectionLength, arrowText.Length - start));
+				bool isLeft = (item & System.Windows.Forms.Keys.KeyCode) == System.Windows.Forms.Keys.Left;
+				bool withShift = (item & System.Windows.Forms.Keys.Shift) != 0;
+				if (withShift)
+				{
+					int end = start + length;
+					int anchor = _shiftAnchor;
+					if (_shiftAnchorBox != arrowBox || anchor < 0 || anchor > arrowText.Length || (anchor != start && anchor != end))
+					{
+						anchor = isLeft ? end : start;
+					}
+					int active = (anchor == start) ? end : start;
+					int nextActive = isLeft ? Math.Max(0, active - 1) : Math.Min(arrowText.Length, active + 1);
+					if (nextActive == anchor)
+					{
+						arrowBox.SelectionStart = anchor;
+						arrowBox.SelectionLength = 0;
+					}
+					else
+					{
+						arrowBox.SelectionStart = Math.Min(anchor, nextActive);
+						arrowBox.SelectionLength = Math.Abs(nextActive - anchor);
+					}
+					_shiftAnchor = anchor;
+					_shiftAnchorBox = arrowBox;
+				}
+				else if (length > 0)
+				{
+					if (!isLeft)
+					{
+					start = Math.Min(arrowText.Length, start + length);
+					}
+					arrowBox.SelectionLength = 0;
+					arrowBox.SelectionStart = start;
+				}
+				else if (isLeft && start > 0)
+				{
+					arrowBox.SelectionStart = start - 1;
+				}
+				else if (!isLeft && start < arrowText.Length)
+				{
+					arrowBox.SelectionStart = start + 1;
+				}
+				if (!withShift)
+				{
+					_shiftAnchor = arrowBox.SelectionStart;
+					_shiftAnchorBox = arrowBox;
+				}
+			}
+			return;
+		}
+		case System.Windows.Forms.Keys.Home:
+		case System.Windows.Forms.Keys.End:
+		case System.Windows.Forms.Keys.Up:
+		case System.Windows.Forms.Keys.Down:
+		{
+			System.Windows.Forms.TextBox navBox = _focusedTextBox;
+			if (navBox == null || control != navBox || navBox.IsDisposed)
+			{
+				return;
+			}
+			string navText = navBox.Text ?? "";
+			int caret = Math.Max(0, Math.Min(navBox.SelectionStart, navText.Length));
+			System.Windows.Forms.Keys navKey = item & System.Windows.Forms.Keys.KeyCode;
+			int target = caret;
+			if (navKey == System.Windows.Forms.Keys.Home || (navKey == System.Windows.Forms.Keys.Up && !navBox.Multiline))
+			{
+				target = 0;
+			}
+			else if (navKey == System.Windows.Forms.Keys.End || (navKey == System.Windows.Forms.Keys.Down && !navBox.Multiline))
+			{
+				target = navText.Length;
+			}
+			else if (navKey == System.Windows.Forms.Keys.Up)
+			{
+				target = MoveLine(navText, caret, false);
+			}
+			else if (navKey == System.Windows.Forms.Keys.Down)
+			{
+				target = MoveLine(navText, caret, true);
+			}
+			navBox.SelectionLength = 0;
+			navBox.SelectionStart = target;
+			_shiftAnchor = target;
+			_shiftAnchorBox = navBox;
+			return;
+		}
 		case System.Windows.Forms.Keys.Back:
 			if (_focusedTextBox != null && _focusedTextBox.Text.Length > 0)
 			{
@@ -7271,15 +8111,41 @@ public sealed class WinFormsAppHost : IDisposable
 				string text = _focusedTextBox.Text;
 				int num = Math.Max(0, Math.Min(focusedTextBox2.SelectionStart, text.Length));
 				int num2 = Math.Max(0, Math.Min(focusedTextBox2.SelectionLength, text.Length - num));
+				string? nextBack = null;
+				int backCaret = -1;
 				if (num2 > 0)
 				{
-					focusedTextBox2.Text = text.Substring(0, num) + text.Substring(num + num2);
-					focusedTextBox2.SelectionStart = num;
+					nextBack = text.Substring(0, num) + text.Substring(num + num2);
+					backCaret = num;
 				}
 				else if (num > 0)
 				{
-					focusedTextBox2.Text = text.Substring(0, num - 1) + text.Substring(num);
-					focusedTextBox2.SelectionStart = num - 1;
+					nextBack = text.Substring(0, num - 1) + text.Substring(num);
+					backCaret = num - 1;
+				}
+				if (nextBack != null)
+				{
+					try
+					{
+						focusedTextBox2.Text = nextBack;
+					}
+					finally
+					{
+						// Same hazard as char insertion: advance the caret even if a
+						// TextChanged handler threw after storing the text.
+						try
+						{
+							if (backCaret >= 0)
+							{
+								_shiftAnchor = Math.Min(backCaret, focusedTextBox2.Text.Length);
+						_shiftAnchorBox = focusedTextBox2;
+						focusedTextBox2.SelectionStart = Math.Min(backCaret, focusedTextBox2.Text.Length);
+							}
+						}
+						catch
+						{
+						}
+					}
 				}
 				else
 				{
@@ -7287,22 +8153,195 @@ public sealed class WinFormsAppHost : IDisposable
 				}
 			}
 			return;
+		case System.Windows.Forms.Keys.Delete:
+		{
+			if (_focusedTextBox != null && _focusedTextBox.Text.Length > 0)
+			{
+				System.Windows.Forms.TextBox delBox = _focusedTextBox;
+				string delText = delBox.Text ?? "";
+				int delNum = Math.Max(0, Math.Min(delBox.SelectionStart, delText.Length));
+				int delNum2 = Math.Max(0, Math.Min(delBox.SelectionLength, delText.Length - delNum));
+				string? nextDel = null;
+				int delCaret = -1;
+				if (delNum2 > 0)
+				{
+					nextDel = delText.Substring(0, delNum) + delText.Substring(delNum + delNum2);
+					delCaret = delNum;
+				}
+				else if (delNum < delText.Length)
+				{
+					nextDel = delText.Substring(0, delNum) + delText.Substring(delNum + 1);
+					delCaret = delNum;
+				}
+				if (nextDel != null)
+				{
+					try
+					{
+						delBox.Text = nextDel;
+					}
+					finally
+					{
+						// Same hazard as Backspace: advance the caret even if a
+						// TextChanged handler threw after storing the text.
+						try
+						{
+							if (delCaret >= 0)
+							{
+								_shiftAnchor = Math.Min(delCaret, delBox.Text.Length);
+								_shiftAnchorBox = delBox;
+								delBox.SelectionStart = Math.Min(delCaret, delBox.Text.Length);
+							}
+						}
+						catch
+						{
+						}
+					}
+				}
+			}
+			return;
+		}
 		}
 		if ((alt && !item2.HasValue && key.Length == 1 && (PumpKeyFilters(control, 262, key[0], 536870912) || PumpMenuMnemonic(key[0]))) || !item2.HasValue)
 		{
 			return;
 		}
 		char valueOrDefault = item2.GetValueOrDefault();
-		if (true && !PumpKeyFilters(control, alt ? 262 : 258, valueOrDefault, (!alt) ? 1 : 536870912))
+		// sf08-keypress-link: rich-text link discriminator (host side, zero
+		// behavior change). Served gen18 types 0px with KeyDown delivered and
+		// no press activity; the silent point is this gate-or-raise fork.
+		// The fork splice marks Handled when it actually splices, so the
+		// post-raise flag tells the next served run whether the host raised
+		// into a running override (downstream storage/paint, vendor) or the
+		// gate consumed the char (route the consumer by this line's gate=).
+		bool richLink = control is System.Windows.Forms.TextBoxBase && control is not System.Windows.Forms.TextBox;
+		bool pressGate = PumpKeyFilters(control, alt ? 262 : 258, valueOrDefault, (!alt) ? 1 : 536870912);
+		if (richLink)
 		{
-			RaiseKey(s_onKeyPressMethod, control, new System.Windows.Forms.KeyPressEventArgs(valueOrDefault), "press");
+			Console.WriteLine("[Host][richkey] press gate=" + (pressGate ? "consumed" : "pass") + " char=" + (int)valueOrDefault + " target=" + DescribeControl(control));
+		}
+		if (true && !pressGate)
+		{
+			System.Windows.Forms.KeyPressEventArgs pressArgs = new System.Windows.Forms.KeyPressEventArgs(valueOrDefault);
+			RaiseKey(s_onKeyPressMethod, control, pressArgs, "press");
+			if (richLink)
+			{
+				Console.WriteLine("[Host][richkey] raised handled=" + pressArgs.Handled + " char=" + (int)valueOrDefault);
+			}
 			if (control == _focusedTextBox && _focusedTextBox != null && valueOrDefault >= ' ')
 			{
-				string text2 = _focusedTextBox.Text;
-				int num3 = Math.Max(0, Math.Min(_focusedTextBox.SelectionStart, text2.Length));
-				int num4 = Math.Max(0, Math.Min(_focusedTextBox.SelectionLength, text2.Length - num3));
-				_focusedTextBox.Text = text2.Substring(0, num3) + valueOrDefault + text2.Substring(num3 + num4);
-				_focusedTextBox.SelectionStart = num3 + 1;
+				System.Windows.Forms.TextBox targetBox = _focusedTextBox;
+				string text2 = targetBox.Text;
+				int num3 = Math.Max(0, Math.Min(targetBox.SelectionStart, text2.Length));
+				int num4 = Math.Max(0, Math.Min(targetBox.SelectionLength, text2.Length - num3));
+				string next = text2.Substring(0, num3) + valueOrDefault + text2.Substring(num3 + num4);
+				try
+				{
+					targetBox.Text = next;
+				}
+				finally
+				{
+					// A TextChanged handler may throw after the text was stored
+					// (vendor suggestion init). The caret must still advance past
+					// the inserted char or the next keystroke lands stale. The
+					// exception still propagates to the key-down reporter.
+					try
+					{
+						_shiftAnchor = Math.Min(num3 + 1, targetBox.Text.Length);
+					_shiftAnchorBox = targetBox;
+					targetBox.SelectionStart = Math.Min(num3 + 1, targetBox.Text.Length);
+					}
+					catch
+					{
+					}
+				}
+			}
+		}
+	}
+
+	private static int MoveLine(string text, int caret, bool down)
+	{
+		if (text.Length == 0)
+		{
+			return 0;
+		}
+		caret = Math.Max(0, Math.Min(caret, text.Length));
+		System.Collections.Generic.List<int> starts = new System.Collections.Generic.List<int>();
+		starts.Add(0);
+		for (int i = 0; i < text.Length; i++)
+		{
+			if (text[i] == '\n')
+			{
+				starts.Add(i + 1);
+			}
+		}
+		int line = 0;
+		for (int i = 0; i < starts.Count; i++)
+		{
+			if (starts[i] <= caret)
+			{
+				line = i;
+			}
+		}
+		int lineStart = starts[line];
+		int lineEnd = (line + 1 < starts.Count) ? starts[line + 1] - 1 : text.Length;
+		int lineLen = lineEnd - lineStart;
+		if (lineLen > 0 && text[lineEnd - 1] == '\r')
+		{
+			lineLen--;
+		}
+		int col = Math.Min(caret - lineStart, lineLen);
+		int want = line + (down ? 1 : -1);
+		want = Math.Max(0, Math.Min(want, starts.Count - 1));
+		int wantStart = starts[want];
+		int wantEnd = (want + 1 < starts.Count) ? starts[want + 1] - 1 : text.Length;
+		int wantLen = wantEnd - wantStart;
+		if (wantLen > 0 && text[wantEnd - 1] == '\r')
+		{
+			wantLen--;
+		}
+		return wantStart + Math.Min(col, wantLen);
+	}
+
+	public void CommitPaste(string? text)
+	{
+		if (string.IsNullOrEmpty(text))
+		{
+			return;
+		}
+		WasmDialogHost.AdvanceTurn();
+		WasmRepaintGate.MarkGlobalDirty();
+		System.Windows.Forms.Control control = KeyTarget();
+		System.Windows.Forms.TextBox target = _focusedTextBox;
+		RecordInput("paste", text.Length + " chars target=" + DescribeControl(control));
+		if (control == null || target == null || control != target || target.IsDisposed || target.ReadOnly)
+		{
+			return;
+		}
+		string clean = target.Multiline ? text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace("\r", "\n", StringComparison.Ordinal) : text.Replace("\r", "", StringComparison.Ordinal).Replace("\n", "", StringComparison.Ordinal);
+		if (clean.Length == 0)
+		{
+			return;
+		}
+		string current = target.Text ?? "";
+		int num = Math.Max(0, Math.Min(target.SelectionStart, current.Length));
+		int num2 = Math.Max(0, Math.Min(target.SelectionLength, current.Length - num));
+		string next = current.Substring(0, num) + clean + current.Substring(num + num2);
+		try
+		{
+			target.Text = next;
+		}
+		finally
+		{
+			// Same hazard as keystroke insertion: a TextChanged handler may
+			// throw after storing the text; the caret must still advance.
+			try
+			{
+				_shiftAnchor = Math.Min(num + clean.Length, target.Text.Length);
+				_shiftAnchorBox = target;
+				target.SelectionStart = Math.Min(num + clean.Length, target.Text.Length);
+			}
+			catch
+			{
 			}
 		}
 	}
@@ -7311,15 +8350,19 @@ public sealed class WinFormsAppHost : IDisposable
 	{
 		WasmDialogHost.AdvanceTurn();
 		WasmRepaintGate.MarkGlobalDirty();
+		KeyTrace.Mark("up:entry " + key + Mods(shift, ctrl, alt));
 		System.Windows.Forms.Keys item = MapKey(key, shift, ctrl, alt).KeyData;
 		System.Windows.Forms.Control control = KeyTarget();
 		RecordInput("keyup", key + Mods(shift, ctrl, alt) + " target=" + DescribeControl(control));
 		if (control != null)
 		{
 			WasmMouseState.SetModifiers(ToKeys(shift, ctrl, alt));
+			KeyTrace.Mark("up:pump-in");
 			if (!PumpKeyFilters(control, alt ? 261 : 257, VkForPump(item, shift, ctrl, alt), alt ? 536870912 : 0))
 			{
+				KeyTrace.Mark("up:raise-in");
 				RaiseKey(s_onKeyUpMethod, control, new System.Windows.Forms.KeyEventArgs(item), "up");
+				KeyTrace.Mark("up:raise-out");
 			}
 		}
 	}
@@ -7356,21 +8399,56 @@ public sealed class WinFormsAppHost : IDisposable
 	{
 		if (TopModalWindow(out System.Windows.Forms.Form modal) && modal != null)
 		{
-			if (_focusedControl != null && !_focusedControl.IsDisposed && IsInForm(_focusedControl, modal))
+			if (_focusedControl != null && !_focusedControl.IsDisposed && _focusedControl.Visible && IsInForm(_focusedControl, modal))
 			{
 				return _focusedControl;
 			}
 			return modal.ActiveControl ?? modal;
 		}
-		if (_focusedControl != null && !_focusedControl.IsDisposed)
+		if (_focusedControl != null && !_focusedControl.IsDisposed && _focusedControl.Visible)
 		{
-			return _focusedControl;
+			if (_activeForm != null && IsInForm(_focusedControl, _activeForm))
+			{
+				return _focusedControl;
+			}
+			if (IsInsideTrackedPopup(_focusedControl))
+			{
+				return _focusedControl;
+			}
 		}
 		if (_activeForm != null)
 		{
 			return _activeForm.ActiveControl ?? _activeForm;
 		}
 		return null;
+	}
+
+	private bool IsInsideActiveFormOrTrackedPopup(System.Windows.Forms.Control control)
+	{
+		if (_activeForm != null && IsInForm(control, _activeForm))
+		{
+			return true;
+		}
+		if (TopModalWindow(out System.Windows.Forms.Form modal) && modal != null && IsInForm(control, modal))
+		{
+			return true;
+		}
+		return IsInsideTrackedPopup(control);
+	}
+
+	private static bool IsInsideTrackedPopup(System.Windows.Forms.Control control)
+	{
+		System.Windows.Forms.Control[] popups;
+		try { popups = System.Windows.Forms.WasmPopupHost.Snapshot(); }
+		catch { return false; }
+		for (System.Windows.Forms.Control? c = control; c != null; c = c.Parent)
+		{
+			for (int i = 0; i < popups.Length; i++)
+			{
+				if (ReferenceEquals(c, popups[i])) return true;
+			}
+		}
+		return false;
 	}
 
 	private static bool IsInForm(System.Windows.Forms.Control control, System.Windows.Forms.Form form)
@@ -7584,8 +8662,9 @@ public sealed class WinFormsAppHost : IDisposable
 			Console.WriteLine("[WinFormsAppHost] Key " + kind + " error: root=" + RootCause(ex).GetType().Name + " site=" + SiteOf(RootCause(ex)) + " msg=" + (RootCause(ex).Message ?? "").Split('\n')[0]);
 			try
 			{
-				Console.WriteLine("[diagstack] " + string.Join(" <- ", from f in new StackTrace(RootCause(ex), fNeedFileInfo: false).GetFrames().Take(12)
-					select f.GetMethod()));
+				// WD-1740-IMP: null-frames diagnostic (no live method resolution over hostile frames).
+				foreach (string diagLine in FormatFirstChance(RootCause(ex), frames: null).ConsoleLines)
+				    Console.WriteLine("[diagstack] " + diagLine);
 			}
 			catch
 			{
@@ -7730,6 +8809,24 @@ public sealed class WinFormsAppHost : IDisposable
 			System.Windows.Forms.Control control = controls[num];
 			if (control.Visible && control.Enabled && control.Width > 0 && control.Height > 0 && !(control.GetType().Name == "CaptionControl"))
 			{
+								// ADGV-COMBO hookup: the open list overflows the field
+				// bounds (cf. drop-down window), so row clicks would miss.
+				// Mirrors WfWasm.Shim ComboBox.HitTestDeep overlay logic.
+				// Runs before the bounds test: an open list floats above
+				// earlier siblings; later siblings already returned above.
+				if (control is System.Windows.Forms.ComboBox fc && fc.DroppedDown)
+				{
+					bool fcSimple = false;
+					try { fcSimple = fc.DropDownStyle == System.Windows.Forms.ComboBoxStyle.Simple; } catch { }
+					if (!fcSimple)
+					{
+						(int ox, int oy, int ow, int oh) = ComboBoxBrowserHook.ForkDropDownBounds(fc);
+						int lx = x - (parentAbsX + control.Left);
+						int ly = y - (parentAbsY + control.Top);
+						if (lx >= ox && lx < ox + ow && ly >= oy && ly < oy + oh)
+							return control;
+					}
+				}
 				int num2 = parentAbsX + control.Left;
 				int num3 = parentAbsY + control.Top;
 				if (x >= num2 && x <= num2 + control.Width && y >= num3 && y <= num3 + control.Height)
@@ -7903,7 +9000,11 @@ public sealed class WinFormsAppHost : IDisposable
 		{
 			return BlitKnownLayer(canvas, text, absX, absY, w, h);
 		}
-		if (TryShiftRetained(canvas, c, value, absX, absY, w, h, rc.Value, clearFlag))
+		bool wholeDirty = (long)rectangle.Width * (long)rectangle.Height * 10 >= (long)w * (long)h * 9;
+		// Whole dirty skips the region shift attempt: its narrow math
+		// cannot win (null on >=90%), and attempting it would consume the
+		// shift the stash below needs.
+		if (!wholeDirty && TryShiftRetained(canvas, c, value, absX, absY, w, h, rc.Value, clearFlag))
 		{
 			return true;
 		}
@@ -7912,11 +9013,14 @@ public sealed class WinFormsAppHost : IDisposable
 		// surface no longer matches the noted displacement, so drop the
 		// shift instead of applying it to fresh pixels later. No-op when
 		// no shift is pending. A pure re-blit above leaves it pending.
-		WasmRepaintGate.TakeScrollShift(c, out _, out _);
-		if ((long)rectangle.Width * (long)rectangle.Height * 10 >= (long)w * (long)h * 9)
+		if (wholeDirty)
 		{
+			// Leave the shift for the fresh-raster upload decision. Whole
+			// invalidations represented by null also bypass this method;
+			// consuming directly in the full path covers both representations.
 			return false;
 		}
+		WasmRepaintGate.TakeScrollShift(c, out _, out _);
 		if (!(canvas is ICanvasRenderer { SupportsBitmapLayers: not false }))
 		{
 			if (!PaintRegionPixels(c, value, rectangle, clearFlag))
@@ -7967,6 +9071,11 @@ public sealed class WinFormsAppHost : IDisposable
 				Console.WriteLine($"[Host] ShiftNarrowNull control='{c.GetType().FullName}'");
 			return false;
 		}
+		return ApplyShiftNarrow(canvas, c, retained, absX, absY, w, h, dx, dy, narrow, clearFlag);
+	}
+
+	private static bool ApplyShiftNarrow(ICanvas canvas, System.Windows.Forms.Control c, Bitmap retained, int absX, int absY, int w, int h, int dx, int dy, Rectangle[] narrow, bool clearFlag)
+	{
 		retained.ShiftPixels(dx, dy);
 		foreach (Rectangle value in narrow)
 		{
@@ -8156,6 +9265,157 @@ public sealed class WinFormsAppHost : IDisposable
 		return pieces.ToArray();
 	}
 
+	// Stashed scroll shifts for the pixel-proof upload choice (USERFIX
+	// scroll safe option): TryPaintRegion consumes a pending shift on
+	// whole-dirty (the region path cannot win there) and parks it here;
+	// the full repaint below takes it once, next to the fresh raster,
+	// and drops it either way. Entries are tiny (dx,dy) and die
+	// on next whole-dirty/take for the same control; a disposed control
+	// simply never paints again.
+
+	// Overlap pixel proof (USERFIX scroll safe option), pure and
+	// unit-tested: with a single-axis sub-viewport shift, the fresh
+	// raster's overlap must equal the retained raster translated by the
+	// shift. RGBA row-major, stride w*4. Any doubt (sizes, zero/diagonal/
+	// oversize shift, any byte difference) returns false and the caller
+	// uploads the full bitmap as today. Edits, selection and caret pixels
+	// always fail the compare and ride the full bitmap: correctness never
+	// depends on tokens, generations or dirty provenance.
+	internal static bool ScrollOverlapEqual(byte[] fresh, byte[] old, int w, int h, int dx, int dy)
+	{
+		if (fresh is null || old is null || w <= 0 || h <= 0)
+			return false;
+		if (fresh.Length != w * h * 4 || old.Length != w * h * 4)
+			return false;
+		if ((dx == 0) == (dy == 0))
+			return false;
+		if (dx != 0 && dy != 0)
+			return false;
+		if (Math.Abs(dx) >= w || Math.Abs(dy) >= h)
+			return false;
+		if (dy != 0)
+		{
+			int rows = h - Math.Abs(dy);
+			int freshRow0 = dy < 0 ? 0 : dy;
+			int oldRow0 = dy < 0 ? -dy : 0;
+			return fresh.AsSpan(freshRow0 * w * 4, rows * w * 4)
+				.SequenceEqual(old.AsSpan(oldRow0 * w * 4, rows * w * 4));
+		}
+		int cols = w - Math.Abs(dx);
+		int freshCol0 = dx < 0 ? 0 : dx;
+		int oldCol0 = dx < 0 ? -dx : 0;
+		for (int r = 0; r < h; r++)
+		{
+			if (!fresh.AsSpan((r * w + freshCol0) * 4, cols * 4)
+				.SequenceEqual(old.AsSpan((r * w + oldCol0) * 4, cols * 4)))
+				return false;
+		}
+		return true;
+	}
+
+	// Exposed strip for a validated single-axis shift (same convention as
+	// ComputeScrollNarrow's strip piece). Call only after ScrollOverlapEqual.
+	internal static Rectangle ScrollExposedStrip(int w, int h, int dx, int dy)
+	{
+		if (dx > 0)
+			return new Rectangle(0, 0, dx, h);
+		if (dx < 0)
+			return new Rectangle(w + dx, 0, -dx, h);
+		if (dy > 0)
+			return new Rectangle(0, 0, w, dy);
+		return new Rectangle(0, h + dy, w, -dy);
+	}
+
+	// Copies one rect out of a row-major RGBA surface. Pure.
+	internal static byte[] SliceRgba(byte[] rgba, int w, Rectangle rc)
+	{
+		byte[] strip = new byte[rc.Width * rc.Height * 4];
+		for (int r = 0; r < rc.Height; r++)
+		{
+			Buffer.BlockCopy(rgba, ((rc.Y + r) * w + rc.X) * 4, strip, r * rc.Width * 4, rc.Width * 4);
+		}
+		return strip;
+	}
+
+	// Pixel-proof scroll upload choice (USERFIX scroll safe option). The
+	// vendor full repaint already produced the fresh raster; when a scroll
+	// shift was stashed for this control and the fresh overlap pixels
+	// equal the retained pixels translated by the shift, upload shift +
+	// exposed strip (cut from the fresh raster, no re-paint) instead of
+	// the full bitmap, and register the fresh surface as retained+hash so
+	// later dedupe and browser state stay aligned. Any doubt returns
+	// false: the caller uploads the full bitmap as today.
+	private static bool TryShiftUploadFromFresh(ICanvas canvas, System.Windows.Forms.Control c, byte[] fresh, int w, int h, int absX, int absY, out long stripPx, out string? vetoReason)
+	{
+		stripPx = 0;
+		vetoReason = null;
+		if (ScrollShiftUploadDisabled)
+		{
+			vetoReason = "disabled";
+			return false;
+		}
+		if (!WasmRepaintGate.TakeScrollShift(c, out int dx, out int dy))
+		{
+			vetoReason = "no-shift-taken";
+			return false;
+		}
+		if (!(canvas is ICanvasRenderer { SupportsBitmapLayers: not false } renderer))
+		{
+			vetoReason = "no-bitmap-layers";
+			return false;
+		}
+		string id = LayerIdFor(c);
+		Bitmap? retained;
+		lock (s_retainedPaint)
+		{
+			s_retainedPaint.TryGetValue(id, out retained);
+		}
+		if (retained is null || retained.Width != w || retained.Height != h)
+		{
+			vetoReason = retained is null ? "retained-miss:null" : $"retained-miss:size:{retained.Width}x{retained.Height}-vs-{w}x{h}";
+			return false;
+		}
+		byte[]? old;
+		try { old = retained.ToRgbaBytes(); }
+		catch (Exception readEx) { vetoReason = $"retained-read:{readEx.GetType().Name}"; return false; }
+		if (old is null || !ScrollOverlapEqual(fresh, old, w, h, dx, dy))
+		{
+			vetoReason = old is null ? "retained-read:null" : $"overlap-mismatch:dx={dx},dy={dy}";
+			return false;
+		}
+		Rectangle strip = ScrollExposedStrip(w, h, dx, dy);
+		byte[] stripBytes;
+		try { stripBytes = SliceRgba(fresh, w, strip); }
+		catch (Exception sliceEx) { vetoReason = $"strip-slice:{sliceEx.GetType().Name}"; return false; }
+		try
+		{
+			renderer.ShiftBitmap(id, dx, dy);
+			RecordBitmapPatch(canvas, id, stripBytes, strip, absX, absY, w, h);
+		}
+		catch (Exception shiftEx)
+		{
+			vetoReason = $"shift-patch:{shiftEx.GetType().Name}";
+			// A renderer may have queued the shift before failing the patch.
+			// Force the caller's full upload instead of hash-deduping against
+			// a browser layer whose pixels may now be partially changed.
+			lock (s_layerHash) { s_layerHash.Remove(id); }
+			return false;
+		}
+		lock (s_layerHash)
+		{
+			s_layerHash[id] = HashBytes(fresh);
+			s_layerSize[id] = (w, h);
+		}
+		if (WasmFrameCounters.PerfEnabled)
+		{
+			WasmFrameCounters.CountScrollShift();
+			Console.WriteLine($"[Host] ShiftUploadFromFresh control='{c.GetType().FullName}' dx={dx} dy={dy} strip={strip} wh={w}x{h}");
+		}
+		stripPx = (long)strip.Width * (long)strip.Height;
+		vetoReason = "ok";
+		return true;
+	}
+
 	// Post-shift verify epoch (WF-P-066): when TryShiftRetained carries for a
 	// control, the shifted+strip-painted surface is hashed into a tag. At a
 	// later whole-control repaint with stable scroll generation, the fresh
@@ -8268,6 +9528,86 @@ public sealed class WinFormsAppHost : IDisposable
 		}
 	}
 
+	// WC0732 grant (a): region-paint failure log, once per control type.
+	private static void LogRegionPaintFailure(System.Windows.Forms.Control c, Exception ex)
+	{
+		try
+		{
+			string text = c?.GetType().FullName ?? c?.GetType().Name ?? "?";
+			if (s_regionPaintLogged.TryAdd(text, 0))
+			{
+				Console.WriteLine($"[WinFormsAppHost] Region-paint failed for {text}: TYPE={ex.GetType().FullName} MSG={(ex.Message ?? "").Split('\n')[0]} site={SiteOf(ex)}");
+			}
+		}
+		catch
+		{
+		}
+	}
+
+	// WC1119 grant: ShowPopup-path suppress log. Name-gated to the
+	// ComboBoxAdv popup family so unrelated dropdown throws stay quiet;
+	// never throws; behavior unchanged (caller still returns false).
+	private static void LogSuppressedPopupException(System.Windows.Forms.Control control, Exception ex)
+	{
+		try
+		{
+			string text = control?.GetType().FullName ?? "?";
+			if (!text.Contains("ComboBoxAdv", System.StringComparison.Ordinal)
+				&& !text.Contains("ComboDropDown", System.StringComparison.Ordinal))
+			{
+				return;
+			}
+			Console.WriteLine($"[SUPPRESSED-EXC] ShowPopup suppressed for {text}: {ex}");
+		}
+		catch
+		{
+		}
+	}
+
+	// WC1241 grant: host Label-branch rect census. Name-gated to Label
+	// (the branch already is); once per label shape with a small cap
+	// so per-frame repaints stay quiet; never throws; behavior unchanged.
+	// Keyed on type+name+rect+font (NOT text): dynamic texts (counters,
+	// clocks) would otherwise mint unbounded keys and exhaust the cap
+	// mid-session, silencing the log process-wide (seen in-suite at 64).
+	private static void LogLabelRect(System.Windows.Forms.Control label, int x, int y, int w, int h, string fontCss)
+	{
+		try
+		{
+			if (s_labelRectLogged.Count >= 64) return;
+			string text = label?.Text ?? "";
+			string preview = text.Length > 24 ? text.Substring(0, 24) : text;
+			string shape = (label?.GetType().Name ?? "?") + "|" + (label?.Name ?? "")
+				+ "|" + x + "," + y + " " + w + "x" + h + "|" + (fontCss ?? "");
+			if (!s_labelRectLogged.TryAdd(shape, 0)) return;
+			Console.WriteLine($"[LABEL-RECT] '{preview}' rect={x},{y} {w}x{h} font={fontCss} h=Left v=Middle");
+		}
+		catch
+		{
+		}
+	}
+
+	// WC1348 grant (1): fork-combo open-list geometry log. Once per
+	// combo+rows+height shape with a small cap so per-frame repaints
+	// stay quiet; name-gated (anonymous combos stay out); never throws;
+	// behavior unchanged (pure observation of the overlay paint).
+	private static void LogComboPopup(System.Windows.Forms.ComboBox combo, int h)
+	{
+		try
+		{
+			if (s_comboPopupLogged.Count >= 64) return;
+			string name = combo?.Name ?? "";
+			if (string.IsNullOrEmpty(name)) return;
+			int rows = 0;
+			try { rows = combo!.Items.Count; } catch { }
+			if (!s_comboPopupLogged.TryAdd(name + "|" + rows + "x" + h, 0)) return;
+			Console.WriteLine($"[COMBO-POPUP] '{name}' rows={rows} listH={h}");
+		}
+		catch
+		{
+		}
+	}
+
 	private static bool PaintRegionPixels(System.Windows.Forms.Control c, Bitmap retained, Rectangle rc, bool clearFlag)
 	{
 		if ((object)s_onPaintMethod == null || (object)s_onPaintBackgroundMethod == null)
@@ -8292,8 +9632,12 @@ public sealed class WinFormsAppHost : IDisposable
 			}
 			return retained.ClearVersion == clearVersion;
 		}
-		catch
+		catch (Exception ex)
 		{
+			// WC0732 grant (a): the silent hole — log site+type once per
+			// control type so a per-frame paint throw stays diagnosable
+			// without flooding the log. Behavior unchanged: still false.
+			LogRegionPaintFailure(c, ex);
 			return false;
 		}
 	}
@@ -8642,6 +9986,10 @@ public sealed class WinFormsAppHost : IDisposable
 			return false;
 		}
 		Type type = c.GetType();
+		if (IsRenderedAsButton(c))
+		{
+			return false;
+		}
 		if (!TypeSelfPaints(type) && c.BackgroundImage == null)
 		{
 			return false;
@@ -8861,10 +10209,18 @@ public sealed class WinFormsAppHost : IDisposable
 			{
 				Console.WriteLine("[EpochGate] DRAIN frame=" + WasmFrameCounters.FrameSeq + " ctrl=" + c.GetType().Name + " tag=miss global=" + s_frameGlobal);
 			}
-			RecordBitmap(c, canvas, array, w, h, absX, absY, w, h);
+			if (!TryShiftUploadFromFresh(canvas, c, array, w, h, absX, absY, out long stripPx, out string? shiftVeto))
+			{
+				if (WasmFrameCounters.PerfEnabled)
+					Console.WriteLine($"[Host] ShiftUpload veto={shiftVeto} control='{c.GetType().FullName}' wh={w}x{h}");
+				RecordBitmap(c, canvas, array, w, h, absX, absY, w, h);
+			}
 			if (WasmFrameCounters.PerfEnabled)
 			{
-				WasmFrameCounters.CountRasterFull((long)w * (long)h);
+				if (stripPx > 0)
+					WasmFrameCounters.CountRasterRegion(stripPx);
+				else
+					WasmFrameCounters.CountRasterFull((long)w * (long)h);
 			}
 			StoreRetainedPaint(c, bitmap);
 			return true;

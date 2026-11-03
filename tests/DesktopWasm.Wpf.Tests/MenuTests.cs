@@ -397,7 +397,7 @@ public sealed class MenuTests
     }
 
     [Fact]
-    public void Baml_menu_rejects_non_menuitem_child()
+    public void Baml_menu_rejects_non_row_child()
     {
         // Same doc but the File submenu holds a well-known Grid (-254).
         var bytes = MenuBytes();
@@ -410,7 +410,7 @@ public sealed class MenuTests
         patch[at + 2] = 0xFF;
         using var stream = new MemoryStream(patch);
         var ex = Assert.Throws<XamlLoadException>(() => XamlLoader.LoadComponent<Window>(stream));
-        Assert.Contains("v1 supports MenuItem entries only", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("v1 supports MenuItem/Separator entries only", ex.Message, StringComparison.Ordinal);
     }
 
     private static int FindNth(byte[] hay, byte[] needle, int n)

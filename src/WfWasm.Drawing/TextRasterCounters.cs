@@ -11,7 +11,6 @@ namespace System.Drawing;
 public static class TextRasterCounters
 {
     public static bool PerfEnabled;
-
     public static long DrawCalls;
     public static long DrawChars;
     public static long DrawPx;

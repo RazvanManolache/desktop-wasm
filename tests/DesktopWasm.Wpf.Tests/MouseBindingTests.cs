@@ -96,6 +96,24 @@ public sealed class MouseBindingTests
         Assert.IsType<MouseBinding>(binding.Clone());
     }
 
+    [Fact]
+    public void Button_args_public_ctor_matches_native_down_shape()
+    {
+        // Native parity for the converted ListBoxAssist re-raise shape
+        // (MouseDevice, timestamp, button): down-shaped like native
+        // construction, and recognized by press gestures.
+        var args = new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left);
+        Assert.Equal(MouseButton.Left, args.ChangedButton);
+        Assert.Equal(MouseButtonState.Pressed, args.ButtonState);
+        Assert.Equal(1, args.ClickCount);
+        Assert.Equal(MouseButtonState.Pressed, args.LeftButton);
+        Assert.Equal(MouseButtonState.Released, args.RightButton);
+        Assert.True(new MouseGesture(MouseAction.LeftClick).Matches(new Button(), args));
+        var right = new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Right);
+        Assert.Equal(MouseButtonState.Released, right.LeftButton);
+        Assert.Equal(MouseButtonState.Pressed, right.RightButton);
+    }
+
     private static MouseButtonEventArgs PressArgs(MouseButton button, int clicks = 1) =>
         new(Mouse.PrimaryDevice, 0,
             MouseButtonState.Released, MouseButtonState.Released, MouseButtonState.Released,

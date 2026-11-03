@@ -305,8 +305,12 @@ public sealed class ResourcesTests
     [Fact]
     public void Template_static_resource_defers_past_hydration_order()
     {
-        // WPFGallery ControlExample shape: a template parsed from an early
-        // merged dictionary references a style that lands later.
+        // Native parity (B-defer): a template-internal StaticResource
+        // resolves in its defining-dictionary scope, so a key from a LATER
+        // sibling dictionary is invisible even though the live application
+        // scope carries it. The application load succeeds (native
+        // B-DEFER-LOAD), but applying the template fails naming the key
+        // (native B-DEFER-LOADCONTENT / hosted apply).
         var previous = Application.Current;
         try
         {
@@ -333,11 +337,74 @@ public sealed class ResourcesTests
                 "</Application.Resources>";
             using var reader = System.Xml.XmlReader.Create(new System.IO.StringReader(xaml));
             reader.MoveToContent();
-            XamlLoader.HydrateApplicationResources(app, reader);
+            var loadEx = Record.Exception(() => XamlLoader.HydrateApplicationResources(app, reader));
+            Assert.Null(loadEx);
             var style = Assert.IsType<Style>(app.Resources["WithTemplate"]);
             var template = Assert.IsType<ControlTemplate>(Assert.IsType<Setter>(style.Setters[0]).Value);
-            var text = Assert.IsType<TextBlock>(template.VisualTree);
-            Assert.Equal(20.0, text.FontSize);
+            Assert.IsType<TextBlock>(template.VisualTree);
+            var late = Assert.IsType<Style>(app.Resources["LateStyle"]);
+            Assert.Single(late.Setters);
+            var host = new Button();
+            var ex = Assert.Throws<System.Reflection.TargetInvocationException>(() =>
+            {
+                host.Style = style;
+                host.ApplyTemplate();
+            });
+            var inner = Assert.IsType<InvalidOperationException>(ex.InnerException);
+            Assert.Contains("LateStyle", inner.Message, StringComparison.Ordinal);
+            Assert.Contains("template scope", inner.Message, StringComparison.Ordinal);
+        }
+        finally { RestoreApp(previous); }
+    }
+
+    [Fact]
+    public void Template_static_resource_resolves_earlier_sibling_style()
+    {
+        // Native parity (UNSTALL gallery adjudication): a template-internal
+        // StaticResource Style resolves when its key lands in the defining
+        // dictionary or an EARLIER sibling merge (the gallery's PageStyles
+        // before PageHeader), even though the live application scope carries
+        // it either way. Only LATER-sibling keys fail at apply (B-defer).
+        // Verified against the native WPF oracle in reports/UNSTALL-wpf.md
+        // (gallery order applies with FontSize 28; reversed order fails).
+        var previous = Application.Current;
+        try
+        {
+            var app = UseApp();
+            app.RegisterPackResource("pack://application:,,,/EarlyStyle.xaml",
+                "<ResourceDictionary " + Ns + ">" +
+                "<Style x:Key=\"EarlyStyle\" TargetType=\"TextBlock\">" +
+                "<Setter Property=\"FontSize\" Value=\"20\" />" +
+                "</Style></ResourceDictionary>");
+            app.RegisterPackResource("pack://application:,,,/LateTemplate.xaml",
+                "<ResourceDictionary " + Ns + ">" +
+                "<Style x:Key=\"WithEarlierTemplate\" TargetType=\"Button\">" +
+                "<Setter Property=\"Template\"><Setter.Value>" +
+                "<ControlTemplate TargetType=\"{x:Type Button}\">" +
+                "<TextBlock x:Name=\"Inner\" Style=\"{StaticResource EarlyStyle}\" />" +
+                "</ControlTemplate></Setter.Value></Setter></Style>" +
+                "</ResourceDictionary>");
+            const string xaml =
+                "<Application.Resources " + Ns + ">" +
+                "<ResourceDictionary><ResourceDictionary.MergedDictionaries>" +
+                "<ResourceDictionary Source=\"pack://application:,,,/EarlyStyle.xaml\"/>" +
+                "<ResourceDictionary Source=\"pack://application:,,,/LateTemplate.xaml\"/>" +
+                "</ResourceDictionary.MergedDictionaries></ResourceDictionary>" +
+                "</Application.Resources>";
+            using var reader = System.Xml.XmlReader.Create(new System.IO.StringReader(xaml));
+            reader.MoveToContent();
+            var loadEx = Record.Exception(() => XamlLoader.HydrateApplicationResources(app, reader));
+            Assert.Null(loadEx);
+            var style = Assert.IsType<Style>(app.Resources["WithEarlierTemplate"]);
+            var host = new Button();
+            var applyEx = Record.Exception(() =>
+            {
+                host.Style = style;
+                host.ApplyTemplate();
+            });
+            Assert.Null(applyEx);
+            var inner = Assert.IsType<TextBlock>(host.Template?.FindName("Inner", host));
+            Assert.Equal(20, inner.FontSize);
         }
         finally { RestoreApp(previous); }
     }
@@ -497,11 +564,14 @@ public sealed class ResourcesTests
                 "<Window " + Ns + "><Window.Resources><ResourceDictionary>" +
                 "<String>NoKey</String></ResourceDictionary></Window.Resources></Window>"));
             Assert.Contains("needs x:Key", ex.Message, StringComparison.Ordinal);
-            // Unsupported entry type.
-            ex = Assert.Throws<XamlLoadException>(() => XamlLoader.Load(
+            // Empty keyed Style is valid (native parity: B-VALIDATE-B accepts
+            // <Style x:Key="S"/> with no TargetType and no setters).
+            var accepted = (Window)XamlLoader.Load(
                 "<Window " + Ns + "><Window.Resources><ResourceDictionary>" +
-                "<Style x:Key=\"S\"/></ResourceDictionary></Window.Resources></Window>"));
-            Assert.Contains("not a supported resource entry", ex.Message, StringComparison.Ordinal);
+                "<Style x:Key=\"S\"/></ResourceDictionary></Window.Resources></Window>").Root;
+            var emptyStyle = Assert.IsType<Style>(accepted.Resources["S"]);
+            Assert.Empty(emptyStyle.Setters);
+            Assert.Empty(emptyStyle.Triggers);
             // Duplicate key.
             ex = Assert.Throws<XamlLoadException>(() => XamlLoader.Load(
                 "<Window " + Ns + "><Window.Resources><ResourceDictionary>" +
@@ -602,8 +672,9 @@ public sealed class ResourcesTests
     [Fact]
     public void Baml_complex_properties_stay_precise_boundary()
     {
-        // PropertyComplexStart (0x07) is the record real resource setters
-        // compile to; v1 keeps it a precise error (resources are loose-XAML).
+        // PropertyComplexStart (0x07) parses; a malformed complex frame
+        // desyncs at the first undecodable byte, which stays a precise
+        // error naming the record (never a silent skip or raw crash).
         var bytes = new BamlBuilder()
             .Header().Doc()
             .TypeInfo(0, 0, "Probe.MainWindow")
@@ -612,7 +683,7 @@ public sealed class ResourcesTests
             .End().DocEnd().ToArray();
         using var stream = new MemoryStream(bytes);
         var ex = Assert.Throws<XamlLoadException>(() => XamlLoader.LoadComponent<Window>(stream));
-        Assert.Contains("0x07", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("unsupported BAML record 0x00", ex.Message, StringComparison.Ordinal);
     }
 
     private sealed class BamlBuilder

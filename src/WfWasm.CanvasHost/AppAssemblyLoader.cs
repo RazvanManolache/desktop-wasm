@@ -1,12 +1,121 @@
 using System.Collections.Concurrent;
 using System.Net.Http.Json;
 using System.Reflection;
+using System.Reflection.Metadata;
 using System.Security.Cryptography;
 using System.Runtime.InteropServices.JavaScript;
 using Microsoft.JSInterop;
 using WfWasm.Drawing;
 
 namespace WfWasm.CanvasHost;
+
+public sealed class AppLaunchException : InvalidOperationException
+{
+    public string App { get; }
+    public AppLaunchException(string app, string message, Exception innerException)
+        : base(message, innerException)
+    {
+        App = app;
+    }
+}
+
+public sealed record PrefetchTelemetrySnapshot(
+    int TotalPrefetches,
+    int SuccessfulPrefetches,
+    int FailedPrefetches,
+    int CacheHits,
+    int CacheMisses,
+    long TotalBytesPrefetched,
+    double TotalLatencyMs,
+    double AverageLatencyMs,
+    double MinLatencyMs,
+    double MaxLatencyMs,
+    double CacheHitRate)
+{
+    public static PrefetchTelemetrySnapshot Empty => new(0, 0, 0, 0, 0, 0, 0.0, 0.0, 0.0, 0.0, 0.0);
+}
+
+public sealed class PrefetchTelemetryTracker
+{
+    private readonly object _lock = new();
+    private int _totalPrefetches;
+    private int _successfulPrefetches;
+    private int _failedPrefetches;
+    private int _cacheHits;
+    private int _cacheMisses;
+    private long _totalBytes;
+    private double _totalLatencyMs;
+    private double _minLatencyMs = double.MaxValue;
+    private double _maxLatencyMs = 0.0;
+
+    public void RecordTiming(double elapsedMs, long bytes, bool success)
+    {
+        lock (_lock)
+        {
+            _totalPrefetches++;
+            if (success)
+            {
+                _successfulPrefetches++;
+                _totalBytes += bytes;
+                _totalLatencyMs += elapsedMs;
+                if (elapsedMs < _minLatencyMs) _minLatencyMs = elapsedMs;
+                if (elapsedMs > _maxLatencyMs) _maxLatencyMs = elapsedMs;
+            }
+            else
+            {
+                _failedPrefetches++;
+            }
+        }
+    }
+
+    public void RecordHit(bool hit)
+    {
+        lock (_lock)
+        {
+            if (hit) _cacheHits++;
+            else _cacheMisses++;
+        }
+    }
+
+    public PrefetchTelemetrySnapshot GetSnapshot()
+    {
+        lock (_lock)
+        {
+            int totalLookups = _cacheHits + _cacheMisses;
+            double hitRate = totalLookups > 0 ? (double)_cacheHits / totalLookups : 0.0;
+            double avgLatency = _successfulPrefetches > 0 ? _totalLatencyMs / _successfulPrefetches : 0.0;
+            double min = _successfulPrefetches > 0 && _minLatencyMs != double.MaxValue ? _minLatencyMs : 0.0;
+            return new PrefetchTelemetrySnapshot(
+                _totalPrefetches,
+                _successfulPrefetches,
+                _failedPrefetches,
+                _cacheHits,
+                _cacheMisses,
+                _totalBytes,
+                Math.Round(_totalLatencyMs, 3),
+                Math.Round(avgLatency, 3),
+                Math.Round(min, 3),
+                Math.Round(_maxLatencyMs, 3),
+                Math.Round(hitRate, 4));
+        }
+    }
+
+    public void Reset()
+    {
+        lock (_lock)
+        {
+            _totalPrefetches = 0;
+            _successfulPrefetches = 0;
+            _failedPrefetches = 0;
+            _cacheHits = 0;
+            _cacheMisses = 0;
+            _totalBytes = 0;
+            _totalLatencyMs = 0.0;
+            _minLatencyMs = double.MaxValue;
+            _maxLatencyMs = 0.0;
+        }
+    }
+}
 
 public static partial class AppAssemblyLoader
 {
@@ -23,6 +132,9 @@ public static partial class AppAssemblyLoader
     private static readonly Dictionary<string, byte[]> Bytes = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, Task<(Assembly Assembly, AppManifest Manifest)>> Apps = new(StringComparer.OrdinalIgnoreCase);
     private static readonly ConcurrentDictionary<string, Lazy<Task<byte[]>>> Fetches = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly ConcurrentDictionary<string, Assembly> LoadedByName = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly ConcurrentDictionary<string, string> LastAppError = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly ConcurrentDictionary<string, List<string>> AppResolutionFailures = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, ContentSet> Content = new(StringComparer.OrdinalIgnoreCase);
     private static readonly LinkedList<string> ContentLru = new();
     private const long ContentBudget = 128 * 1024 * 1024;
@@ -32,25 +144,189 @@ public static partial class AppAssemblyLoader
     private static readonly Dictionary<string, HashSet<string>> UsedByApp = new(StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> Resolving = new(StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> Missing = new(StringComparer.OrdinalIgnoreCase);
-    // The background warmup Task.Run is fire-and-forget: keep it rooted
-    // for the session. An unrooted fetch chain whose Task is collected
-    // before the browser completes it dies framelessly in
-    // JavaScriptExports.CompleteTask and takes the runtime down (exit 1).
-    private static Task? s_warmup;
-
     [JSImport("globalThis.wfwasmFetchAssembly")]
     private static partial byte[] FetchRequestedAssembly(string app, string name);
 
-private static int WarmPriority(string stem) =>
-stem.Equals("Mono.Cecil", StringComparison.OrdinalIgnoreCase) ? 0
-: stem.StartsWith("PaintDotNet.Effects", StringComparison.OrdinalIgnoreCase) ? 1
-: 2;
+    public static string? GetAppLoadError(string app) => LastAppError.TryGetValue(app, out string? err) ? err : null;
 
-private static string Key(string name)
+    public static IReadOnlyList<string> GetResolutionFailures(string app)
+    {
+        lock (Gate)
+        {
+            return AppResolutionFailures.TryGetValue(app, out var list) ? list.ToArray() : Array.Empty<string>();
+        }
+    }
+
+    public static void ClearAppErrors(string app)
+    {
+        LastAppError.TryRemove(app, out _);
+        lock (Gate)
+        {
+            AppResolutionFailures.TryRemove(app, out _);
+        }
+    }
+
+    private static readonly PrefetchTelemetryTracker GlobalTelemetry = new();
+    private static readonly ConcurrentDictionary<string, PrefetchTelemetryTracker> AppTelemetry = new(StringComparer.OrdinalIgnoreCase);
+
+    public static PrefetchTelemetrySnapshot GetPrefetchTelemetry(string? app = null)
+    {
+        if (!string.IsNullOrEmpty(app) && AppTelemetry.TryGetValue(app, out var tracker))
+            return tracker.GetSnapshot();
+        return GlobalTelemetry.GetSnapshot();
+    }
+
+    public static void ResetPrefetchTelemetry(string? app = null)
+    {
+        if (string.IsNullOrEmpty(app))
+        {
+            GlobalTelemetry.Reset();
+            foreach (var tracker in AppTelemetry.Values) tracker.Reset();
+            AppTelemetry.Clear();
+        }
+        else if (AppTelemetry.TryGetValue(app, out var tracker))
+        {
+            tracker.Reset();
+        }
+    }
+
+    internal static void RecordPrefetchTiming(string? app, double elapsedMs, long bytes, bool success)
+    {
+        GlobalTelemetry.RecordTiming(elapsedMs, bytes, success);
+        if (!string.IsNullOrEmpty(app))
+            AppTelemetry.GetOrAdd(app, _ => new PrefetchTelemetryTracker()).RecordTiming(elapsedMs, bytes, success);
+    }
+
+    internal static void RecordResolutionHit(string? app, bool hit)
+    {
+        GlobalTelemetry.RecordHit(hit);
+        if (!string.IsNullOrEmpty(app))
+            AppTelemetry.GetOrAdd(app, _ => new PrefetchTelemetryTracker()).RecordHit(hit);
+    }
+
+    internal static void RecordPrefetchTimingForTest(string app, double elapsedMs, long bytes, bool success)
+        => RecordPrefetchTiming(app, elapsedMs, bytes, success);
+
+    internal static void RecordResolutionHitForTest(string app, bool hit)
+        => RecordResolutionHit(app, hit);
+
+    internal static void RecordResolutionFailure(string? app, string name, Exception ex)
+    {
+        if (app is not null)
+        {
+            lock (Gate)
+            {
+                Missing.Add(app + "/" + name);
+                if (!AppResolutionFailures.TryGetValue(app, out var list))
+                    AppResolutionFailures[app] = list = new List<string>();
+                list.Add(name);
+            }
+            LastAppError[app] = $"The application '{app}' is missing dependency '{name}'.";
+            try { BrowserErrorReporter.Report("assembly-resolve", ex); } catch { }
+        }
+    }
+
+    internal static void RecordResolutionFailureForTest(string app, string name, Exception ex)
+        => RecordResolutionFailure(app, name, ex);
+
+    public static string FormatUserFacingLaunchError(string app, Exception ex)
+    {
+        Exception root = ex.GetBaseException();
+        string rootMsg = root.Message ?? "";
+
+        if (root is HttpRequestException || rootMsg.Contains("404") || rootMsg.Contains("Response status code"))
+            return $"The application assets for '{app}' could not be downloaded from the server.";
+
+        if (root is InvalidDataException || rootMsg.Contains("integrity check failed"))
+            return $"An integrity check failed for one of the application files in '{app}'.";
+
+        if (root is PlatformNotSupportedException || rootMsg.Contains("PlatformNotSupportedException"))
+            return "This app needs Windows-only features that aren't available in the browser.";
+
+        if (root is FileNotFoundException || root is TypeLoadException || rootMsg.Contains("Could not load file or assembly"))
+            return $"The application '{app}' is missing a required dependency.";
+
+        if (root is InvalidOperationException && rootMsg.StartsWith("No manifest for app", StringComparison.OrdinalIgnoreCase))
+            return $"The application manifest for '{app}' is not available.";
+
+        return $"Could not start '{app}'. Technical detail is in App errors.";
+    }
+
+    internal static string Key(string name)
     {
         string leaf = Path.GetFileName(name.Replace('\\', '/'));
         return leaf.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) || leaf.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
             ? leaf[..^4] : leaf;
+    }
+
+    internal static string ExtractSimpleName(string fullName)
+    {
+        if (string.IsNullOrEmpty(fullName)) return fullName;
+        int comma = fullName.IndexOf(',');
+        return comma >= 0 ? fullName[..comma].Trim() : fullName.Trim();
+    }
+
+    internal static bool VerifySha256Hex(ReadOnlySpan<byte> data, string? expectedHex)
+    {
+        if (string.IsNullOrEmpty(expectedHex) || expectedHex.Length != 64) return false;
+        Span<byte> actualSha = stackalloc byte[32];
+        SHA256.HashData(data, actualSha);
+        Span<byte> expectedSha = stackalloc byte[32];
+        for (int i = 0; i < 32; i++)
+        {
+            int hi = HexVal(expectedHex[i * 2]);
+            int lo = HexVal(expectedHex[i * 2 + 1]);
+            if ((hi | lo) < 0) return false;
+            expectedSha[i] = (byte)((hi << 4) | lo);
+        }
+        return CryptographicOperations.FixedTimeEquals(actualSha, expectedSha);
+
+        static int HexVal(char c) => c switch
+        {
+            >= '0' and <= '9' => c - '0',
+            >= 'a' and <= 'f' => c - 'a' + 10,
+            >= 'A' and <= 'F' => c - 'A' + 10,
+            _ => -1
+        };
+    }
+
+    internal static List<string> ReadPeAssemblyReferences(byte[] peBytes)
+    {
+        var result = new List<string>();
+        try
+        {
+            using var stream = new MemoryStream(peBytes, writable: false);
+            using var pe = new System.Reflection.PortableExecutable.PEReader(stream);
+            if (!pe.HasMetadata) return result;
+            var reader = pe.GetMetadataReader();
+            foreach (var handle in reader.AssemblyReferences)
+            {
+                var ar = reader.GetAssemblyReference(handle);
+                string refName = reader.GetString(ar.Name);
+                if (!string.IsNullOrEmpty(refName))
+                    result.Add(refName);
+            }
+        }
+        catch { }
+        return result;
+    }
+
+    private static Assembly? FindLoadedAssembly(string name)
+    {
+        if (LoadedByName.TryGetValue(name, out var asm)) return asm;
+        var assemblies = AppDomain.CurrentDomain.GetAssemblies();
+        for (int i = 0; i < assemblies.Length; i++)
+        {
+            var a = assemblies[i];
+            string? n = a.GetName().Name;
+            if (n is not null)
+            {
+                LoadedByName.TryAdd(n, a);
+                if (string.Equals(n, name, StringComparison.OrdinalIgnoreCase))
+                    asm = a;
+            }
+        }
+        return asm;
     }
 
     private static void HookResolving()
@@ -82,9 +358,9 @@ private static string Key(string name)
 
     private static Assembly? ResolveRequestedAssembly(object? sender, ResolveEventArgs args)
     {
-        string? name = new AssemblyName(args.Name).Name;
+        string name = ExtractSimpleName(args.Name);
         /* resolve probe removed (misses still log "treating as missing") */
-        if (name is null) return null;
+        if (string.IsNullOrEmpty(name)) return null;
         string? app;
         byte[]? bytes;
         lock (Gate)
@@ -93,6 +369,7 @@ private static string Key(string name)
             if (!Resolving.Add(name)) return null;
             Bytes.TryGetValue(name, out bytes);
         }
+        RecordResolutionHit(app, bytes is not null);
         try
         {
             if (bytes is null)
@@ -107,8 +384,7 @@ private static string Key(string name)
                 // loaded same-name assembly can only unify, and the
                 // on-demand model is name-keyed anyway (no side-by-side).
                 string localName = WellKnownForkAssembly(name) ?? name;
-                var loaded = AppDomain.CurrentDomain.GetAssemblies().FirstOrDefault(a =>
-                    string.Equals(a.GetName().Name, localName, StringComparison.OrdinalIgnoreCase));
+                var loaded = FindLoadedAssembly(localName);
                 if (loaded is not null)
                 {
                     if (app is not null) NoteUsed(app, name);
@@ -126,6 +402,7 @@ private static string Key(string name)
             try
             {
                 var loadedAsm = Assembly.Load(bytes);
+                LoadedByName[name] = loadedAsm;
                 try { Console.WriteLine($"[AppAssemblyLoader] Loaded {app}/{name}."); } catch { }
                 /* load beacon removed (endpoint ignored the flag; saved a manifest regen per assembly) */
                 return loadedAsm;
@@ -137,17 +414,19 @@ private static string Key(string name)
                 // throws NIE on ReflectionOnly during Load. Convert the
                 // throwing load into a catchable miss (null) instead of
                 // propagating; the request site sees FileNotFound.
+                RecordResolutionFailure(app, name, ex);
                 Console.WriteLine($"[AppAssemblyLoader] Load of {app}/{name} threw {ex.GetType().Name}, treating as missing.");
                 return null;
             }
         }
-        catch
+        catch (Exception ex)
         {
             // Fail closed for the whole handler, not just the load: the
             // synchronous demand fetch above runs outside the inner try,
             // and anything it throws would otherwise escape the handler
             // and kill the runtime (exit 1). The request site sees a miss.
-            try { Console.WriteLine("[AppAssemblyLoader] Resolve failed, treating as missing."); } catch { }
+            RecordResolutionFailure(app, name, ex);
+            try { Console.WriteLine($"[AppAssemblyLoader] Resolve of {app}/{name} failed: {ex.GetType().Name}, treating as missing."); } catch { }
             return null;
         }
         finally { lock (Gate) Resolving.Remove(name); }
@@ -185,6 +464,7 @@ private static string Key(string name)
     public static async Task<Assembly> EnsureAppAsync(string app, HttpClient http, IJSRuntime? js = null)
     {
         HookResolving();
+        ClearAppErrors(app);
         Task<(Assembly Assembly, AppManifest Manifest)> task;
         bool reused;
         lock (Gate)
@@ -195,12 +475,15 @@ private static string Key(string name)
         }
         (Assembly Assembly, AppManifest Manifest) loaded;
         try { loaded = await task; }
-        catch
+        catch (Exception ex)
         {
             // Faults must not poison a session: the next selection can retry.
             lock (Gate)
                 if (Apps.TryGetValue(app, out var current) && ReferenceEquals(current, task)) Apps.Remove(app);
-            throw;
+            string userFacing = FormatUserFacingLaunchError(app, ex);
+            LastAppError[app] = userFacing;
+            BrowserErrorReporter.Report("app-load", ex);
+            throw new AppLaunchException(app, userFacing, ex);
         }
         if (reused)
         {
@@ -223,16 +506,6 @@ private static string Key(string name)
     {
         var manifest = await http.GetFromJsonAsync<AppManifest>("/api/appmanifest?app=" + Uri.EscapeDataString(app))
             ?? throw new InvalidOperationException("No manifest for app '" + app + "'.");
-        // Kick the browser-cache warm first (zero WASM-thread cost): the
-        // sync demand hook hits the same appresolve URLs, so each fault
-        // becomes a cache hit instead of a transform + download stall.
-        try
-        {
-            if (js is not null && manifest.prefetch is { Count: > 0 })
-                await js.InvokeVoidAsync("wfwasmPrefetch", app,
-                    manifest.prefetch.Select(f => Key(f.name)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
-        }
-        catch { }
         await PhaseAsync(js, "Downloading app entry assembly");
         // Even a legacy manifest containing a folder/catalog cannot cause a
         // preload: only the entry is fetched here. Everything else is requested
@@ -246,65 +519,84 @@ private static string Key(string name)
         catch { Fetches.TryRemove(new KeyValuePair<string, Lazy<Task<byte[]>>>(file.sha256, fetch)); throw; }
         lock (Gate) Bytes[Key(file.name)] = entryBytes;
         NoteUsed(app, Key(file.name));
-await ReportAsync(js, entryBytes.Length, !ReferenceEquals(fetch, lazy));
-// Awaited killer-set prefetch: these assemblies are demanded late by
-// PDN boot (effect discovery + Cecil scanning) through the synchronous
-// demand hook, whose sync-XHR return correlates with the post-load
-// session death. Awaiting them here (HttpClient path, ~1.5MB
-// transformed) guarantees warmed Bytes before first paint, so the
-// hook finds them cached and never calls sync XHR for them. Failures
-// fall through to the fire-and-forget warmup + demand hook below.
-try
-{
-if (manifest.prefetch is { Count: > 0 })
-{
-string[] killers = ["Mono.Cecil", "PaintDotNet.Effects", "PaintDotNet.Effects.Legacy", "PaintDotNet.Effects.Core", "PaintDotNet.Effects.Gpu"];
-var killTasks = new System.Collections.Generic.List<Task>();
-foreach (string k in killers)
-{
-var kf = manifest.prefetch.FirstOrDefault(x => Key(x.name).Equals(k, StringComparison.OrdinalIgnoreCase));
-if (kf is null) continue;
-killTasks.Add(PrefetchOneAsync(http, kf));
-}
-await Task.WhenAll(killTasks);
-}
-}
-catch { }
-        // Warm the manifest closure in parallel without delaying first
-        // paint: demand faults that arrive before warmup completes use the
-        // sync hook as before. Fire-and-forget (all failures swallowed —
-        // the hook stays the fallback); integrity comes from the response
-        // header, never from a blind store.
-        if (manifest.prefetch is { Count: > 0 })
+        await ReportAsync(js, entryBytes.Length, !ReferenceEquals(fetch, lazy));
+        // One async, verified bootstrap lane. The previous JS warmup and
+        // managed warmup used different URLs for the same modules, then sync
+        // resolution downloaded them again while the UI thread was blocked.
+        // Store only bytes here; assembly activation order stays demand-driven.
+        var loadedNames = AppDomain.CurrentDomain.GetAssemblies()
+            .Select(a => a.GetName().Name ?? "").ToHashSet(StringComparer.OrdinalIgnoreCase);
+        bool paint = app.Equals("paintnet", StringComparison.OrdinalIgnoreCase);
+        var bootstrap = (manifest.prefetch ?? []).Where(f =>
         {
-// Priority warmup: historically late, death-adjacent
-// on-demand assemblies (effect discovery + Cecil scanning)
-// arrive first, so the boot phase that demands them finds
-// warmed bytes instead of falling back to the synchronous
-// demand hook. Stable order otherwise preserved.
-var warm = manifest.prefetch
-.Where(f => !Key(f.name).Equals(manifest.entry, StringComparison.OrdinalIgnoreCase))
-.OrderBy(f => WarmPriority(Key(f.name)))
-.ToList();
-            s_warmup = Task.Run(async () =>
-            {
-                using var gate = new SemaphoreSlim(6);
-                long warmed = 0;
-                await Task.WhenAll(warm.Select(async f =>
-                {
-                    await gate.WaitAsync();
-                    try { warmed += await PrefetchOneAsync(http, f); }
-                    catch { }
-                    finally { gate.Release(); }
-                }));
-                try { Console.WriteLine($"[AppAssemblyLoader] Prefetch warmed {warmed} bytes for '{app}'."); } catch { }
-            });
-        }
+            string name = Key(f.name);
+            if (loadedNames.Contains(WellKnownForkAssembly(name) ?? name)) return false;
+            if (f.name.Replace('\\', '/').Contains('/')) return false; // optional plugins stay on demand
+            return paint || name.StartsWith("UIAutomation", StringComparison.OrdinalIgnoreCase)
+                || name.Equals("System.ComponentModel.Composition", StringComparison.OrdinalIgnoreCase);
+        }).ToArray();
+        using var bootstrapSlots = new SemaphoreSlim(6);
+        await Task.WhenAll(bootstrap.Select(async f =>
+        {
+            await bootstrapSlots.WaitAsync();
+            try { await PrefetchOneAsync(http, f); }
+            catch { } // synchronous verified resolution remains the fallback
+            finally { bootstrapSlots.Release(); }
+        }));
         var entry = AppDomain.CurrentDomain.GetAssemblies().FirstOrDefault(a =>
             string.Equals(a.GetName().Name, manifest.entry, StringComparison.OrdinalIgnoreCase));
         if (entry is null)
         {
             entry = Assembly.Load(entryBytes);
+        }
+        // Direct entry references cover vendor UI libraries absent from legacy
+        // manifests. Fetch them concurrently before any constructor can issue
+        // synchronous demand calls. Loaded framework/fork assemblies are skipped.
+        var direct = entry.GetReferencedAssemblies().Where(a => a.Name is not null)
+            .Select(a => a.Name!).Where(n => !loadedNames.Contains(WellKnownForkAssembly(n) ?? n))
+            .Where(n => !bootstrap.Any(f => Key(f.name).Equals(n, StringComparison.OrdinalIgnoreCase)))
+            .Select(n => new ManifestPrefetch(n, "/api/appresolve?app=" + Uri.EscapeDataString(app)
+                + "&name=" + Uri.EscapeDataString(n), 0, "")).ToArray();
+        await Task.WhenAll(direct.Select(async f =>
+        {
+            await bootstrapSlots.WaitAsync();
+            try { await PrefetchOneAsync(http, f); }
+            catch { }
+            finally { bootstrapSlots.Release(); }
+        }));
+        // Secondary / transitive prefetch: inspect PE references of fetched direct
+        // assemblies to warm vendor UI dependencies (e.g. TelerikCommon, Documents)
+        // before constructor execution hits synchronous demand calls.
+        var secondaryNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var d in direct)
+        {
+            byte[]? directBytes;
+            lock (Gate) Bytes.TryGetValue(Key(d.name), out directBytes);
+            if (directBytes is not null)
+            {
+                foreach (string r in ReadPeAssemblyReferences(directBytes))
+                {
+                    string k = Key(r);
+                    if (!loadedNames.Contains(WellKnownForkAssembly(k) ?? k)
+                        && !bootstrap.Any(f => Key(f.name).Equals(k, StringComparison.OrdinalIgnoreCase))
+                        && !direct.Any(f => Key(f.name).Equals(k, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        secondaryNames.Add(k);
+                    }
+                }
+            }
+        }
+        if (secondaryNames.Count > 0)
+        {
+            var secondary = secondaryNames.Select(n => new ManifestPrefetch(n,
+                "/api/appresolve?app=" + Uri.EscapeDataString(app) + "&name=" + Uri.EscapeDataString(n), 0, "")).ToArray();
+            await Task.WhenAll(secondary.Select(async f =>
+            {
+                await bootstrapSlots.WaitAsync();
+                try { await PrefetchOneAsync(http, f); }
+                catch { }
+                finally { bootstrapSlots.Release(); }
+            }));
         }
         return (entry, manifest);
 
@@ -314,26 +606,50 @@ var warm = manifest.prefetch
         async Task<long> PrefetchOneAsync(HttpClient client, ManifestPrefetch f)
         {
             string key = Key(f.name);
-            lock (Gate) { if (Bytes.ContainsKey(key)) return 0; }
-            using var resp = await client.GetAsync(f.url);
-            if (!resp.IsSuccessStatusCode) return 0;
-            byte[] body = await resp.Content.ReadAsByteArrayAsync();
-            if (resp.Headers.TryGetValues("X-WfWasm-Sha256", out var values)
-                && values.FirstOrDefault() is string sha
-                && sha.Equals(Convert.ToHexString(SHA256.HashData(body)), StringComparison.OrdinalIgnoreCase))
+            lock (Gate)
             {
-                lock (Gate) Bytes[key] = body;
-                await ReportAsync(js, body.Length, false);
-                return body.Length;
+                if (Bytes.ContainsKey(key))
+                {
+                    RecordResolutionHit(app, true);
+                    return 0;
+                }
             }
-            return 0;
+            long start = System.Diagnostics.Stopwatch.GetTimestamp();
+            try
+            {
+                using var resp = await client.GetAsync(f.url);
+                double elapsedMs = (System.Diagnostics.Stopwatch.GetTimestamp() - start) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+                if (!resp.IsSuccessStatusCode)
+                {
+                    RecordPrefetchTiming(app, elapsedMs, 0, false);
+                    return 0;
+                }
+                byte[] body = await resp.Content.ReadAsByteArrayAsync();
+                if (resp.Headers.TryGetValues("X-WfWasm-Sha256", out var values)
+                    && values.FirstOrDefault() is string sha
+                    && VerifySha256Hex(body, sha))
+                {
+                    lock (Gate) Bytes[key] = body;
+                    await ReportAsync(js, body.Length, false);
+                    RecordPrefetchTiming(app, elapsedMs, body.Length, true);
+                    return body.Length;
+                }
+                RecordPrefetchTiming(app, elapsedMs, body.Length, false);
+                return 0;
+            }
+            catch
+            {
+                double elapsedMs = (System.Diagnostics.Stopwatch.GetTimestamp() - start) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+                RecordPrefetchTiming(app, elapsedMs, 0, false);
+                throw;
+            }
         }
     }
 
     private static async Task<byte[]> FetchVerifiedAsync(HttpClient http, ManifestFile file)
     {
         byte[] bytes = await http.GetByteArrayAsync(file.url);
-        if (!Convert.ToHexString(SHA256.HashData(bytes)).Equals(file.sha256, StringComparison.OrdinalIgnoreCase))
+        if (!VerifySha256Hex(bytes, file.sha256))
             throw new InvalidDataException("Assembly integrity check failed: " + file.name);
         Console.WriteLine($"[AppAssemblyLoader] Fetched {file.name} ({bytes.Length} bytes).");
         return bytes;
@@ -361,7 +677,7 @@ var warm = manifest.prefetch
             try
             {
                 byte[] bytes = await http.GetByteArrayAsync(file.url);
-                if (file.sha256 is not null && !Convert.ToHexString(SHA256.HashData(bytes)).Equals(file.sha256, StringComparison.OrdinalIgnoreCase))
+                if (file.sha256 is not null && !VerifySha256Hex(bytes, file.sha256))
                     throw new InvalidDataException("Content integrity check failed: " + file.name);
                 await ReportAsync(js, bytes.Length, false);
                 string ext = Path.GetExtension(file.name).ToLowerInvariant();

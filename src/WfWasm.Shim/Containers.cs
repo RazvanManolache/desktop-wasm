@@ -1241,7 +1241,7 @@ public class ListBox : ListControl
 /// button), DropDownList (static field + button), Simple (field + open list).
 /// The drop-down list paints as an overlay and closes on selection.
 /// </summary>
-public class ComboBox : ListControl
+public partial class ComboBox : ListControl
 {
     public const int ButtonWidth = 17;
     public const int FieldHeight = 23;
@@ -1399,8 +1399,11 @@ public class ComboBox : ListControl
                 int index = (localY - by - 1) / ItemHeight;
                 if (index >= 0 && index < Items.Count)
                 {
-                    SelectedIndex = index;
-                    DroppedDown = false;
+                    // ADGV-COMBO hookup: funnel user commits through
+                    // CommitSelection so SelectionChangeCommitted fires
+                    // (previously never raised on any path). Select+close
+                    // state is identical; the Click raise below is kept.
+                    CommitSelection(index);
                     base.HandleClickLocal(localX, localY);
                 }
 

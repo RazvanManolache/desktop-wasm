@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using DesktopWasm.Graphics;
@@ -1729,7 +1729,10 @@ public abstract class FrameworkElement : UIElement
         target.SetValue(LanguageProperty, value);
     }
 
-    private object? _tag;
+    /// <summary>Arbitrary payload identity (matches FrameworkElement.TagProperty).</summary>
+    public static readonly DependencyProperty TagProperty =
+        DependencyProperty.Register("Tag", typeof(object), typeof(FrameworkElement),
+            new FrameworkPropertyMetadata(null));
 
     /// <summary>
     /// Arbitrary payload (matches FrameworkElement.Tag): converted gallery
@@ -1738,21 +1741,35 @@ public abstract class FrameworkElement : UIElement
     /// </summary>
     public object? Tag
     {
-        get => _tag;
-        set { _tag = value; }
+        get => GetValue(TagProperty);
+        set => SetValue(TagProperty, value);
     }
 
     /// <summary>
     /// Namescope search (ElementName bindings and code-behind FindName calls
     /// resolve here): walks up to the logical root, then depth-first down,
     /// so siblings and ancestors resolve like a real WPF namescope.
+    /// When elements reside in custom layout models (such as AvalonDock anchorables
+    /// or unparented popups), falls back to the attached NameScope on the root.
     /// </summary>
     public object? FindName(string name)
     {
         if (string.IsNullOrEmpty(name)) return null;
         var root = this;
         while (root.Parent is FrameworkElement parent) root = parent;
-        return root.FindDescendant(name);
+        var found = root.FindDescendant(name);
+        if (found is not null) return found;
+
+        if (NameScope.GetNameScope(root)?.FindName(name) is { } fromRootScope)
+            return fromRootScope;
+
+        for (FrameworkElement? node = this; node is not null && node != root; node = node.Parent as FrameworkElement)
+        {
+            if (NameScope.GetNameScope(node)?.FindName(name) is { } fromNodeScope)
+                return fromNodeScope;
+        }
+
+        return null;
     }
 
     private object? FindDescendant(string name)
@@ -1863,9 +1880,11 @@ public abstract class FrameworkElement : UIElement
     /// binding refresh; non-visual children (layout models converted
     /// docking managers pass) are retained without throwing, like WPF.
     /// </summary>
-    protected internal void AddLogicalChild(object child)
+    protected internal void AddLogicalChild(object? child)
     {
-        ArgumentNullException.ThrowIfNull(child);
+        // Native parity (D1 oracle: Add(null) is NO-THROW): ignore null like
+        // RemoveLogicalChild does; never retain phantom entries.
+        if (child is null) return;
         if (child is UIElement element)
         {
             AddChild(element);
@@ -2430,14 +2449,25 @@ public abstract class FrameworkElement : UIElement
         foreach (var expression in _bindings.ToArray()) expression.PushSource(force: false);
     }
 
-    private void RefreshBindingsTree()
+    private bool _inRefreshBindings;
+
+    internal void RefreshBindingsTree()
     {
-        foreach (var expression in _bindings.ToArray()) expression.Rebind();
-        // Snapshot: rebinds (ancestor-resolved content bindings) attach
-        // visuals mid-walk; the added subtree is refreshed by AddChild
-        // itself, so the snapshot loses nothing.
-        foreach (var child in Children.ToArray())
-            if (child is FrameworkElement fe) fe.RefreshBindingsTree();
+        if (_inRefreshBindings) return;
+        _inRefreshBindings = true;
+        try
+        {
+            foreach (var expression in _bindings.ToArray()) expression.Rebind();
+            // Snapshot: rebinds (ancestor-resolved content bindings) attach
+            // visuals mid-walk; the added subtree is refreshed by AddChild
+            // itself, so the snapshot loses nothing.
+            foreach (var child in Children.ToArray())
+                if (child is FrameworkElement fe) fe.RefreshBindingsTree();
+        }
+        finally
+        {
+            _inRefreshBindings = false;
+        }
     }
 
     /// <summary>
@@ -2462,7 +2492,7 @@ public abstract class FrameworkElement : UIElement
     public bool TryFindResource(object key, out object? value)
     {
         ArgumentNullException.ThrowIfNull(key);
-        for (var node = (FrameworkElement?)this; node is not null; node = node.Parent as FrameworkElement)
+        for (var node = (FrameworkElement?)this; node is not null; node = (node.Parent ?? (node as Visual)?.VisualParent) as FrameworkElement)
             if (node.Resources.TryGetValue(key, out value)) return true;
         var app = Application.Current;
         if (app is not null && app.TryFindResource(key, out value)) return true;
@@ -4328,16 +4358,15 @@ public class Grid : Panel
     private static int AttachedInt(UIElement el, string name, int fallback) =>
         el.GetAttached(name) is int i ? i : fallback;
 
-    private Brush? _background;
-
-    /// <summary>Fill brush (solid brushes paint exactly; others paint their resolved fallback).</summary>
+    /// <summary>Fill brush (solid brushes paint exactly; others paint their resolved fallback.
+    /// Store-backed like Panel so SetValue-applied values (BAML PropertyCustom) paint.</summary>
     public Brush? Background
     {
-        get => _background;
+        get => (Brush?)GetValue(BackgroundProperty);
         set
         {
-            if (ReferenceEquals(_background, value)) return;
-            _background = value;
+            if (ReferenceEquals(GetValue(BackgroundProperty), value)) return;
+            SetValue(BackgroundProperty, value);
             InvalidateVisual();
         }
     }
@@ -4366,11 +4395,11 @@ public class Grid : Panel
 
     protected override void OnRender(DrawingContext dc)
     {
-        if (_background is not null)
+        if (Background is not null)
         {
             var r = RenderRect;
             dc.DrawRectangle((float)r.X, (float)r.Y, (float)r.Width, (float)r.Height,
-                BrushRender.ResolveFill(_background, 0x00000000));
+                BrushRender.ResolveFill(Background, 0x00000000));
         }
         foreach (UIElement c in Children) RenderVisible(dc, c);
         PaintGridLines(dc);
@@ -4966,6 +4995,14 @@ public class ButtonBase : ContentControl
     /// </summary>
     protected virtual void OnClick() => RaiseClick();
 
+    /// <summary>
+    /// Keyboard activation entry (matches ButtonBase keyboard handling:
+    /// Enter/Space route through the virtual OnClick so toggle buttons flip
+    /// through ToggleButton.OnClick, like WPF; calling RaiseClick directly
+    /// would fire Click without toggling).
+    /// </summary>
+    internal void ActivateByKeyboard() => OnClick();
+
     private ICommand? _command;
     private bool _commandCanExecute = true;
 
@@ -5444,11 +5481,18 @@ public class TextBlock : FrameworkElement, IDocumentFontSource
         set { if (_fontStretch == value) return; _fontStretch = value; OnFontChanged(); InvalidateMeasure(); }
     }
 
-    protected override void OnFontChanged()
+    protected override void OnFontChanged() => FontCss = ComposeSegmentCss(FontWeight, FontStyle, FontSize, FontFamily);
+
+    /// <summary>Legacy CSS font description with a bold channel (matches the
+    /// TextBlock composition; the shaper tolerates the token and the browser
+    /// canvas honors it, while Skia measures regular advances for bold in v1).
+    /// Bold is OpenType 700+ like the canvas keyword.</summary>
+    internal static string ComposeSegmentCss(FontWeight weight, FontStyle style, double size, FontFamily family)
     {
-        var slant = FontStyle == FontStyles.Italic ? "italic " : string.Empty;
-        var size = FontSize.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        FontCss = $"{slant}{size}px {FontFamily}";
+        var bold = weight.CompareTo(FontWeights.Bold) >= 0 ? "bold " : string.Empty;
+        var slant = style == FontStyles.Italic ? "italic " : string.Empty;
+        var px = size.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        return $"{bold}{slant}{px}px {family}";
     }
 
     FontFamily IDocumentFontSource.InheritedFamily => FontFamily;
@@ -5518,10 +5562,12 @@ public class TextBlock : FrameworkElement, IDocumentFontSource
     /// fold. Later Text edits on the span re-fold automatically through the
     /// collection watch.
     /// </summary>
-    internal void AddInline(Span span)
+    internal void AddInline(Span span) => AddInline((Inline)span);
+
+    internal void AddInline(Inline inline)
     {
-        ArgumentNullException.ThrowIfNull(span);
-        Inlines.Add(span);
+        ArgumentNullException.ThrowIfNull(inline);
+        Inlines.Add(inline);
         SetFoldedText(FoldInlineText());
     }
 
@@ -5602,6 +5648,34 @@ public class TextBlock : FrameworkElement, IDocumentFontSource
     {
         var prefix = new System.Text.StringBuilder();
         string? linkText = null;
+
+        bool WalkSpan(Span span)
+        {
+            var nextLit = 0;
+            for (var j = 0; j < span.Inlines.Count; j++)
+            {
+                while (nextLit < span.Literals.Count && span.Literals[nextLit].At <= j)
+                {
+                    prefix.Append(span.Literals[nextLit++].Text);
+                }
+                var child = span.Inlines[j];
+                if (ReferenceEquals(child, link))
+                {
+                    linkText = (child as Span)?.Text;
+                    return true;
+                }
+                if (child is Span childSpan)
+                {
+                    if (WalkSpan(childSpan)) return true;
+                }
+            }
+            while (nextLit < span.Literals.Count)
+            {
+                prefix.Append(span.Literals[nextLit++].Text);
+            }
+            return false;
+        }
+
         var nextLiteral = 0;
         for (var i = 0; i < Inlines.Count; i++)
         {
@@ -5612,7 +5686,10 @@ public class TextBlock : FrameworkElement, IDocumentFontSource
             }
             var inline = Inlines[i];
             if (ReferenceEquals(inline, link)) { linkText = (inline as Span)?.Text; break; }
-            if (inline is Span span) prefix.Append(span.Text);
+            if (inline is Span span)
+            {
+                if (WalkSpan(span)) break;
+            }
         }
         if (string.IsNullOrEmpty(linkText)) return null;
         var (originX, originY) = TextOrigin();
@@ -5709,12 +5786,112 @@ public class TextBlock : FrameworkElement, IDocumentFontSource
         return new(Math.Min(available.Width, Math.Max(40, shapedW) + Padding.Left + Padding.Right), Math.Max(20, shapedH) + Padding.Top + Padding.Bottom);
     }
 
+    /// <summary>Paint segment in encounter order (direct-text literal or inline
+    /// text with its resolved style). Hyperlinks ride the main pass in block
+    /// style like before; <see cref="PaintLinks"/> still overdraws their ink.</summary>
+    private sealed record TextSegment(string Text, string FontCss, uint Ink);
+
+    /// <summary>Builds paint segments in the same encounter order as the
+    /// folded text (literals anchored against inline positions, walked recursively).</summary>
+    private List<TextSegment> BuildSegments()
+    {
+        var segments = new List<TextSegment>();
+        // Direct-text blocks (Text set with no inlines/literals) paint the
+        // legacy single segment; inline content refines into styled pieces.
+        if (Inlines.Count == 0 && _literals.Count == 0)
+        {
+            if (!string.IsNullOrEmpty(Text)) segments.Add(new TextSegment(Text, FontCss, ForegroundRgba));
+            return segments;
+        }
+
+        void CollectSpan(Span span, uint parentInk)
+        {
+            var spanInk = span.ResolveInk(parentInk);
+            var spanCss = ComposeSegmentCss(span.FontWeight, span.FontStyle, span.FontSize, span.FontFamily);
+
+            if (span.Inlines.Count == 0 && span.Literals.Count == 0)
+            {
+                if (!string.IsNullOrEmpty(span.Text))
+                {
+                    if (span is Hyperlink) segments.Add(new TextSegment(span.Text, FontCss, ForegroundRgba));
+                    else segments.Add(new TextSegment(span.Text, spanCss, spanInk));
+                }
+                return;
+            }
+
+            var nextLit = 0;
+            for (var j = 0; j < span.Inlines.Count; j++)
+            {
+                while (nextLit < span.Literals.Count && span.Literals[nextLit].At <= j)
+                {
+                    var lit = span.Literals[nextLit++].Text;
+                    if (!string.IsNullOrEmpty(lit)) segments.Add(new TextSegment(lit, spanCss, spanInk));
+                }
+                if (span.Inlines[j] is Span childSpan)
+                {
+                    CollectSpan(childSpan, spanInk);
+                }
+            }
+            while (nextLit < span.Literals.Count)
+            {
+                var lit = span.Literals[nextLit++].Text;
+                if (!string.IsNullOrEmpty(lit)) segments.Add(new TextSegment(lit, spanCss, spanInk));
+            }
+        }
+
+        var nextLiteral = 0;
+        for (var i = 0; i < Inlines.Count; i++)
+        {
+            while (nextLiteral < _literals.Count && _literals[nextLiteral].At <= i)
+            {
+                var literal = _literals[nextLiteral++].Text;
+                if (!string.IsNullOrEmpty(literal)) segments.Add(new TextSegment(literal, FontCss, ForegroundRgba));
+            }
+            if (Inlines[i] is Span span)
+            {
+                CollectSpan(span, ForegroundRgba);
+            }
+        }
+        while (nextLiteral < _literals.Count)
+        {
+            var literal = _literals[nextLiteral++].Text;
+            if (!string.IsNullOrEmpty(literal)) segments.Add(new TextSegment(literal, FontCss, ForegroundRgba));
+        }
+        return segments;
+    }
+
     protected override void OnRender(DrawingContext dc)
     {
         var r = RenderRect;
         if (string.IsNullOrEmpty(Text)) return;
         var (x, y) = TextOrigin();
-        dc.DrawText(Text, (float)x, (float)y, FontCss, ForegroundRgba, 0, 1, -1);
+        // Adjacent same-style segments coalesce, so plain blocks emit the
+        // exact legacy single DrawText; only genuinely styled runs split it.
+        string? pendingText = null;
+        var pendingCss = FontCss;
+        var pendingInk = ForegroundRgba;
+        var dx = x;
+        void Flush()
+        {
+            if (pendingText is null) return;
+            dc.DrawText(pendingText, (float)dx, (float)y, pendingCss, pendingInk, 0, 1, -1);
+            var (w, _) = TryMeasure(pendingText, pendingCss, pendingText.Length * 8, 20);
+            dx += w;
+            pendingText = null;
+        }
+        foreach (var segment in BuildSegments())
+        {
+            if (pendingText is not null && pendingCss == segment.FontCss && pendingInk == segment.Ink)
+                pendingText += segment.Text;
+            else
+            {
+                Flush();
+                pendingText = segment.Text;
+                pendingCss = segment.FontCss;
+                pendingInk = segment.Ink;
+            }
+        }
+        Flush();
         PaintLinks(dc);
         PaintDecorations(dc, x, y);
     }
@@ -5851,10 +6028,65 @@ public class TextBlock : FrameworkElement, IDocumentFontSource
 public class TextBox : TextBoxBase
 {
     private const int Pad = 4;
-    private string _text = string.Empty;
+
+    /// <summary>Text identity (matches
+    /// System.Windows.Controls.TextBox.Text; registered so bindings
+    /// resolve the Text target through the DP store, like
+    /// TextBlock.Text. The CLR slot stays store-backed with the existing
+    /// setter semantics (no metadata callback: pushes flow through the
+    /// CLR setter like the field-backed version did).</summary>
+    public static readonly DependencyProperty TextProperty =
+        DependencyProperty.Register("Text", typeof(string), typeof(TextBox),
+            new FrameworkPropertyMetadata(string.Empty));
     private int _selectionStart;
     private int _selectionLength;
     private bool _focused;
+
+    /// <summary>
+    /// Fill identity (matches System.Windows.Controls.TextBox.Background;
+    /// the WPF-identical shared Control instance, so converted code-built
+    /// templates and setters bind; the TextBox-owned metadata callback
+    /// forwards every write path (including DP-store SetValue) to
+    /// OnBackgroundChanged so the Rgba paint state stays synced, and the
+    /// CLR wrapper stays store-backed so SetValue-applied values land).
+    /// </summary>
+    public static readonly DependencyProperty BackgroundProperty =
+        Control.BackgroundProperty.AddOwner(typeof(TextBox),
+            new FrameworkPropertyMetadata(null, OnTextBoxBackgroundChanged));
+
+    private static void OnTextBoxBackgroundChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is TextBox box) box.OnBackgroundChanged((Brush?)e.NewValue);
+    }
+
+    /// <summary>Fill brush (store-backed; Transparent and named brushes repaint).</summary>
+    public Brush? Background
+    {
+        get => (Brush?)GetValue(BackgroundProperty);
+        set
+        {
+            if (ReferenceEquals(GetValue(BackgroundProperty), value)) return;
+            SetValue(BackgroundProperty, value);
+            InvalidateVisual();
+        }
+    }
+
+    /// <summary>
+    /// Border thickness identity (matches
+    /// System.Windows.Controls.TextBox.BorderThickness; the WPF-identical
+    /// shared Control instance, so converted code-built templates and
+    /// setters bind; the CLR wrapper stays store-backed with Control's
+    /// layout/template side effects, like Background above).
+    /// </summary>
+    public static readonly DependencyProperty BorderThicknessProperty =
+        Control.BorderThicknessProperty.AddOwner(typeof(TextBox));
+
+    /// <summary>Border thickness (store-backed so SetValue-applied values land).</summary>
+    public Thickness BorderThickness
+    {
+        get => (Thickness)(GetValue(BorderThicknessProperty) ?? new Thickness(0));
+        set { SetValue(BorderThicknessProperty, value); InvalidateMeasure(); TemplateApplier.RefreshTemplate(this); }
+    }
 
     /// <summary>Wrapping rule (parsed and retained; layout keeps current metrics in v1).</summary>
     public TextWrapping TextWrapping { get; set; } = TextWrapping.NoWrap;
@@ -5862,17 +6094,17 @@ public class TextBox : TextBoxBase
     /// <summary>Edited text (changes measured size; TwoWay bindings push on edits).</summary>
     public string Text
     {
-        get => _text;
+        get => (string?)GetValue(TextProperty) ?? string.Empty;
         set
         {
             // WPF coerces null to String.Empty; without it a null template
-            // binding poisons the field and SelectionLength throws on
+            // binding poisons the store and SelectionLength throws on
             // Text.Length (gallery ControlExample XamlCode bindings).
             value ??= string.Empty;
-            if (_text == value) return;
-            _text = value;
+            if (string.Equals((string?)GetValue(TextProperty) ?? string.Empty, value, StringComparison.Ordinal)) return;
+            SetValue(TextProperty, value);
             SelectionLength = 0;
-            CaretIndex = Math.Min(CaretIndex, _text.Length);
+            CaretIndex = Math.Min(CaretIndex, value.Length);
             InvalidateMeasure();
             // Source push (and validation) first, like a WPF DP change
             // notifying bindings before TextChanged reaches handlers, so
@@ -6230,6 +6462,9 @@ public class ScrollViewer : Control
             ViewportWidth == other.ViewportWidth && ViewportHeight == other.ViewportHeight;
     }
 
+    /// <summary>Invalidates scroll metrics and triggers measure (matches ScrollViewer.InvalidateScrollInfo).</summary>
+    public void InvalidateScrollInfo() => InvalidateMeasure();
+
     private ScrollSnapshot CaptureScrollState() =>
         new(_offsetX, _offset, _extentW, _extentH, _viewportW, _viewportH);
 
@@ -6512,7 +6747,16 @@ public class ScrollViewer : Control
             if (_offset == clamped) return;
             var before = CaptureScrollState();
             _offset = clamped;
-            Reposition();
+            var scrollInfo = CanContentScroll ? ScrollInfo : null;
+            if (scrollInfo is not null)
+            {
+                scrollInfo.SetVerticalOffset(clamped);
+                _offset = scrollInfo.VerticalOffset;
+            }
+            else
+            {
+                Reposition();
+            }
             RaiseScrollChangedIfNeeded(before);
         }
     }
@@ -6544,17 +6788,61 @@ public class ScrollViewer : Control
             if (_offsetX == clamped) return;
             var before = CaptureScrollState();
             _offsetX = clamped;
-            Reposition();
+            var scrollInfo = CanContentScroll ? ScrollInfo : null;
+            if (scrollInfo is not null)
+            {
+                scrollInfo.SetHorizontalOffset(clamped);
+                _offsetX = scrollInfo.HorizontalOffset;
+            }
+            else
+            {
+                Reposition();
+            }
             RaiseScrollChangedIfNeeded(before);
         }
     }
 
     /// <summary>Scrolls to an absolute horizontal offset (matches ScrollViewer.ScrollToHorizontalOffset).</summary>
     public void ScrollToHorizontalOffset(double offset) => HorizontalOffset = offset;
-    public void LineUp() => VerticalOffset -= LineStep;
-    public void LineDown() => VerticalOffset += LineStep;
-    public void PageUp() => VerticalOffset -= Math.Max(LineStep, _viewportH);
-    public void PageDown() => VerticalOffset += Math.Max(LineStep, _viewportH);
+    public void LineUp()
+    {
+        var scrollInfo = CanContentScroll ? ScrollInfo : null;
+        if (scrollInfo is not null) scrollInfo.LineUp();
+        else VerticalOffset -= LineStep;
+    }
+    public void LineDown()
+    {
+        var scrollInfo = CanContentScroll ? ScrollInfo : null;
+        if (scrollInfo is not null) scrollInfo.LineDown();
+        else VerticalOffset += LineStep;
+    }
+    public void PageUp()
+    {
+        var scrollInfo = CanContentScroll ? ScrollInfo : null;
+        if (scrollInfo is not null) scrollInfo.PageUp();
+        else VerticalOffset -= Math.Max(LineStep, _viewportH);
+    }
+    public void PageDown()
+    {
+        var scrollInfo = CanContentScroll ? ScrollInfo : null;
+        if (scrollInfo is not null) scrollInfo.PageDown();
+        else VerticalOffset += Math.Max(LineStep, _viewportH);
+    }
+
+    private IScrollInfo? ScrollInfo
+    {
+        get
+        {
+            if (Content is IScrollInfo si) return si;
+            if (Content is ItemsControl ic && ic.ItemsHost is IScrollInfo icsi) return icsi;
+            if (Content is Panel p)
+            {
+                foreach (UIElement child in p.Children)
+                    if (child is IScrollInfo csi) return csi;
+            }
+            return null;
+        }
+    }
 
     public UIElement? Content
     {
@@ -6666,6 +6954,32 @@ public class ScrollViewer : Control
         // Gutter is always reserved (ScrollBarVisibility.Visible semantics):
         // deterministic layout, no shift when content grows past the viewport.
         var innerW = Math.Max(0, (double.IsNaN(Width) ? available.Width : Width) - 2 - ScrollbarWidth - PadLeft - PadRight);
+        var scrollInfo = CanContentScroll ? ScrollInfo : null;
+        if (scrollInfo is not null && Content is not null)
+        {
+            scrollInfo.ScrollOwner = this;
+            scrollInfo.CanVerticallyScroll = VerticalScrollBarVisibility != ScrollBarVisibility.Disabled;
+            scrollInfo.CanHorizontallyScroll = HorizontalScrollBarVisibility != ScrollBarVisibility.Disabled;
+
+            var m = GetMargin(Content);
+            var measureW = CanScrollHorizontally ? double.PositiveInfinity : Math.Max(0, innerW - m.Left - m.Right);
+            var viewportAvailH = double.IsNaN(Height) ? available.Height : Height;
+            var measureH = double.IsPositiveInfinity(viewportAvailH)
+                ? (double.IsNaN(Height) ? 400.0 : Height)
+                : Math.Max(0, viewportAvailH - 2 - PadTop - PadBottom - m.Top - m.Bottom);
+
+            Content.Measure(new WpfSize(measureW, measureH));
+            _extentH = scrollInfo.ExtentHeight;
+            _extentW = scrollInfo.ExtentWidth;
+            _viewportH = scrollInfo.ViewportHeight;
+            _viewportW = scrollInfo.ViewportWidth;
+            _offset = scrollInfo.VerticalOffset;
+            _offsetX = scrollInfo.HorizontalOffset;
+            var w = double.IsNaN(Width) ? Math.Min(available.Width, innerW + 2 + ScrollbarWidth + PadLeft + PadRight) : Width;
+            var h = double.IsNaN(Height) ? Math.Min(available.Height, _extentH + 2 + PadTop + PadBottom) : Height;
+            RaiseScrollChangedIfNeeded(before);
+            return new(w, h);
+        }
         if (Content is not null)
         {
             var m = GetMargin(Content);
@@ -6678,10 +6992,10 @@ public class ScrollViewer : Control
         // Shrinking content clamps a stale offset (arrange repositions).
         _offset = Math.Clamp(_offset, 0, ScrollableHeight);
         _offsetX = Math.Clamp(_offsetX, 0, ScrollableWidth);
-        var w = double.IsNaN(Width) ? Math.Min(available.Width, innerW + 2 + ScrollbarWidth + PadLeft + PadRight) : Width;
-        var h = double.IsNaN(Height) ? Math.Min(available.Height, _extentH + 2 + PadTop + PadBottom) : Height;
+        var w2 = double.IsNaN(Width) ? Math.Min(available.Width, innerW + 2 + ScrollbarWidth + PadLeft + PadRight) : Width;
+        var h2 = double.IsNaN(Height) ? Math.Min(available.Height, _extentH + 2 + PadTop + PadBottom) : Height;
         RaiseScrollChangedIfNeeded(before);
-        return new(w, h);
+        return new(w2, h2);
     }
 
     protected override void ArrangeCore(WpfRect finalRect)
@@ -6692,6 +7006,19 @@ public class ScrollViewer : Control
         _viewportW = Math.Max(0, finalRect.Width - 2);
         _offset = Math.Clamp(_offset, 0, ScrollableHeight);
         _offsetX = Math.Clamp(_offsetX, 0, ScrollableWidth);
+        var scrollInfo = CanContentScroll ? ScrollInfo : null;
+        if (scrollInfo is not null && Content is not null)
+        {
+            var m = GetMargin(Content);
+            Content.Arrange(new WpfRect(
+                finalRect.X + 1 + m.Left + PadLeft,
+                finalRect.Y + 1 + m.Top + PadTop,
+                Math.Max(0, finalRect.Width - 2 - ScrollbarWidth - m.Left - m.Right - PadLeft - PadRight),
+                Math.Max(0, finalRect.Height - 2 - PadTop - PadBottom - m.Top - m.Bottom)));
+            InvalidateVisual();
+            RaiseScrollChangedIfNeeded(before);
+            return;
+        }
         Reposition();
         RaiseScrollChangedIfNeeded(before);
     }
@@ -6986,6 +7313,16 @@ public sealed class ListBoxItem : Control, IRowTemplateTarget
         set => SetValue(IsSelectedProperty, value);
     }
 
+    /// <summary>
+    /// Row focus feeds the owner's keyboard gate (native lists keep arrow
+    /// navigation live when a row holds focus; the press focuses the row,
+    /// not the list, so the list must hear about it).
+    /// </summary>
+    public override void OnGotFocus() => OwningListBox?.NoteRowFocus(true);
+
+    /// <summary>Clears the owner's row-focus flag (focus left the rows).</summary>
+    public override void OnLostFocus() => OwningListBox?.NoteRowFocus(false);
+
     /// <summary>Owner-driven selection sync (skips the route-back callback).</summary>
     internal void SetSelectedFromOwner(bool value)
     {
@@ -7030,6 +7367,16 @@ public sealed class ListBoxItem : Control, IRowTemplateTarget
         if (_templatedContent is not null) DetachVisualChild(_templatedContent);
         _templatedContent = visual;
         AttachVisualChild(visual);
+        InvalidateMeasure();
+        InvalidateVisual();
+    }
+
+    /// <summary>Detaches the template-inflated visual (template removed or row recycled to text).</summary>
+    internal void ClearTemplatedContent()
+    {
+        if (_templatedContent is null) return;
+        DetachVisualChild(_templatedContent);
+        _templatedContent = null;
         InvalidateMeasure();
         InvalidateVisual();
     }
@@ -7082,7 +7429,7 @@ public sealed class ListBoxItem : Control, IRowTemplateTarget
         }
         if (!string.IsNullOrEmpty(Content))
             dc.DrawText(Content, (float)(r.X + 6), (float)(r.Y + r.Height / 2), FontCss,
-                IsSelected ? 0xFFFFFFFF : ForegroundRgba, 0, 2, -1);
+                !IsEffectivelyEnabled ? 0x707070FFu : IsSelected ? 0xFFFFFFFFu : ForegroundRgba, 0, 2, -1);
     }
 
     /// <summary>
@@ -7211,8 +7558,52 @@ public class ListBox : Control
         {
             if (ReferenceEquals(_itemTemplate, value)) return;
             _itemTemplate = value;
-            if (_itemsSource is not null) SyncGeneratedRows();
+            if (_itemsSource is not null) SyncGeneratedRows(clearPool: true);
             else InvalidateMeasure();
+        }
+    }
+
+    /// <summary>Template-selector token (matches ItemsControl.ItemTemplateSelectorProperty).</summary>
+    public static readonly DependencyProperty ItemTemplateSelectorProperty =
+        DependencyProperty.Register("ItemTemplateSelector", typeof(DataTemplateSelector), typeof(ListBox),
+            new FrameworkPropertyMetadata((DataTemplateSelector?)null, (d, _) =>
+            {
+                if (((ListBox)d)._itemsSource is not null) ((ListBox)d).SyncGeneratedRows(clearPool: true);
+                else ((ListBox)d).InvalidateMeasure();
+            }));
+
+    private DataTemplateSelector? _itemTemplateSelector;
+
+    /// <summary>Per-item visual selector (matches ItemsControl.ItemTemplateSelector).</summary>
+    public DataTemplateSelector? ItemTemplateSelector
+    {
+        get => _itemTemplateSelector ?? (DataTemplateSelector?)GetValue(ItemTemplateSelectorProperty);
+        set
+        {
+            if (ReferenceEquals(_itemTemplateSelector, value)) return;
+            _itemTemplateSelector = value;
+            SetValue(ItemTemplateSelectorProperty, value);
+            if (_itemsSource is not null) SyncGeneratedRows(clearPool: true);
+            else InvalidateMeasure();
+        }
+    }
+
+    private StyleSelector? _itemContainerStyleSelector;
+
+    /// <summary>
+    /// Item container style selector (matches ItemsControl.ItemContainerStyleSelector):
+    /// changing it re-applies per-row styles so realized and recycled rows follow.
+    /// </summary>
+    public StyleSelector? ItemContainerStyleSelector
+    {
+        get => _itemContainerStyleSelector;
+        set
+        {
+            if (ReferenceEquals(_itemContainerStyleSelector, value)) return;
+            _itemContainerStyleSelector = value;
+            if (value is null) { InvalidateMeasure(); return; }
+            foreach (var (row, item) in _generatedData.ToArray()) ApplyItemContainerStyle(row, item);
+            InvalidateMeasure();
         }
     }
 
@@ -7299,6 +7690,8 @@ public class ListBox : Control
                 if (content is WrapPanel wrap) _wrapOrientation = wrap.Orientation;
                 else if (content is StackPanel stack && stack.Orientation == Orientation.Horizontal)
                     _stackHorizontal = true;
+                else if (content is VirtualizingPanel vp)
+                    host = vp;
                 else if (content is Panel converted &&
                     content.GetType().Assembly != typeof(Panel).Assembly)
                     host = converted;
@@ -7366,8 +7759,8 @@ public class ListBox : Control
         {
             if (ReferenceEquals(_itemContainerStyle, value)) return;
             _itemContainerStyle = value;
-            if (value is null) return;
-            foreach (var row in _generatedData.Keys) value.ApplyTo(row);
+            if (value is null) { InvalidateMeasure(); return; }
+            foreach (var (row, item) in _generatedData.ToArray()) ApplyItemContainerStyle(row, item);
             InvalidateMeasure();
         }
     }
@@ -7413,7 +7806,7 @@ public class ListBox : Control
 
         public DataTemplate? ItemTemplate => owner.ItemTemplate;
 
-        public DataTemplateSelector? ItemTemplateSelector => null;
+        public DataTemplateSelector? ItemTemplateSelector => owner.ItemTemplateSelector;
 
         public bool IsItemItsOwnContainer(object item) => item is ListBoxItem;
 
@@ -7424,11 +7817,35 @@ public class ListBox : Control
             if (container is ListBoxItem row && !ReferenceEquals(row, item))
             {
                 owner.PrepareRow(row, item);
+                owner.ApplyItemContainerStyle(row, item);
                 _pending[container] = item;
+                var index = ContainerItems.IndexOf(item);
+                var isSelected = index >= 0 && index == owner.SelectedIndex;
+                row.SetSelectedFromOwner(isSelected);
+            }
+            else if (container is FrameworkElement visual && !ReferenceEquals(visual, item))
+            {
+                // Template-selector roots are not ListBoxItem shells: they carry
+                // the item as DataContext (mirroring ItemsControl), refreshed on
+                // every reuse so recycled visuals never show stale data.
+                visual.DataContext = item;
             }
         }
 
-        public void ClearContainerForItem(DependencyObject container, object item) { }
+        public void ClearContainerForItem(DependencyObject container, object item)
+        {
+            if (container is ListBoxItem row)
+            {
+                owner._generatedData.Remove(row);
+                row.SetSelectedFromOwner(false);
+                row.DataContext = null;
+                row.Content = null;
+            }
+            else if (container is FrameworkElement visual)
+            {
+                visual.DataContext = null;
+            }
+        }
 
         public void AddGeneratedChild(DependencyObject container)
         {
@@ -7437,12 +7854,20 @@ public class ListBox : Control
                 owner._generatedData[row] = _pending.TryGetValue(container, out var item) ? item : null;
                 _pending.Remove(container);
             }
-            if (container is UIElement element) owner.AddChildInternal(element);
+            if (container is UIElement element)
+            {
+                if (owner.UseCustomHost) owner._customHost!.AddChild(element);
+                else owner.AddChildInternal(element);
+            }
         }
 
         public void RemoveGeneratedChild(DependencyObject container)
         {
-            if (container is UIElement element) owner.RemoveChildInternal(element);
+            if (container is UIElement element)
+            {
+                if (owner.UseCustomHost) owner._customHost!.RemoveChild(element);
+                else owner.RemoveChildInternal(element);
+            }
         }
     }
 
@@ -7467,7 +7892,15 @@ public class ListBox : Control
     /// </summary>
     public int SelectedIndex
     {
-        get => _selectedIndex >= 0 && _selectedIndex < Items.Count ? _selectedIndex : -1;
+        get
+        {
+            if (_customHost is VirtualizingPanel && _itemsSource is not null)
+            {
+                var count = ItemContainerGenerator.ContainerItems.Count;
+                return _selectedIndex >= 0 && _selectedIndex < count ? _selectedIndex : -1;
+            }
+            return _selectedIndex >= 0 && _selectedIndex < Items.Count ? _selectedIndex : -1;
+        }
         set
         {
             var raw = value < 0 ? -1 : value;
@@ -7477,6 +7910,14 @@ public class ListBox : Control
             if (SelectedIndex != old)
             {
                 PushRowSelection();
+                // Native parity: selecting a row brings it into view (WPF
+                // scrolls the selected ListBoxItem container so keyboard and
+                // pointer selection in a scrolled list stay visible). Without
+                // a parent ScrollViewer this walks nowhere and stays silent.
+                if (_customHost is VirtualizingStackPanel vsp && _selectedIndex >= 0)
+                    vsp.SetVerticalOffset(vsp.GetTotalExtent(_selectedIndex));
+                else
+                    SelectedItem?.BringIntoView();
                 InvalidateVisual();
                 SelectionChanged?.Invoke();
                 PushSelectedItemSource();
@@ -7607,27 +8048,64 @@ public class ListBox : Control
     /// </summary>
     private void PrepareRow(ListBoxItem row, object? item)
     {
-        if (ItemTemplate is not null)
+        var previousTemplate = row.ContentTemplate;
+        row.ContentTemplate = ItemTemplate;
+        row.ContentTemplateSelector = ItemTemplateSelector;
+        var template = ItemTemplate ?? ItemTemplateSelector?.SelectTemplate(item ?? string.Empty, row);
+        if (template is null)
         {
-            var visual = ItemTemplate.LoadContent();
-            if (visual is FrameworkElement fresh) fresh.DataContext = item;
-            row.SetTemplatedContent(visual);
+            if (row.HasTemplatedContent) row.ClearTemplatedContent();
+            row.Content = ResolveItemText(item);
             return;
         }
-        row.Content = ResolveItemText(item);
+        // Recycling reuse: when the same template already produced this row's
+        // visual, only the DataContext advances (no re-inflation, no re-wiring,
+        // no heap churn during steady scrolling). A template change re-inflates.
+        if (row.HasTemplatedContent && ReferenceEquals(previousTemplate, template) &&
+            row.TemplatedContent is FrameworkElement existing)
+        {
+            row.ContentTemplate = template;
+            existing.DataContext = item;
+            return;
+        }
+        row.ContentTemplate = template;
+        var visual = template.LoadContent();
+        if (visual is FrameworkElement fresh) fresh.DataContext = item;
+        row.SetTemplatedContent(visual);
     }
 
     private void AddGeneratedRow(object? item)
     {
         var row = item as ListBoxItem ?? NewDataRow(item);
         _generatedData[row] = item;
-        ItemContainerStyle?.ApplyTo(row, GeneratedStyleContext());
+        ApplyItemContainerStyle(row, item);
         AddRowHome(row);
+    }
+
+    /// <summary>
+    /// Applies the row style (fixed or selector-chosen) with a per-row applied
+    /// guard, so recycled rows pick up selector/style changes without
+    /// double-wiring event setters on every re-prepare.
+    /// </summary>
+    private void ApplyItemContainerStyle(ListBoxItem row, object? item)
+    {
+        var style = ItemContainerStyle ?? ItemContainerStyleSelector?.SelectStyle(item ?? string.Empty, row);
+        if (style is null) return;
+        if (ReferenceEquals(row.GetAttached("ListBox.AppliedItemContainerStyle"), style)) return;
+        row.SetAttached("ListBox.AppliedItemContainerStyle", style);
+        style.ApplyTo(row, GeneratedStyleContext());
     }
 
     private object? SelectedData()
     {
         var index = SelectedIndex;
+        if (index < 0) return null;
+        if (_customHost is VirtualizingPanel && _itemsSource is not null)
+        {
+            var containerItems = ItemContainerGenerator.ContainerItems;
+            if (index < containerItems.Count) return containerItems[index];
+            return null;
+        }
         if ((uint)index >= (uint)Items.Count) return null;
         var row = Items[index];
         return _generatedData.TryGetValue(row, out var data) ? data : row;
@@ -7635,6 +8113,12 @@ public class ListBox : Control
 
     private bool TryIndexOfData(object? data, out int index)
     {
+        if (_customHost is VirtualizingPanel && _itemsSource is not null)
+        {
+            var containerItems = ItemContainerGenerator.ContainerItems;
+            index = containerItems.IndexOf(data);
+            return index >= 0;
+        }
         var items = Items;
         for (var i = 0; i < items.Count; i++)
         {
@@ -7715,11 +8199,19 @@ public class ListBox : Control
     /// Rebuilds generated rows from the current source (single fire at most):
     /// the selected data item survives when still present, otherwise the raw
     /// index keeps legacy sliding semantics (effective -1 past the end).
+    /// Generator mappings are dropped with the unparented rows (they would
+    /// otherwise hand out orphaned, unprepared containers); the pool survives
+    /// plain mutations but not template/selector changes.
     /// </summary>
-    private void SyncGeneratedRows()
+    private void SyncGeneratedRows(bool clearPool = false)
     {
         var old = SelectedIndex;
         var selectedData = SelectedData();
+        // Virtualized rows re-enter through the generator on the next measure:
+        // park them first so the rebuild reuses shells instead of minting a
+        // fresh window per mutation. (Non-virtualized rows rebuild directly.)
+        if (_customHost is VirtualizingPanel)
+            ItemContainerGenerator.ParkRealizedContainers();
         // Keep the raw index across the rebuild (a pending selection
         // materializes when rows arrive; a lost item slides onto the row
         // moving in, or reports -1 past the end, like removing rows); the
@@ -7727,6 +8219,7 @@ public class ListBox : Control
         foreach (var row in _generatedData.Keys.ToArray())
             RemoveRowHome(row);
         _generatedData.Clear();
+        ItemContainerGenerator.ResetMappings(clearPool);
         foreach (var group in _groupItems.ToArray())
             base.RemoveChild(group);
         _groupItems.Clear();
@@ -7734,8 +8227,17 @@ public class ListBox : Control
         if (_itemsSource is not null)
         {
             if (!TrySyncGroupedRows())
-                foreach (var item in _itemsSource)
-                    AddGeneratedRow(item);
+            {
+                if (_customHost is VirtualizingPanel)
+                {
+                    // Defer container generation to the virtualizing panel
+                }
+                else
+                {
+                    foreach (var item in _itemsSource)
+                        AddGeneratedRow(item);
+                }
+            }
         }
         if (_itemsSource is not null && old >= 0 && selectedData is not null
             && TryIndexOfData(selectedData, out var restored))
@@ -7821,11 +8323,27 @@ public class ListBox : Control
         get
         {
             var i = SelectedIndex;
-            return i >= 0 ? Items[i] : null;
+            if (i < 0) return null;
+            if (_customHost is VirtualizingPanel)
+            {
+                return ItemContainerGenerator.IsRealized(i)
+                    ? ItemContainerGenerator.ContainerFromIndex(i) as ListBoxItem
+                    : null;
+            }
+            return i < Items.Count ? Items[i] : null;
         }
         set
         {
             if (value is null) { SelectedIndex = -1; return; }
+            if (_customHost is VirtualizingPanel)
+            {
+                var index = ItemContainerGenerator.IndexFromContainer(value);
+                if (index >= 0)
+                {
+                    SelectedIndex = index;
+                    return;
+                }
+            }
             var items = Items;
             for (var i = 0; i < items.Count; i++)
                 if (ReferenceEquals(items[i], value)) { SelectedIndex = i; return; }
@@ -7839,12 +8357,59 @@ public class ListBox : Control
     internal void PushRowSelection()
     {
         var selected = SelectedItem;
+        if (_customHost is VirtualizingPanel)
+        {
+            var selIdx = SelectedIndex;
+            foreach (var row in Items)
+            {
+                var rowIdx = ItemContainerGenerator.IndexFromContainer(row);
+                row.SetSelectedFromOwner((rowIdx >= 0 && rowIdx == selIdx) || (selected is not null && ReferenceEquals(row, selected)));
+            }
+            return;
+        }
         foreach (var row in Items)
-            row.SetSelectedFromOwner(ReferenceEquals(row, selected));
+            row.SetSelectedFromOwner(selected is not null && ReferenceEquals(row, selected));
     }
 
     /// <summary>Raised after the effective selection actually changes.</summary>
     public event Action? SelectionChanged;
+
+    /// <summary>Value path (mirrors the Selector/ComboBox contract, which
+    /// native WPF shares across selectors; stored, no dependency property).</summary>
+    public string? SelectedValuePath { get; set; }
+
+    /// <summary>Selected value (mirrors the Selector/ComboBox contract:
+    /// reads the path off the selected row, writes select by path match,
+    /// null clears, miss lands at -1). Generated rows resolve the path
+    /// off the backing data item (native selectors read data, not
+    /// containers); direct rows read off themselves.</summary>
+    public object? SelectedValue
+    {
+        get
+        {
+            var item = SelectedItem;
+            if (item is null) return null;
+            if (SelectedValuePath is null) return item;
+            return BindingExpression.TryRead(SelectedSource(item), SelectedValuePath, out var value) ? value : null;
+        }
+        set
+        {
+            if (value is null) { SelectedIndex = -1; return; }
+            var items = Items;
+            for (var i = 0; i < items.Count; i++)
+            {
+                var candidate = SelectedValuePath is null
+                    ? items[i]
+                    : BindingExpression.TryRead(SelectedSource(items[i]), SelectedValuePath, out var v) ? v : null;
+                if (Equals(candidate, value)) { SelectedIndex = i; return; }
+            }
+            SelectedIndex = -1;
+        }
+    }
+
+    /// <summary>Backing data item for a generated row, else the row itself.</summary>
+    private object? SelectedSource(ListBoxItem row) =>
+        _generatedData.TryGetValue(row, out var data) ? data : row;
 
     /// <summary>Lists take focus (store-backed; the Control default is true).</summary>
     public override bool Focusable
@@ -7853,12 +8418,13 @@ public class ListBox : Control
         set => SetValue(FocusableProperty, value);
     }
 
-    /// <summary>Selects a row by hit position; returns false when no row covers it.</summary>
+    /// <summary>Selects a row by hit position; disabled rows never select
+    /// (native parity); returns false when no enabled row covers it.</summary>
     public bool SelectAt(double x, double y)
     {
         var items = Items;
         for (var i = 0; i < items.Count; i++)
-            if (items[i].HitTest(new WpfPoint(x, y))) { SelectedIndex = i; return true; }
+            if (items[i].IsEffectivelyEnabled && items[i].HitTest(new WpfPoint(x, y))) { SelectedIndex = i; return true; }
         return false;
     }
 
@@ -7873,7 +8439,26 @@ public class ListBox : Control
             case Core.WasmInputEvent.Pointer pd when pd.Args.Kind == Core.WasmPointerKind.Down && e.IsLeftButtonDown:
                 if (SelectAt(pd.Args.X, pd.Args.Y)) e.Handled = true;
                 break;
-            case Core.WasmInputEvent.Key k when k.Args.IsDown && _focused:
+            // Native parity: the wheel over the list scrolls whole rows
+            // through the ancestor scroller (viewer idiom: pixels through
+            // the row stride, minimum a row so small trackpad ticks still
+            // move). Without an ancestor scroller there is nothing to
+            // scroll; a zero tick keeps bubbling.
+            case Core.WasmInputEvent.Wheel w:
+                if (w.Args.DeltaY == 0) break;
+                for (var node = Parent as FrameworkElement; node is not null; node = node.Parent as FrameworkElement)
+                    if (node is ScrollViewer scroller)
+                    {
+                        var stride = Items.Count == 0 ? 24 : Items[0].RenderRect.Height;
+                        if (stride <= 0) stride = 24;
+                        var lines = (int)(w.Args.DeltaY / stride);
+                        if (lines == 0) lines = w.Args.DeltaY > 0 ? 1 : -1;
+                        scroller.VerticalOffset += lines * stride;
+                        e.Handled = true;
+                        break;
+                    }
+                break;
+            case Core.WasmInputEvent.Key k when k.Args.IsDown && (_focused || _focusWithin):
                 var count = Items.Count;
                 if (count == 0) break;
                 switch (k.Args.Key)
@@ -7882,12 +8467,101 @@ public class ListBox : Control
                     case "ArrowUp": SelectedIndex = SelectedIndex < 0 ? count - 1 : Math.Max(0, SelectedIndex - 1); e.Handled = true; break;
                     case "Home": SelectedIndex = 0; e.Handled = true; break;
                     case "End": SelectedIndex = count - 1; e.Handled = true; break;
+                    // Native parity: paging moves the selection (the J13
+                    // BringIntoView in the setter scrolls it visible); the
+                    // parent viewer only pages its own viewport when it has
+                    // focus, so the list must page its own selection here.
+                    case "PageDown": SelectedIndex = SelectedIndex < 0 ? Math.Min(count - 1, PageSize() - 1) : Math.Min(count - 1, SelectedIndex + PageSize()); e.Handled = true; break;
+                    case "PageUp": SelectedIndex = SelectedIndex < 0 ? 0 : Math.Max(0, SelectedIndex - PageSize()); e.Handled = true; break;
+                    // Native parity: type-ahead (WPF TextSearch jumps to the
+                    // next prefix match). Ctrl/Alt combinations stay for
+                    // shortcuts; the focus gate above already keeps template
+                    // editors (focused deeper than a row) out of reach.
+                    default:
+                        // Native parity: TextSearch matches any printable
+                        // prefix (spaces, hyphens), not just letters/digits.
+                        if (!k.Args.Ctrl && !k.Args.Alt && k.Args.Key.Length == 1 && !char.IsControl(k.Args.Key[0]))
+                            e.Handled = TypeAhead(k.Args.Key[0]);
+                        break;
                 }
                 break;
         }
     }
 
     private bool _focused;
+
+    /// <summary>
+    /// True while a row holds keyboard focus (set through
+    /// <see cref="NoteRowFocus"/>; the press focuses the row itself, so the
+    /// list's own flag stays false while arrows must still navigate).
+    /// </summary>
+    private bool _focusWithin;
+
+    /// <summary>Row-focus feed for the keyboard gate (old-lost runs before
+    /// new-got, so row-to-row moves end true and row-to-outside end
+    /// false).</summary>
+    internal void NoteRowFocus(bool within) => _focusWithin = within;
+
+    /// <summary>Type-ahead prefix (resets after a quiet second).</summary>
+    private string _typePrefix = string.Empty;
+
+    /// <summary>Tick of the last type-ahead keystroke.</summary>
+    private int _lastTypeTick;
+
+    /// <summary>
+    /// Jumps selection to the next row whose text starts with the
+    /// accumulated prefix (case-insensitive, wraps past the end; a repeated
+    /// single character cycles through that letter's rows like WPF
+    /// TextSearch). Returns false when nothing matches (key stays
+    /// unhandled). The J13 BringIntoView in the setter scrolls the match.
+    /// </summary>
+    private bool TypeAhead(char ch)
+    {
+        var rows = Items;
+        if (rows.Count == 0) return false;
+        if (Environment.TickCount - _lastTypeTick > 1000) _typePrefix = string.Empty;
+        _lastTypeTick = Environment.TickCount;
+        _typePrefix += char.ToLowerInvariant(ch);
+        string needle;
+        int start;
+        if (_typePrefix.Length > 1 && _typePrefix.All(c => c == _typePrefix[0]))
+        {
+            needle = _typePrefix[..1];
+            start = SelectedIndex < 0 ? 0 : (SelectedIndex + 1) % rows.Count;
+        }
+        else
+        {
+            needle = _typePrefix;
+            start = SelectedIndex < 0 ? 0 : SelectedIndex + 1;
+        }
+        for (var n = 0; n < rows.Count; n++)
+        {
+            var at = (start + n) % rows.Count;
+            if ((rows[at].Content ?? string.Empty).StartsWith(needle, StringComparison.OrdinalIgnoreCase))
+            {
+                SelectedIndex = at;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Paging stride (rows per viewport of the parent scroller; the list's
+    /// own height when un-nested; at least one so paging always moves).
+    /// </summary>
+    private int PageSize()
+    {
+        var rows = Items;
+        if (rows.Count == 0) return 1;
+        var rowH = rows[0].RenderRect.Height;
+        if (rowH <= 0) return 1;
+        var viewport = RenderRect.Height;
+        for (var node = Parent as FrameworkElement; node is not null; node = node.Parent as FrameworkElement)
+            if (node is ScrollViewer scroller) { viewport = scroller.ActualHeight; break; }
+        return Math.Max(1, (int)(viewport / rowH));
+    }
+
     public override void OnGotFocus() { _focused = true; InvalidateVisual(); }
     public override void OnLostFocus() { _focused = false; InvalidateVisual(); }
 
@@ -9040,6 +9714,7 @@ public class DataGrid : Control, IItemContainerOwner
     {
         _view = new List<object?>(_items);
         ItemContainerGenerator = new ItemContainerGenerator(this);
+        Items.IsDirectEditAllowed = () => _itemsSource is null || _syncingFromSource;
         _items.CollectionChanged += OnItemsChanged;
         _items.SortDescriptions.CollectionChanged += OnSortDescriptionsChanged;
         _selectedItems.CollectionChanged += OnSelectedItemsChanged;
@@ -9053,6 +9728,128 @@ public class DataGrid : Control, IItemContainerOwner
 
     /// <summary>Row objects with grid sort/group state (plain CLR data, not visuals).</summary>
     public DataGridItemCollection Items => _items;
+
+    /// <summary>
+    /// Source identity (matches System.Windows.Controls.ItemsControl.ItemsSourceProperty;
+    /// registered on DataGrid so the loader, style setters and BAML bindings resolve
+    /// the bindable property; the CLR wrapper keeps the snapshot flow and dual-lands
+    /// the DP store so GetValue readers see CLR-applied sources too).
+    /// </summary>
+    public static readonly DependencyProperty ItemsSourceProperty =
+        DependencyProperty.Register("ItemsSource", typeof(IEnumerable), typeof(DataGrid),
+            new FrameworkPropertyMetadata(null));
+
+    private IEnumerable? _itemsSource;
+    private bool _syncingFromSource;
+    private NotifyCollectionChangedEventHandler? _itemsSourceSubscription;
+
+    /// <summary>
+    /// Bound data rows (the converted gallery DataGrid page binds
+    /// ItemsSource="{Binding ...}"): setting a collection fills
+    /// <see cref="Items"/> with its rows (plain data, like direct rows),
+    /// INotifyCollectionChanged sources push live adds/removes/replaces/
+    /// moves/resets, and clearing (null) drops the rows. WPF parity guards:
+    /// setting a source while direct rows exist throws, and direct
+    /// <see cref="Items"/> edits while a source is set throw (the internal
+    /// sync bypasses through the flag).
+    /// </summary>
+    public IEnumerable? ItemsSource
+    {
+        get => _itemsSource;
+        set
+        {
+            if (ReferenceEquals(_itemsSource, value)) return;
+            if (value is not null && _itemsSource is null && Items.Count > 0)
+                throw new InvalidOperationException(
+                    "Items collection must be empty before using ItemsSource.");
+            DetachItemsSource();
+            _itemsSource = value;
+            SetValue(ItemsSourceProperty, value);
+            _syncingFromSource = true;
+            try
+            {
+                Items.Clear();
+                if (value is not null)
+                    foreach (var item in value) Items.Add(item!);
+            }
+            finally
+            {
+                _syncingFromSource = false;
+            }
+            AttachItemsSource(value);
+            InvalidateMeasure();
+        }
+    }
+
+    private void AttachItemsSource(IEnumerable? value)
+    {
+        if (value is INotifyCollectionChanged incc)
+        {
+            NotifyCollectionChangedEventHandler handler = (_, e) => SyncItemsSource(e);
+            _itemsSourceSubscription = handler;
+            incc.CollectionChanged += handler;
+        }
+    }
+
+    private void DetachItemsSource()
+    {
+        if (_itemsSourceSubscription is not null && _itemsSource is INotifyCollectionChanged oldIncc)
+            oldIncc.CollectionChanged -= _itemsSourceSubscription;
+        _itemsSourceSubscription = null;
+    }
+
+    /// <summary>Mirrors source edits into <see cref="Items"/> (the item-changed
+    /// handler rebuilds the view, reseats selection and repaints, like direct edits).</summary>
+    private void SyncItemsSource(NotifyCollectionChangedEventArgs e)
+    {
+        if (_itemsSource is null) return;
+        _syncingFromSource = true;
+        try
+        {
+            switch (e.Action)
+            {
+                case NotifyCollectionChangedAction.Add:
+                    if (e.NewStartingIndex >= 0 && e.NewItems is not null)
+                    {
+                        var at = e.NewStartingIndex;
+                        foreach (var item in e.NewItems) Items.Insert(at++, item);
+                    }
+                    else if (e.NewItems is not null)
+                    {
+                        foreach (var item in e.NewItems) Items.Add(item);
+                    }
+                    break;
+                case NotifyCollectionChangedAction.Remove:
+                    if (e.OldStartingIndex >= 0 && e.OldItems is not null)
+                    {
+                        for (var i = 0; i < e.OldItems.Count; i++) Items.RemoveAt(e.OldStartingIndex);
+                    }
+                    else if (e.OldItems is not null)
+                    {
+                        foreach (var item in e.OldItems) Items.Remove(item);
+                    }
+                    break;
+                case NotifyCollectionChangedAction.Replace:
+                    if (e.NewStartingIndex >= 0 && e.NewItems is not null && e.NewItems.Count > 0)
+                        Items[e.NewStartingIndex] = e.NewItems[0];
+                    break;
+                case NotifyCollectionChangedAction.Move:
+                    if (e.OldStartingIndex >= 0 && e.NewStartingIndex >= 0)
+                        Items.Move(e.OldStartingIndex, e.NewStartingIndex);
+                    break;
+                case NotifyCollectionChangedAction.Reset:
+                default:
+                    Items.Clear();
+                    foreach (var item in _itemsSource) Items.Add(item!);
+                    break;
+            }
+        }
+        finally
+        {
+            _syncingFromSource = false;
+        }
+        InvalidateMeasure();
+    }
 
     /// <summary>Rendered view order (source order without sort descriptions).</summary>
     internal IReadOnlyList<object?> View => _view;
@@ -9976,6 +10773,17 @@ public class MenuItem : Control
     /// <summary>Header text for state channels and tests (visuals report their text).</summary>
     internal string HeaderText => _header is string text ? text : _caption.Text;
 
+    /// <summary>
+    /// Focus leaving a menu entry dismisses the open menu (native: the submenu
+    /// closes once keyboard focus moves outside the menu scope), unless focus
+    /// stays inside the same menu subtree (intra-menu navigation).
+    /// </summary>
+    public override void OnLostFocus()
+    {
+        var next = WpfInputManager.Current?.Focused;
+        Menu.FindRootMenu(this)?.NotifyItemFocusLost(next);
+    }
+
     /// <summary>Text ink for the idle state (synced from Foreground, like Button).</summary>
     public uint ForegroundRgba { get; set; } = 0x000000FF;
 
@@ -9989,22 +10797,47 @@ public class MenuItem : Control
 
     protected override void OnFontChanged() => FontCss = ComposeFontCss();
 
+    private static readonly DependencyPropertyKey RolePropertyKey =
+        DependencyProperty.RegisterReadOnly("Role", typeof(MenuItemRole), typeof(MenuItem),
+            new FrameworkPropertyMetadata(MenuItemRole.TopLevelItem));
+
+    /// <summary>Role token (matches MenuItem.RoleProperty; read-only like real WPF).</summary>
+    public static readonly DependencyProperty RoleProperty = RolePropertyKey.DependencyProperty;
+
     /// <summary>Menu role (computed from the parent chain and submenu rows, like WPF).</summary>
     public MenuItemRole Role
     {
         get
         {
-            var submenu = false;
-            for (var node = Parent as FrameworkElement; node is not null; node = node.Parent as FrameworkElement)
-                if (node is MenuItem) { submenu = true; break; }
-            return (submenu, HasItems) switch
-            {
-                (false, false) => MenuItemRole.TopLevelItem,
-                (false, true) => MenuItemRole.TopLevelHeader,
-                (true, false) => MenuItemRole.SubmenuItem,
-                (true, true) => MenuItemRole.SubmenuHeader,
-            };
+            var role = ComputeRole();
+            SetValue(RolePropertyKey, role);
+            return role;
         }
+    }
+
+    private MenuItemRole ComputeRole()
+    {
+        var submenu = false;
+        for (var node = Parent as FrameworkElement; node is not null; node = node.Parent as FrameworkElement)
+            if (node is MenuItem) { submenu = true; break; }
+        return (submenu, HasItems) switch
+        {
+            (false, false) => MenuItemRole.TopLevelItem,
+            (false, true) => MenuItemRole.TopLevelHeader,
+            (true, false) => MenuItemRole.SubmenuItem,
+            (true, true) => MenuItemRole.SubmenuHeader,
+        };
+    }
+
+    /// <summary>Recomputes the stored Role value (idempotent; announces only on change, which re-evaluates style triggers).</summary>
+    internal void RefreshRole() => SetValue(RolePropertyKey, ComputeRole());
+
+    /// <summary>Recomputes the stored Role value for this entry and its submenu (idempotent).</summary>
+    internal void RefreshRoleSubtree()
+    {
+        RefreshRole();
+        foreach (var child in Items)
+            child.RefreshRoleSubtree();
     }
 
     // Background, Padding, FontFamily, FontWeight and VerticalContentAlignment
@@ -10217,6 +11050,23 @@ public class MenuItem : Control
             throw new InvalidOperationException(
                 $"<MenuItem> entries must be <MenuItem> (have <{child.GetType().Name}>).");
         base.AddChild(child);
+        RefreshRole();
+        if (child is MenuItem mi) mi.RefreshRoleSubtree();
+    }
+
+    /// <summary>
+    /// Removes a submenu entry or separator row, refreshing the stored Role
+    /// values it affects (own HasItems plus the detached subtree).
+    /// </summary>
+    public new bool RemoveChild(UIElement child)
+    {
+        var removed = base.RemoveChild(child);
+        if (removed)
+        {
+            RefreshRole();
+            if (child is MenuItem mi) mi.RefreshRoleSubtree();
+        }
+        return removed;
     }
 
     /// <summary>
@@ -10691,7 +11541,38 @@ public class Menu : MenuBase
 
     private bool _focused;
     public override void OnGotFocus() { _focused = true; InvalidateVisual(); }
-    public override void OnLostFocus() { _focused = false; CloseMenus(); }
+    public override void OnLostFocus()
+    {
+        _focused = false;
+        // Intra-menu focus moves (a press resolving to another entry, e.g. a
+        // separator row mapping to its parent) are navigation, not dismissal:
+        // only focus leaving the menu closes it, like native.
+        var next = WpfInputManager.Current?.Focused;
+        if (next is not null && !ReferenceEquals(next, this) && WpfInputManager.IsInSubtree(this, next))
+        {
+            InvalidateVisual();
+            return;
+        }
+        CloseMenus();
+    }
+
+    /// <summary>Topmost <see cref="Menu"/> ancestor of an element (null when detached).</summary>
+    internal static Menu? FindRootMenu(UIElement element)
+    {
+        Menu? root = null;
+        for (var p = element.Parent; p is not null; p = p.Parent)
+            if (p is Menu menu) root = menu;
+        return root;
+    }
+
+    /// <summary>
+    /// Dismisses the open menu when focus leaves it from one of its entries
+    /// (native menu-mode exit); intra-menu moves are navigation, not dismissal.
+    /// </summary>
+    internal void NotifyItemFocusLost(UIElement? next)
+    {
+        if (next is null || !WpfInputManager.IsInSubtree(this, next)) CloseMenus();
+    }
 
     public override bool Focusable { get; set; } = true;
 

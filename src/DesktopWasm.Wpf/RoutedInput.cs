@@ -850,6 +850,9 @@ public sealed class WpfInputManager
     /// <summary>
     /// Cheap keyboard activation: Tab moves focus, Enter/Space click the
     /// focused button (both on key-down as a documented simplification).
+    /// The target is ButtonBase like native activation, so toggle buttons
+    /// (CheckBox/RadioButton, which toggle through OnClick) activate too —
+    /// a Button-only gate silently drops Space/Enter on focused checkboxes.
     /// Returns true when the key was consumed (no further routing).
     /// </summary>
     private bool HandleKeyShortcut(WasmKeyArgs args)
@@ -860,9 +863,17 @@ public sealed class WpfInputManager
             return true;
         }
         if ((string.Equals(args.Key, "Enter", StringComparison.Ordinal) || args.Key == " ") &&
-            Focused is Button focused)
+            Focused is ButtonBase focused)
         {
-            focused.RaiseClick();
+            focused.ActivateByKeyboard();
+            return true;
+        }
+        // Closed drop-downs open on Space like native ComboBox keyboard
+        // handling (non-editable simplification: the engine renders no
+        // in-place editor, so Space always opens; Escape still closes).
+        if (args.Key == " " && Focused is ComboBox closed && !closed.IsDropDownOpen)
+        {
+            closed.IsDropDownOpen = true;
             return true;
         }
         return false;

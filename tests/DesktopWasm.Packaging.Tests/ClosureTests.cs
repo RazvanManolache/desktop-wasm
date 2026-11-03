@@ -101,6 +101,39 @@ public sealed class ClosureTests
     }
 
     [Fact]
+    public void MixedEntry_Closure_Ok_WithMixedCapabilities_AndSharedIdentity()
+    {
+        // One original assembly referencing BOTH stacks: the closure must
+        // carry it as a single node with canonical (name, version, content
+        // hash) identity and Mixed capabilities, never split or dropped.
+        var dir = FixtureBuilder.TempDir("mixedclosure");
+        var entry = FixtureBuilder.WriteAssembly(dir, "MixedApp.dll", "1.0.0.0",
+            [FixtureBuilder.Ref("System.Runtime"), FixtureBuilder.Ref("System.Windows.Forms"), FixtureBuilder.Ref("PresentationFramework"), FixtureBuilder.Ref("WindowsBase")],
+            module =>
+            {
+                FixtureBuilder.DefineWinFormsControl(module);
+                FixtureBuilder.DefineWpfVisual(module);
+            });
+
+        var closure = JointClosure.Build(entry, [], Provided);
+
+        Assert.True(closure.Ok);
+        var node = Assert.Single(closure.Nodes);
+        Assert.Equal("MixedApp", node.Name);
+        Assert.Equal("1.0.0.0", node.Version);
+        Assert.Equal(64, node.Sha256.Length);
+        Assert.Equal(JointClosure.HashOf(entry), node.Sha256);
+        Assert.Equal(FrameworkCapabilities.Mixed, node.Capabilities);
+
+        // The staged mixed payload verifies against the closure identity:
+        // same name, same bytes, one payload per package.
+        var stage = Path.Combine(dir, "stage");
+        Directory.CreateDirectory(stage);
+        File.Copy(entry, Path.Combine(stage, "MixedApp.dll"));
+        Assert.Empty(JointClosure.VerifyPayload(closure, stage));
+    }
+
+    [Fact]
     public void VerifyPayload_CatchesTamperedStage()
     {
         var dir = FixtureBuilder.TempDir("stage");

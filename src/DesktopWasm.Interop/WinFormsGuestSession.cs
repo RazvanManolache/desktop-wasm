@@ -74,6 +74,7 @@ public sealed class WinFormsGuestSession : IHostedGuest
         Dpi = NormalizeDpi(dpi);
         ApplySize();
         _ = Content.Handle; // force headless handle creation (fork test pattern)
+        EnsureSubtreeHandles(Content);
         if (Content is ForkForms.Form form)
             form.Show();
     }
@@ -303,6 +304,30 @@ public sealed class WinFormsGuestSession : IHostedGuest
             {
                 graphics.Restore(state);
             }
+        }
+    }
+
+    /// <summary>
+    /// Realizes handles for the visible subtree, like a desktop show: the
+    /// fork creates child handles on show (WmShowWindow runs CreateControl
+    /// over the visible subtree), not on parent handle creation, so without
+    /// this nested hit-testing and child input have no windows to resolve.
+    /// Runs top-down (parents before children); invisible children keep
+    /// their lazy handles until shown. Never throws.
+    /// </summary>
+    private static void EnsureSubtreeHandles(ForkForms.Control root)
+    {
+        foreach (ForkForms.Control child in root.Controls)
+        {
+            try
+            {
+                if (!child.IsDisposed && !child.IsHandleCreated && child.Visible)
+                    _ = child.Handle;
+            }
+            catch
+            {
+            }
+            EnsureSubtreeHandles(child);
         }
     }
 

@@ -160,6 +160,7 @@ namespace System.Drawing
         public Pen(Color color, float width)
         {
             _color = color;
+            Brush = new SolidBrush(color);
             Width = width;
         }
 

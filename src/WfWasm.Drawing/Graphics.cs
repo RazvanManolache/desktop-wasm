@@ -15,6 +15,10 @@ namespace System.Drawing
         private Matrix _transform = new();
         private IntPtr _overlayHwnd;
         private bool _overlayCommitted;
+        private List<IntPtr>? _hdcLeases;
+        private static long s_hdcLeaseCount;
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<IntPtr, Graphics> s_hdcTargets = new();
+        public static long LiveHdcLeaseCount => System.Threading.Interlocked.Read(ref s_hdcLeaseCount);
 
 
 
@@ -83,14 +87,56 @@ namespace System.Drawing
         internal static Func<Graphics, IntPtr>? HdcHook { get; set; }
         internal static Action<IntPtr>? HdcReleaseHook { get; set; }
 
-        public IntPtr GetHdc() => HdcHook?.Invoke(this) ?? IntPtr.Zero;
+        public IntPtr GetHdc()
+        {
+            IntPtr handle = HdcHook?.Invoke(this) ?? IntPtr.Zero;
+            if (handle != IntPtr.Zero)
+            {
+                (_hdcLeases ??= new()).Add(handle);
+                s_hdcTargets[handle] = this;
+                System.Threading.Interlocked.Increment(ref s_hdcLeaseCount);
+            }
+            return handle;
+        }
         public void ReleaseHdc()
         {
+            if (_hdcLeases is { Count: > 0 }) ReleaseHdc(_hdcLeases[^1]);
         }
 
         public void ReleaseHdc(IntPtr hdc)
         {
+            if (_hdcLeases?.Remove(hdc) == true)
+            {
+                s_hdcTargets.TryRemove(hdc, out _);
+                System.Threading.Interlocked.Decrement(ref s_hdcLeaseCount);
+            }
             try { HdcReleaseHook?.Invoke(hdc); } catch { }
+        }
+
+        // user32 InvertRect works in device coordinates. Telerik's caret
+        // passes absolute control coordinates after acquiring this Graphics'
+        // HDC; applying its world transform again would shift the caret twice.
+        public static bool InvertHdcRect(IntPtr hdc, int left, int top, int right, int bottom)
+        {
+            if (!s_hdcTargets.TryGetValue(hdc, out Graphics? graphics) || graphics._target is null)
+                return false;
+            if (right <= left || bottom <= top) return true;
+            if (!graphics.TryGetDrawFrame(out int x0, out int y0, out int x1, out int y1)) return true;
+            x0 = Math.Max(x0, left); y0 = Math.Max(y0, top);
+            x1 = Math.Min(x1, right); y1 = Math.Min(y1, bottom);
+            Bitmap target = graphics._target;
+            bool clipCheck = graphics._clip is not null && !graphics._clip.IsInfinite(null);
+            int writes = 0;
+            for (int y = y0; y < y1; y++)
+                for (int x = x0; x < x1; x++)
+                {
+                    if (clipCheck && !graphics._clip!.IsVisible(x, y)) continue;
+                    int i = y * target.Width + x;
+                    target.Pixels[i] ^= 0x00ffffff;
+                    writes++;
+                }
+            target.PaintVersion = unchecked(target.PaintVersion + writes);
+            return true;
         }
 
         public void Flush()
@@ -108,6 +154,10 @@ namespace System.Drawing
 
         private void Dispose(bool disposing)
         {
+            // The bridge roots Graphics while an HDC is leased. Scope
+            // disposal must release forgotten leases as well as the
+            // parameterless IDeviceContext.ReleaseHdc path.
+            while (_hdcLeases is { Count: > 0 }) ReleaseHdc();
             if (disposing && _overlayHwnd != IntPtr.Zero && !_overlayCommitted && _target is Bitmap bmp)
             {
                 _overlayCommitted = true;
@@ -1192,6 +1242,10 @@ namespace System.Drawing
                 return;
             PreparedBrush prepared = PrepareBrush(brush);
             var crossings = new List<float>();
+            // The scan converter already bounds spans to the target/clip
+            // envelope. A rectangular clip needs no per-pixel region walk.
+            bool polygonClipCheck = DrawImageCache.IntersectWrite(_clip,
+                ref fx0, ref yStart, ref fx1, ref yEnd);
             for (int y = yStart; y < yEnd; y++)
             {
                 crossings.Clear();
@@ -1213,17 +1267,44 @@ namespace System.Drawing
                     for (int k = 0; k + 1 < crossings.Count; k += 2)
                     {
                         if (TryBoundRange(crossings[k], crossings[k + 1], fx0, fx1, out int sx0, out int sx1))
-                            for (int x = sx0; x < sx1; x++)
-                                PutPixel(x, y, prepared.Sample(x, y));
+                            FillPolygonSpan(prepared, y, sx0, sx1, polygonClipCheck);
                     }
                 }
                 else
                 {
                     if (TryBoundRange(crossings[0], crossings[^1], fx0, fx1, out int sx0, out int sx1))
-                        for (int x = sx0; x < sx1; x++)
-                            PutPixel(x, y, prepared.Sample(x, y));
+                        FillPolygonSpan(prepared, y, sx0, sx1, polygonClipCheck);
                 }
             }
+        }
+
+        private void FillPolygonSpan(PreparedBrush prepared, int y, int x0, int x1, bool clipCheck)
+        {
+            if (!clipCheck && _target is not null && prepared.TryGetFlatColor(out Color color))
+            {
+                int count = x1 - x0;
+                int start = y * _target.Width + x0;
+                int[] pixels = _target.Pixels;
+                int sa = color.A;
+                if (CompositingMode == CompositingMode.SourceCopy || sa == 255)
+                {
+                    Array.Fill(pixels, color.ToArgb(), start, count);
+                }
+                else
+                {
+                    int sr = color.R, sg = color.G, sb = color.B;
+                    for (int i = start, end = start + count; i < end; i++)
+                        pixels[i] = BlendOverInt(pixels[i], sa, sr, sg, sb);
+                }
+                // Same write count (including transparent writes) as PutPixel,
+                // so bitmap version guards and cached images remain coherent.
+                _target.PaintVersion = unchecked(_target.PaintVersion + count);
+                return;
+            }
+            // Texture brushes and nonrectangular clips retain exact sampling
+            // and per-pixel visibility, including excluded holes.
+            for (int x = x0; x < x1; x++)
+                PutPixel(x, y, prepared.Sample(x, y));
         }
 
         public void DrawPolygon(Pen pen, PointF[] points)
@@ -2273,6 +2354,31 @@ namespace System.Drawing
         private static int s_dsCalls;
         private static int s_dsEmptyRect;
         private static int s_dsNullFormat;
+        // WC1204 grant: bounded DrawString rect census (label6 flag-path
+        // diagnosis). First paint-time preview+rect+NoWrap per text shape;
+        // name-gated by text preview with a hard cap so the hot path stays
+        // quiet; never throws; zero behavior change.
+        private static readonly System.Collections.Generic.HashSet<string> s_dsRectLogged = new();
+        private static int s_dsRectLoggedCount;
+        private static void NoteDrawStringRect(string? text, RectangleF layoutRectangle, StringFormat? format)
+        {
+            try
+            {
+                if (s_dsRectLoggedCount >= 64) return;
+                bool noWrap = format is not null && (format.FormatFlags & StringFormatFlags.NoWrap) != 0;
+                string preview = text is not null && text.Length > 24 ? text.Substring(0, 24) : text ?? "";
+                string key = preview + "|" + (int)layoutRectangle.X + "," + (int)layoutRectangle.Y + " " + (int)layoutRectangle.Width + "x" + (int)layoutRectangle.Height + "|" + (noWrap ? "nw" : "w");
+                lock (s_dsRectLogged)
+                {
+                    if (s_dsRectLoggedCount >= 64 || !s_dsRectLogged.Add(key)) return;
+                    s_dsRectLoggedCount++;
+                }
+                System.Console.WriteLine("[DS-RECT] '" + preview + "' rect=" + layoutRectangle.X + "," + layoutRectangle.Y + " " + layoutRectangle.Width + "x" + layoutRectangle.Height + " nowrap=" + (noWrap ? "True" : "False"));
+            }
+            catch
+            {
+            }
+        }
         public static string DumpDrawStringCensus() =>
             "draws=" + s_dsCalls + " emptyRect=" + s_dsEmptyRect + " nullFormat=" + s_dsNullFormat;
         public void DrawString(string? text, Font font, Brush brush, RectangleF layoutRectangle, StringFormat? format)
@@ -2294,6 +2400,7 @@ namespace System.Drawing
             s_dsCalls++;
             if (layoutRectangle.Width <= 0f || layoutRectangle.Height <= 0f) s_dsEmptyRect++;
             if (format is null) s_dsNullFormat++;
+            NoteDrawStringRect(text, layoutRectangle, format);
             long tDraw0 = TextRasterCounters.PerfEnabled ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
             if (tDraw0 != 0)
                 TextRasterCounters.NoteDraw(text?.Length ?? 0);
@@ -2304,6 +2411,18 @@ namespace System.Drawing
             // blocks align as one block, not per line.
                         ToDevice(layoutRectangle, out float dx, out float dy, out float dw, out float dh);
             int glyphTurns = GetQuarterTurns();
+            // A clipped layout rectangle entirely outside the device draw frame
+            // cannot contribute any glyph pixels, regardless of alignment or
+            // wrapping. Avoid raster/cache/interop work for offscreen spans.
+            // NoClip and point-layout callers need actual glyph bounds instead.
+            bool clipsLayout = format is null || (format.FormatFlags & StringFormatFlags.NoClip) == 0;
+            if (!IsDisplay && clipsLayout && dw > 0f && dh > 0f
+                && float.IsFinite(dx) && float.IsFinite(dy) && float.IsFinite(dw) && float.IsFinite(dh))
+            {
+                if (!TryGetDrawFrame(out int tx0, out int ty0, out int tx1, out int ty1)
+                    || dx >= tx1 || dy >= ty1 || dx + dw <= tx0 || dy + dh <= ty0)
+                    return;
+            }
             // Rotated text (chart axis titles): the rasterizer wraps in device space,
             // so request the unrotated width (AABB height for +-90-degree turns).
             float measureW = (glyphTurns == 1 || glyphTurns == 3) ? dh : dw;
@@ -2409,6 +2528,20 @@ namespace System.Drawing
             bool sourceCopy = CompositingMode == CompositingMode.SourceCopy;
             Region? drawClip = _clip;
             bool clipNone = drawClip is null || drawClip.IsInfinite(null);
+            // Most vendor glyphs have an integer rectangular device clip.
+            // Intersect once instead of testing Region.IsVisible for every
+            // non-transparent glyph pixel. Fractional/complex clips keep the
+            // existing exact visibility test below.
+            if (!clipNone && drawClip!.TryGetIntRect(out int cx0, out int cy0, out int cx1, out int cy1))
+            {
+                clipX0 = Math.Max(clipX0, cx0);
+                clipY0 = Math.Max(clipY0, cy0);
+                clipX1 = Math.Min(clipX1, cx1);
+                clipY1 = Math.Min(clipY1, cy1);
+                if (clipX1 <= clipX0 || clipY1 <= clipY0)
+                    return;
+                clipNone = true;
+            }
             int ry0 = Math.Max(0, Math.Max(clipY0 - oy, 0 - oy));
             int ry1 = Math.Min(rh, Math.Min(clipY1 - oy, th - oy));
             int rx0 = Math.Max(0, Math.Max(clipX0 - ox, 0 - ox));
@@ -2922,7 +3055,7 @@ namespace System.Drawing
 
         public void ReleaseHdcInternal(IntPtr hdc)
         {
-            try { HdcReleaseHook?.Invoke(hdc); } catch { }
+            ReleaseHdc(hdc);
         }
 
         public void GetContextInfo(out PointF dpi) => dpi = new PointF(DpiX, DpiY);

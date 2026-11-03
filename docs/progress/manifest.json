@@ -1,0 +1,87 @@
+{
+ "manifest": "DesktopWasm progress 2026-11-03 \u2014 public-safe capture manifest (derived from verify-owned screenshots/manifest.json 2026-11-03T14:55:11Z; localhost server URLs, machine paths and session diagnostics stripped)",
+ "viewport": "1280x800, full-viewport headless Chromium, unedited frames",
+ "scope": "Illustrates compatibility only; no vendor source/binaries redistributed, no vendor endorsement, no full-functionality claims. See docs/progress/2026-11-03.md for per-demo honest gaps.",
+ "entries": [
+  {
+   "file": "paint-twist-shell63.png",
+   "sha256": "7bdb4c39c03ebcb8ab02241a9aae05d7c015e5b26044d07945dab869c5527dc8",
+   "dimensions": "1280x800",
+   "build": "shell63 (clip-carry generation)",
+   "app": "Paint.NET 5.1.12 (WinForms, dotPDN LLC \u2014 compatibility demo; original vendor app, no affiliation, no redistribution)",
+   "action": "freehand stroke + Effects > Distort > Twist dialog opened",
+   "result": "stroke drawn + Twist dialog (Amount 30, Size 1.00, Center, Quality 1, OK/Cancel) over live Tools/Colors/History/Layers; 0 pageerrors",
+   "dateUTC": "2026-11-03T14:55:11Z"
+  },
+  {
+   "file": "rte-type-shell63.png",
+   "sha256": "4bb51c4ab5e3d53065b144d7f0b498695710a10060c068f3786a6316d684564d",
+   "dimensions": "1280x800",
+   "build": "shell63 (clip-carry generation)",
+   "app": "Telerik UI for WinForms RichTextEditor (Progress \u2014 compatibility demo; original vendor app, no affiliation, no redistribution)",
+   "action": "click into document + typed text",
+   "result": "typed text with caret visible (verified pixel delta); 0 pageerrors",
+   "dateUTC": "2026-11-03T14:55:11Z"
+  },
+  {
+   "file": "docking-panels-shell63.png",
+   "sha256": "a5e37aa98a83fdcef613f2fe2a38516841df0380ba78445ad4e9b9f1e05f4e97",
+   "dimensions": "1280x800",
+   "build": "shell63 (clip-carry generation)",
+   "app": "Syncfusion Docking VS-designer demo (Syncfusion Inc. \u2014 compatibility demo; original vendor app, no affiliation, no redistribution)",
+   "action": "boot (no interaction \u2014 toolbox clicks are no-ops on current bytes)",
+   "result": "designer boots with toolbox + Solution Explorer + Properties + Output; 0 pageerrors",
+   "dateUTC": "2026-11-03T14:55:11Z"
+  },
+  {
+   "file": "sf01-popup-shell63.png",
+   "sha256": "cf5fdd3e1c116458a5f13873f750a26e1b29528c98f42a4ee33286fccdc58b70",
+   "dimensions": "1280x800",
+   "build": "shell63 (clip-carry generation)",
+   "app": "Syncfusion AutoComplete (Syncfusion Inc. \u2014 compatibility demo; original vendor app, no affiliation, no redistribution)",
+   "action": "focus box + type \"Uni\"",
+   "result": "suggestion popup with United Kingdom row visible; 0 pageerrors",
+   "dateUTC": "2026-11-03T14:55:11Z"
+  },
+  {
+   "file": "wpf-nav-shell63.png",
+   "sha256": "dd7b425cbe1c415e5eb250aff449b87f094180d15fbc815ca8aa0c12df26a010",
+   "dimensions": "1280x800",
+   "build": "shell63 (clip-carry generation)",
+   "app": "Microsoft WPF Gallery via WPF Studio portal (Microsoft \u2014 compatibility demo; original vendor app, no affiliation, no redistribution)",
+   "action": "tree-select Samples node",
+   "result": "content pane navigates to sample page (User Dashboard tile); first frame 9.62s; 0 pageerrors",
+   "dateUTC": "2026-11-03T14:55:11Z"
+  },
+  {
+   "file": "skin-theme-shell63.png",
+   "sha256": "b3888bb093bfd34b2441d39b3e8cce315ca61b98d2f8edde4397d1f847205121",
+   "dimensions": "1280x800",
+   "build": "shell63 (clip-carry generation)",
+   "app": "Syncfusion Skin Manager Kitchen Sink (Syncfusion Inc. \u2014 compatibility demo; original vendor app, no affiliation, no redistribution)",
+   "action": "open Choose-theme list + click Office2016White row",
+   "result": "theme value commits in box (no visible reskin on either generation \u2014 same on production); 0 pageerrors",
+   "dateUTC": "2026-11-03T14:55:11Z"
+  },
+  {
+   "file": "word-type-public-gen43.png",
+   "sha256": "422d3be843f48c5499a223d6de35caf1e85f79cd0bb335a8057419dff9b1ef56",
+   "dimensions": "1280x800",
+   "build": "build43 (public production gen43; manifest field carries prior label, screenshot fresh 2026-11-03 on current public bytes e1bdb2d5)",
+   "app": "Syncfusion Word 2016 Demo on PUBLIC production (same attribution as candidate shot)",
+   "action": "boot + click + type exact string on public :5220",
+   "result": "production boots and types the exact string (re-verified 3x after slice1's gen3-era error; public bytes unchanged gen43); 0 pageerrors",
+   "dateUTC": "2026-11-03T14:55:11Z"
+  },
+  {
+   "file": "01-chart-stacking-column.png",
+   "sha256": "45d6828f982813217a5b43e7f068991699914bf030e6d2a66968290df9389761",
+   "dimensions": "1440x1000",
+   "build": "shell60 (staged; served-log commit line)",
+   "app": "Syncfusion chart demo (compatibility demo; original vendor app, no affiliation, no redistribution)",
+   "action": "chart-type popup pick committing StackingColumn",
+   "result": "chart repainted grouped-to-stacked; older staged evidence, labeled generation",
+   "dateUTC": "pre-2026-11-03 (staged shell60 era)"
+  }
+ ]
+}

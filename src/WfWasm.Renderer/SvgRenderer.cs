@@ -13,11 +13,13 @@ public sealed class SvgRenderer : ICanvasRenderer
     private readonly StringBuilder _svg = new();
     private bool _open;
     private int _gradientCount;
+    private int _clipCount;
 
     public void BeginFrame(int width, int height)
     {
         _svg.Clear();
         _gradientCount = 0;
+        _clipCount = 0;
         _svg.Append(FormattableString.Invariant(
             $"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width}\" height=\"{height}\">"));
         _open = true;
@@ -71,7 +73,8 @@ public sealed class SvgRenderer : ICanvasRenderer
 
     public void DrawTextAligned(
         string text, float x, float y, string fontCss, uint rgba,
-        TextHAlign hAlign, TextVAlign vAlign, int mnemonicIndex = -1)
+        TextHAlign hAlign, TextVAlign vAlign, int mnemonicIndex = -1,
+        float clipX = 0, float clipY = 0, float clipWidth = 0, float clipHeight = 0)
     {
         RequireOpen();
         ArgumentNullException.ThrowIfNull(text);
@@ -92,8 +95,16 @@ public sealed class SvgRenderer : ICanvasRenderer
             TextVAlign.Bottom => " dominant-baseline=\"text-after-edge\"",
             _ => string.Empty,
         };
+        int clipId = -1;
+        if (clipWidth > 0 && clipHeight > 0)
+        {
+            clipId = _clipCount++;
+            _svg.Append(FormattableString.Invariant(
+                $"<defs><clipPath id=\"wcclip{clipId}\"><rect x=\"{clipX}\" y=\"{clipY}\" width=\"{clipWidth}\" height=\"{clipHeight}\"/></clipPath></defs><g clip-path=\"url(#wcclip{clipId})\">"));
+        }
         _svg.Append(FormattableString.Invariant(
             $"<text x=\"{x}\" y=\"{y}\"{anchor}{baseline} style=\"font:{fontCss};fill:#{rgba:x8}\">{Escape(text)}</text>"));
+        if (clipId >= 0) _svg.Append("</g>");
     }
 
     public void DrawImage(byte[] rgba, int width, int height, float x, float y, float dw, float dh)

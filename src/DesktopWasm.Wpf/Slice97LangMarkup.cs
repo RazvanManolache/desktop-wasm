@@ -560,16 +560,38 @@ public static partial class XamlLoader
     private static DependencyProperty? ConvertedAttachedDp(string owner, string property)
     {
         if (property.Contains('.') || FindEngineType(owner) is not null) return null;
+        var closure = ConvertedClosureAssemblies();
         Type? found = null;
-        foreach (var assembly in ConvertedSearchAssemblies())
+        if (closure.Count > 0)
         {
-            List<Type> candidates;
-            try { candidates = WpfAppBoot.SafeGetTypes(assembly).Where(t => t.Name == owner).ToList(); }
-            catch { continue; }
-            foreach (var candidate in candidates)
+            foreach (var assembly in closure)
             {
-                if (found is not null && !ReferenceEquals(found, candidate)) return null;
-                found = candidate;
+                List<Type> candidates;
+                try { candidates = WpfAppBoot.SafeGetTypes(assembly).Where(t => t.Name == owner).ToList(); }
+                catch { continue; }
+                foreach (var candidate in candidates)
+                {
+                    if (found is not null && !ReferenceEquals(found, candidate) &&
+                        !string.Equals(found.FullName, candidate.FullName, StringComparison.Ordinal)) return null;
+                    found = candidate;
+                }
+            }
+        }
+        if (found is null)
+        {
+            var seenInClosure = new HashSet<Assembly>(closure);
+            foreach (var assembly in ConvertedSearchAssemblies())
+            {
+                if (seenInClosure.Contains(assembly)) continue;
+                List<Type> candidates;
+                try { candidates = WpfAppBoot.SafeGetTypes(assembly).Where(t => t.Name == owner).ToList(); }
+                catch { continue; }
+                foreach (var candidate in candidates)
+                {
+                    if (found is not null && !ReferenceEquals(found, candidate) &&
+                        !string.Equals(found.FullName, candidate.FullName, StringComparison.Ordinal)) return null;
+                    found = candidate;
+                }
             }
         }
         var field = found?.GetField(property + "Property",
@@ -589,16 +611,38 @@ public static partial class XamlLoader
         if (property.Contains('.')) return null;
         var shortOwner = owner.Contains(':') ? owner[(owner.IndexOf(':') + 1)..] : owner;
         if (string.IsNullOrEmpty(shortOwner) || FindEngineType(shortOwner) is not null) return null;
+        var closure = ConvertedClosureAssemblies();
         Type? found = null;
-        foreach (var assembly in ConvertedSearchAssemblies())
+        if (closure.Count > 0)
         {
-            List<Type> candidates;
-            try { candidates = WpfAppBoot.SafeGetTypes(assembly).Where(t => t.Name == shortOwner).ToList(); }
-            catch { continue; }
-            foreach (var candidate in candidates)
+            foreach (var assembly in closure)
             {
-                if (found is not null && !ReferenceEquals(found, candidate)) return null;
-                found = candidate;
+                List<Type> candidates;
+                try { candidates = WpfAppBoot.SafeGetTypes(assembly).Where(t => t.Name == shortOwner).ToList(); }
+                catch { continue; }
+                foreach (var candidate in candidates)
+                {
+                    if (found is not null && !ReferenceEquals(found, candidate) &&
+                        !string.Equals(found.FullName, candidate.FullName, StringComparison.Ordinal)) return null;
+                    found = candidate;
+                }
+            }
+        }
+        if (found is null)
+        {
+            var seenInClosure = new HashSet<Assembly>(closure);
+            foreach (var assembly in ConvertedSearchAssemblies())
+            {
+                if (seenInClosure.Contains(assembly)) continue;
+                List<Type> candidates;
+                try { candidates = WpfAppBoot.SafeGetTypes(assembly).Where(t => t.Name == shortOwner).ToList(); }
+                catch { continue; }
+                foreach (var candidate in candidates)
+                {
+                    if (found is not null && !ReferenceEquals(found, candidate) &&
+                        !string.Equals(found.FullName, candidate.FullName, StringComparison.Ordinal)) return null;
+                    found = candidate;
+                }
             }
         }
         var field = found?.GetField(property + "Property",
@@ -638,7 +682,9 @@ public static partial class XamlLoader
                     continue;
                 var candidate = SafeGetConvertedType(assembly, fullName);
                 if (candidate is null || !typeof(MarkupExtension).IsAssignableFrom(candidate)) continue;
-                if (found is not null)
+                if (found is not null && !ReferenceEquals(found, candidate) &&
+                    (!string.Equals(found.FullName, candidate.FullName, StringComparison.Ordinal) ||
+                     !string.Equals(owner?.GetName().Name, assembly.GetName().Name, StringComparison.OrdinalIgnoreCase)))
                     throw Fail(lineInfo, $"'{prefix}:Lang' matches converted types in '{owner!.GetName().Name}' and '{assembly.GetName().Name}' (qualify the xmlns assembly).");
                 found = candidate;
                 owner = assembly;
@@ -658,7 +704,8 @@ public static partial class XamlLoader
                 {
                     var candidate = SafeGetConvertedType(assembly, fullName);
                     if (candidate is null || !typeof(MarkupExtension).IsAssignableFrom(candidate)) continue;
-                    if (found is not null && !ReferenceEquals(found, candidate))
+                    if (found is not null && !ReferenceEquals(found, candidate) &&
+                        !string.Equals(found.FullName, candidate.FullName, StringComparison.Ordinal))
                         throw Fail(lineInfo, $"'{prefix}:Lang' matches '{found.FullName}' and '{candidate.FullName}' (update the xmlns table).");
                     found = candidate;
                     owner = assembly;
@@ -857,14 +904,35 @@ public static partial class XamlLoader
         }
         if (uri is not null && XmlNamespacesFor(uri) is { } namespaces)
         {
+            var closure = ConvertedClosureAssemblies();
             Type? found = null;
+            if (closure.Count > 0)
+            {
+                foreach (var ns in namespaces)
+                {
+                    foreach (var assembly in closure)
+                    {
+                        var candidate = SafeGetConvertedType(assembly, ns + "." + shortName);
+                        if (candidate is null) continue;
+                        if (found is not null && !ReferenceEquals(found, candidate) &&
+                            !string.Equals(found.FullName, candidate.FullName, StringComparison.Ordinal))
+                            throw Fail(lineInfo, $"'{original}' matches '{found.FullName}' and '{candidate.FullName}' (update the xmlns table).");
+                        found = candidate;
+                    }
+                }
+                if (found is not null) return found;
+            }
+
+            var seenInClosure = new HashSet<Assembly>(closure);
             foreach (var ns in namespaces)
             {
                 foreach (var assembly in ConvertedSearchAssemblies())
                 {
+                    if (seenInClosure.Contains(assembly)) continue;
                     var candidate = SafeGetConvertedType(assembly, ns + "." + shortName);
                     if (candidate is null) continue;
-                    if (found is not null && !ReferenceEquals(found, candidate))
+                    if (found is not null && !ReferenceEquals(found, candidate) &&
+                        !string.Equals(found.FullName, candidate.FullName, StringComparison.Ordinal))
                         throw Fail(lineInfo, $"'{original}' matches '{found.FullName}' and '{candidate.FullName}' (update the xmlns table).");
                     found = candidate;
                 }
@@ -881,6 +949,82 @@ public static partial class XamlLoader
         throw Fail(lineInfo, $"'{original}' names no engine or converted type '{shortName}'.");
     }
 
+    private static List<Assembly> ConvertedClosureAssemblies()
+    {
+        var engine = typeof(UIElement).Assembly;
+        var assemblies = new List<Assembly>();
+        var seen = new HashSet<Assembly>();
+        var source = CustomElementSource;
+        if (source is null) return assemblies;
+
+        void Add(Assembly? asm)
+        {
+            if (asm is not null && !ReferenceEquals(asm, engine) && seen.Add(asm))
+                assemblies.Add(asm);
+        }
+
+        Add(source);
+
+        var loaded = AppDomain.CurrentDomain.GetAssemblies();
+        var queue = new Queue<Assembly>();
+        queue.Enqueue(source);
+        var walked = new HashSet<Assembly> { source };
+
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            AssemblyName[] refs;
+            try
+            {
+                refs = current.GetReferencedAssemblies();
+            }
+            catch
+            {
+                continue;
+            }
+
+            foreach (var r in refs)
+            {
+                if (string.IsNullOrEmpty(r.Name)) continue;
+                if (r.Name.StartsWith("System.", StringComparison.OrdinalIgnoreCase) ||
+                    r.Name.StartsWith("Microsoft.", StringComparison.OrdinalIgnoreCase) ||
+                    r.Name.Equals("System", StringComparison.OrdinalIgnoreCase) ||
+                    r.Name.Equals("mscorlib", StringComparison.OrdinalIgnoreCase) ||
+                    r.Name.Equals("WindowsBase", StringComparison.OrdinalIgnoreCase) ||
+                    r.Name.Equals("PresentationCore", StringComparison.OrdinalIgnoreCase) ||
+                    r.Name.Equals("PresentationFramework", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                foreach (var candidate in loaded)
+                {
+                    if (string.Equals(candidate.GetName().Name, r.Name, StringComparison.OrdinalIgnoreCase))
+                    {
+                        Add(candidate);
+                        if (walked.Add(candidate))
+                            queue.Enqueue(candidate);
+                    }
+                }
+
+                if (WpfAppBoot.PackAssemblyResolver is { } resolver)
+                {
+                    try
+                    {
+                        var candidate = resolver(r.Name);
+                        if (candidate is not null)
+                        {
+                            Add(candidate);
+                            if (walked.Add(candidate))
+                                queue.Enqueue(candidate);
+                        }
+                    }
+                    catch { }
+                }
+            }
+        }
+
+        return assemblies;
+    }
+
     private static List<Assembly> ConvertedSearchAssemblies()
     {
         var engine = typeof(UIElement).Assembly;
@@ -891,7 +1035,15 @@ public static partial class XamlLoader
             if (assembly is not null && !ReferenceEquals(assembly, engine) && seen.Add(assembly))
                 assemblies.Add(assembly);
         }
-        Add(CustomElementSource);
+        if (CustomElementSource is not null)
+        {
+            foreach (var asm in ConvertedClosureAssemblies())
+                Add(asm);
+        }
+        else
+        {
+            Add(CustomElementSource);
+        }
         foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
             Add(assembly);
         return assemblies;
@@ -911,9 +1063,38 @@ public static partial class XamlLoader
 
     private static Type? ScanUniqueConvertedType(string shortName, IXmlLineInfo lineInfo, string original)
     {
+        var closure = ConvertedClosureAssemblies();
+        if (closure.Count > 0)
+        {
+            Type? foundInClosure = null;
+            foreach (var assembly in closure)
+            {
+                List<Type> candidates;
+                try
+                {
+                    candidates = WpfAppBoot.SafeGetTypes(assembly).Where(t => t.Name == shortName).ToList();
+                }
+                catch
+                {
+                    continue;
+                }
+                foreach (var candidate in candidates)
+                {
+                    if (foundInClosure is not null && !ReferenceEquals(foundInClosure, candidate) &&
+                        !string.Equals(foundInClosure.FullName, candidate.FullName, StringComparison.Ordinal))
+                        throw Fail(lineInfo, $"'{original}' matches '{foundInClosure.FullName}' and '{candidate.FullName}' (qualify the xmlns).");
+                    foundInClosure = candidate;
+                }
+            }
+            if (foundInClosure is not null)
+                return foundInClosure;
+        }
+
         Type? found = null;
+        var seenInClosure = new HashSet<Assembly>(closure);
         foreach (var assembly in ConvertedSearchAssemblies())
         {
+            if (seenInClosure.Contains(assembly)) continue;
             List<Type> candidates;
             try
             {
@@ -925,7 +1106,8 @@ public static partial class XamlLoader
             }
             foreach (var candidate in candidates)
             {
-                if (found is not null && !ReferenceEquals(found, candidate))
+                if (found is not null && !ReferenceEquals(found, candidate) &&
+                    !string.Equals(found.FullName, candidate.FullName, StringComparison.Ordinal))
                     throw Fail(lineInfo, $"'{original}' matches '{found.FullName}' and '{candidate.FullName}' (qualify the xmlns).");
                 found = candidate;
             }
@@ -980,14 +1162,35 @@ public static partial class XamlLoader
         }
         var namespaces = XmlNamespacesFor(uri);
         if (namespaces is null) return null;
+        var closure = ConvertedClosureAssemblies();
         Type? found = null;
+        if (closure.Count > 0)
+        {
+            foreach (var ns in namespaces)
+            {
+                foreach (var assembly in closure)
+                {
+                    var candidate = SafeGetConvertedType(assembly, ns + "." + ownerShort);
+                    if (candidate is null) continue;
+                    if (found is not null && !ReferenceEquals(found, candidate) &&
+                        !string.Equals(found.FullName, candidate.FullName, StringComparison.Ordinal))
+                        throw Fail(lineInfo, $"'{display}' matches '{found.FullName}' and '{candidate.FullName}' (update the xmlns table).");
+                    found = candidate;
+                }
+            }
+            if (found is not null) return found;
+        }
+
+        var seenInClosure = new HashSet<Assembly>(closure);
         foreach (var ns in namespaces)
         {
             foreach (var assembly in ConvertedSearchAssemblies())
             {
+                if (seenInClosure.Contains(assembly)) continue;
                 var candidate = SafeGetConvertedType(assembly, ns + "." + ownerShort);
                 if (candidate is null) continue;
-                if (found is not null && !ReferenceEquals(found, candidate))
+                if (found is not null && !ReferenceEquals(found, candidate) &&
+                    !string.Equals(found.FullName, candidate.FullName, StringComparison.Ordinal))
                     throw Fail(lineInfo, $"'{display}' matches '{found.FullName}' and '{candidate.FullName}' (update the xmlns table).");
                 found = candidate;
             }
@@ -1023,7 +1226,8 @@ public static partial class XamlLoader
                     var candidate = SafeGetConvertedType(assembly, ns + "." + shortName);
                     if (candidate is not null)
                     {
-                        if (found is not null && !ReferenceEquals(found, candidate))
+                        if (found is not null && !ReferenceEquals(found, candidate) &&
+                            !string.Equals(found.FullName, candidate.FullName, StringComparison.Ordinal))
                             throw Fail(lineInfo, $"'{original}' matches '{found.FullName}' and '{candidate.FullName}' (update the xmlns table).");
                         found = candidate;
                     }
@@ -1059,7 +1263,7 @@ public static partial class XamlLoader
             }
             foreach (var candidate in candidates)
             {
-                if (!matches.Any(m => ReferenceEquals(m, candidate))) matches.Add(candidate);
+                if (!matches.Any(m => ReferenceEquals(m, candidate) || string.Equals(m.FullName, candidate.FullName, StringComparison.Ordinal))) matches.Add(candidate);
             }
         }
         return matches;
@@ -1080,7 +1284,8 @@ public static partial class XamlLoader
             var defines = (property is not null && property.CanRead && property.GetIndexParameters().Length == 0)
                 || match.GetField(memberName, flags) is not null;
             if (!defines) continue;
-            if (owner is not null && !ReferenceEquals(owner, match))
+            if (owner is not null && !ReferenceEquals(owner, match) &&
+                !string.Equals(owner.FullName, match.FullName, StringComparison.Ordinal))
                 throw Fail(lineInfo, $"'{original}' matches '{owner.FullName}' and '{match.FullName}' (qualify the xmlns).");
             owner = match;
         }

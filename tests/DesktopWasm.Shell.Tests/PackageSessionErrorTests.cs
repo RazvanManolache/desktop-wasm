@@ -32,6 +32,14 @@ public sealed class PackageSecurityTests(ShellHost host)
         Assert.Equal(new byte[] { 1, 2, 3, 4 }, await response.Content.ReadAsByteArrayAsync());
         string entryHash = Convert.ToHexString(SHA256.HashData(new byte[] { 1, 2, 3, 4 }));
         Assert.Equal(entryHash, response.Headers.GetValues("X-DesktopWasm-Sha256").Single());
+        // Unpinned bytes must revalidate; pinned versions are immutable.
+        Assert.Equal("no-cache", response.Headers.CacheControl?.ToString());
+        using var pinned = await host.Client.GetAsync(
+            $"api/packages/test-smoke-form/content?name=entry.bin&v={entryHash}");
+        Assert.Equal(HttpStatusCode.OK, pinned.StatusCode);
+        string cache = pinned.Headers.CacheControl?.ToString() ?? "";
+        Assert.Contains("immutable", cache);
+        Assert.Contains("max-age=31536000", cache);
     }
 
     [Fact]

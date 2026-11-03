@@ -367,6 +367,46 @@ public sealed class RewriteTests
     }
 
     [Fact]
+    public void Rewrite_Legacy_OpenStreamingFile_Preserves_FileAccess_And_Creation_Modes()
+    {
+        string folder = Path.Combine(Path.GetTempPath(), "openpdn-stream-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        var context = new System.Runtime.Loader.AssemblyLoadContext(Guid.NewGuid().ToString(), isCollectible: true);
+        try
+        {
+            string input = Path.Combine(folder, "input.dll");
+            string output = Path.Combine(folder, "output.dll");
+            using (var asm = Mono.Cecil.AssemblyDefinition.CreateAssembly(
+                new Mono.Cecil.AssemblyNameDefinition("LegacyStream" + Guid.NewGuid().ToString("N"), new Version(1, 0)), "main", Mono.Cecil.ModuleKind.Dll))
+            {
+                var module = asm.MainModule;
+                var type = new Mono.Cecil.TypeDefinition("PaintDotNet.SystemLayer", "FileSystem", Mono.Cecil.TypeAttributes.Public, module.TypeSystem.Object);
+                module.Types.Add(type);
+                var method = new Mono.Cecil.MethodDefinition("OpenStreamingFile", Mono.Cecil.MethodAttributes.Public | Mono.Cecil.MethodAttributes.Static,
+                    module.ImportReference(typeof(System.IO.FileStream)));
+                method.Parameters.Add(new Mono.Cecil.ParameterDefinition(module.TypeSystem.String));
+                method.Parameters.Add(new Mono.Cecil.ParameterDefinition(module.ImportReference(typeof(System.IO.FileAccess))));
+                type.Methods.Add(method);
+                method.Body.GetILProcessor().Emit(Mono.Cecil.Cil.OpCodes.Ldnull);
+                method.Body.GetILProcessor().Emit(Mono.Cecil.Cil.OpCodes.Ret);
+                asm.Write(input);
+            }
+            AssemblyRewriter.Rewrite(input, output, ShimMap());
+            var result = context.LoadFromStream(new MemoryStream(File.ReadAllBytes(output)));
+            var open = result.GetType("PaintDotNet.SystemLayer.FileSystem")!.GetMethod("OpenStreamingFile")!
+                .CreateDelegate<Func<string, System.IO.FileAccess, System.IO.FileStream>>();
+            string path = Path.Combine(folder, "history.bin");
+            using (var stream = open(path, System.IO.FileAccess.Write)) { stream.WriteByte(42); }
+            Assert.Throws<IOException>(() => open(path, System.IO.FileAccess.Write));
+            using (var stream = open(path, System.IO.FileAccess.Read)) { Assert.Equal(42, stream.ReadByte()); }
+            using (var stream = open(path, System.IO.FileAccess.ReadWrite)) { Assert.Equal(1, stream.Length); }
+            using (var stream = open(Path.Combine(folder, "new.bin"), System.IO.FileAccess.ReadWrite)) { Assert.True(stream.CanWrite); }
+            Assert.Throws<FileNotFoundException>(() => open(Path.Combine(folder, "absent.bin"), System.IO.FileAccess.Read));
+        }
+        finally { context.Unload(); Directory.Delete(folder, recursive: true); }
+    }
+
+    [Fact]
     public void Rewrite_GetGdiFontMap_Answers_Headless_Font_Map()
     {
         // The DWrite factory is neutered headless, so GetGdiFontMap
@@ -8145,9 +8185,109 @@ public sealed class RewriteTests
             try { if (File.Exists(tempOut)) File.Delete(tempOut); } catch { }
         }
     }
-
-
-
+    [Fact]
+    public void Rewrite_ValidatePixelFormat_Uses_Cpu_PixelInfo()
+    {
+        // Classic bitmap-effect validation resolved its numeric check
+        // through WIC per-format info (null factory headless -> NRE
+        // inside TryCreatePixelFormatInfo): every classic bitmap effect
+        // died in RunEffectImpl before its config dialog constructed.
+        // Live: NullReferenceException |
+        // PixelFormatInfo.TryCreatePixelFormatInfo on Quantize click via
+        // BitmapEffect.ValidateInput/OutputPixelFormat (console +
+        // HandleEffectException post, no dialog). The rewrite ports the
+        // check onto PDN's CPU table (PixelFormats.TryGetPixelInfo ->
+        // IPixelInfo), keeping IsGray/IsCmyk and every throw message.
+        string paintDir = @"E:\AI\Code\WindowsForms\targets\paint.net";
+        string input = Path.Combine(paintDir, "PaintDotNet.Effects.Core.dll");
+        if (!File.Exists(input)) return;
+        string cpuDll = ShimBinDll("WfWasm.PdnCpu");
+        string tempOut = Path.Combine(Path.GetTempPath(), $"EffectsCore_Validate_{Guid.NewGuid()}.dll");
+        try
+        {
+            AssemblyRewriter.Rewrite(input, tempOut,
+                new Dictionary<string, string>(StringComparer.Ordinal),
+                new Dictionary<string, (string Assembly, string Type)>(StringComparer.Ordinal),
+                cpuDll);
+            var resolver = new Mono.Cecil.DefaultAssemblyResolver();
+            resolver.AddSearchDirectory(paintDir);
+            using var asm = Mono.Cecil.AssemblyDefinition.ReadAssembly(tempOut,
+                new Mono.Cecil.ReaderParameters { AssemblyResolver = resolver });
+            var be = asm.MainModule.GetType("PaintDotNet.Effects.BitmapEffect");
+            Assert.NotNull(be);
+            var validate = Assert.Single(be.Methods,
+                m => m.Name == "ValidatePixelFormat" && m.IsStatic && m.Parameters.Count == 1);
+            Assert.Contains(validate.Body.Instructions, i =>
+                i.OpCode == Mono.Cecil.Cil.OpCodes.Call
+                && i.Operand is Mono.Cecil.MethodReference mr
+                && mr.DeclaringType.FullName == "PaintDotNet.Imaging.PixelFormats"
+                && mr.Name == "TryGetPixelInfo");
+            Assert.DoesNotContain(validate.Body.Instructions, i =>
+                i.Operand is Mono.Cecil.MethodReference mr
+                && mr.Name == "GetInfoNoAddRef");
+            Assert.Contains(validate.Body.Instructions, i =>
+                i.OpCode == Mono.Cecil.Cil.OpCodes.Ldstr
+                && (string?)i.Operand == "Grayscale pixel formats are not supported.");
+            Assert.Contains(validate.Body.Instructions, i =>
+                i.OpCode == Mono.Cecil.Cil.OpCodes.Ldstr
+                && (string?)i.Operand == "CMYK pixel formats are not supported.");
+            Assert.Contains(validate.Body.Instructions, i =>
+                i.OpCode == Mono.Cecil.Cil.OpCodes.Ldstr
+                && (string?)i.Operand == " pixel formats are not supported.");
+            AssertCalleesResolve(asm.MainModule, validate);
+        }
+        finally
+        {
+            try { if (File.Exists(tempOut)) File.Delete(tempOut); } catch { }
+        }
+    }
+    [Fact]
+    public void Rewrite_GetDefaultGammaMode_Uses_Cpu_PixelInfo()
+    {
+        // GPU-effect init resolves its default color-space gamma through
+        // WIC per-format info (null factory headless -> NRE inside
+        // TryCreatePixelFormatInfo): Bulge/Clouds die in RunEffectImpl
+        // before their config dialogs construct. Live:
+        // NullReferenceException |
+        // PixelFormatInfo.TryCreatePixelFormatInfo on Bulge click
+        // (console + HandleEffectException post, no dialog; same frame as
+        // the Quantize wall). The rewrite ports the check onto PDN's CPU
+        // table (PixelFormats.TryGetPixelInfo -> IPixelInfo) with
+        // identical accepts (gamma 0 for Fixed/Float, else 1).
+        string paintDir = @"E:\AI\Code\WindowsForms\targets\paint.net";
+        string input = Path.Combine(paintDir, "PaintDotNet.Windows.Core.dll");
+        if (!File.Exists(input)) return;
+        string cpuDll = ShimBinDll("WfWasm.PdnCpu");
+        string tempOut = Path.Combine(Path.GetTempPath(), $"WindowsCore_Gamma_{Guid.NewGuid()}.dll");
+        try
+        {
+            AssemblyRewriter.Rewrite(input, tempOut,
+                new Dictionary<string, string>(StringComparer.Ordinal),
+                new Dictionary<string, (string Assembly, string Type)>(StringComparer.Ordinal),
+                cpuDll);
+            var resolver = new Mono.Cecil.DefaultAssemblyResolver();
+            resolver.AddSearchDirectory(paintDir);
+            using var asm = Mono.Cecil.AssemblyDefinition.ReadAssembly(tempOut,
+                new Mono.Cecil.ReaderParameters { AssemblyResolver = resolver });
+            var pfx = asm.MainModule.GetType("PaintDotNet.Imaging.PixelFormatExtensions");
+            Assert.NotNull(pfx);
+            var gamma = Assert.Single(pfx.Methods,
+                m => m.Name == "GetDefaultGammaMode" && m.IsStatic && m.Parameters.Count == 1);
+            Assert.Contains(gamma.Body.Instructions, i =>
+                i.OpCode == Mono.Cecil.Cil.OpCodes.Call
+                && i.Operand is Mono.Cecil.MethodReference mr
+                && mr.DeclaringType.FullName == "PaintDotNet.Imaging.PixelFormats"
+                && mr.Name == "TryGetPixelInfo");
+            Assert.DoesNotContain(gamma.Body.Instructions, i =>
+                i.Operand is Mono.Cecil.MethodReference mr
+                && mr.Name == "GetInfoNoAddRef");
+            AssertCalleesResolve(asm.MainModule, gamma);
+        }
+        finally
+        {
+            try { if (File.Exists(tempOut)) File.Delete(tempOut); } catch { }
+        }
+    }
     [Fact]
     public void Rewrite_Telerik_FontResourceEx_Answers_OneFont()
     {
@@ -8471,5 +8611,126 @@ public sealed class RewriteTests
         {
             if (File.Exists(tempOut)) File.Delete(tempOut);
         }
+    }
+
+    [Fact]
+    public void Rewrite_ComboBoxSelectedIndex_Guard_Terminates_Recursion()
+    {
+        // SF05: ComboBoxBaseDataBound.set_SelectedIndex re-enters itself
+        // through the inner ListControl/TextBox event cascade (calendar
+        // ThemeCmb/culture/multiSelection drop-button clicks StackOverflow
+        // the session: set 0x75 -> OnTextChanged 0x13f -> set ->
+        // ListBox.set 0x7c -> OnSelectedIndexChanged -> set 0x8b, managed
+        // dead / JS alive). The rewrite bounds the setter nesting depth
+        // (private counter, trip at 16) instead of touching the events.
+        // The stub below recurses exactly like the observed ping-pong
+        // (same value, unbounded): guarded it must return, reset the
+        // counter, and still allow legitimate shallow nesting.
+        string input = Path.Combine(Path.GetTempPath(), "combo-guard.input.dll");
+        using (var image = new MemoryStream(File.ReadAllBytes(FixtureDll())))
+        using (var asm = Mono.Cecil.AssemblyDefinition.ReadAssembly(image))
+        {
+            asm.Name.Name = "Syncfusion.Tools.Windows";
+            var module = asm.MainModule;
+            var combo = new Mono.Cecil.TypeDefinition(
+                "Syncfusion.Windows.Forms.Tools", "ComboBoxBaseDataBound",
+                Mono.Cecil.TypeAttributes.Public | Mono.Cecil.TypeAttributes.Class,
+                module.TypeSystem.Object);
+            module.Types.Add(combo);
+            var calls = new Mono.Cecil.FieldDefinition(
+                "calls", Mono.Cecil.FieldAttributes.Public | Mono.Cecil.FieldAttributes.Static,
+                module.TypeSystem.Int32);
+            combo.Fields.Add(calls);
+            var ctor = new Mono.Cecil.MethodDefinition(
+                ".ctor",
+                Mono.Cecil.MethodAttributes.Public | Mono.Cecil.MethodAttributes.HideBySig
+                    | Mono.Cecil.MethodAttributes.SpecialName | Mono.Cecil.MethodAttributes.RTSpecialName,
+                module.TypeSystem.Void);
+            combo.Methods.Add(ctor);
+            var cil0 = ctor.Body.GetILProcessor();
+            cil0.Emit(Mono.Cecil.Cil.OpCodes.Ldarg_0);
+            cil0.Emit(Mono.Cecil.Cil.OpCodes.Call,
+                module.ImportReference(typeof(object).GetConstructor(Type.EmptyTypes)!));
+            cil0.Emit(Mono.Cecil.Cil.OpCodes.Ret);
+            var set = new Mono.Cecil.MethodDefinition(
+                "set_SelectedIndex",
+                Mono.Cecil.MethodAttributes.Public | Mono.Cecil.MethodAttributes.HideBySig,
+                module.TypeSystem.Void);
+            set.Parameters.Add(new Mono.Cecil.ParameterDefinition(module.TypeSystem.Int32));
+            combo.Methods.Add(set);
+            var il = set.Body.GetILProcessor();
+            il.Emit(Mono.Cecil.Cil.OpCodes.Ldsfld, calls);
+            il.Emit(Mono.Cecil.Cil.OpCodes.Ldc_I4_1);
+            il.Emit(Mono.Cecil.Cil.OpCodes.Add);
+            il.Emit(Mono.Cecil.Cil.OpCodes.Stsfld, calls);
+            il.Emit(Mono.Cecil.Cil.OpCodes.Ldarg_1);
+            il.Emit(Mono.Cecil.Cil.OpCodes.Ldc_I4_0);
+            var done = il.Create(Mono.Cecil.Cil.OpCodes.Ret);
+            il.Emit(Mono.Cecil.Cil.OpCodes.Ble, done);
+            il.Emit(Mono.Cecil.Cil.OpCodes.Ldarg_0);
+            il.Emit(Mono.Cecil.Cil.OpCodes.Ldarg_1);
+            il.Emit(Mono.Cecil.Cil.OpCodes.Ldc_I4_1);
+            il.Emit(Mono.Cecil.Cil.OpCodes.Sub);
+            il.Emit(Mono.Cecil.Cil.OpCodes.Call, set);
+            il.Append(done);
+            asm.Write(input);
+        }
+
+        string output = Path.Combine(Path.GetTempPath(), "combo-guard.rewritten.dll");
+        AssemblyRewriter.Rewrite(input, output, ShimMap());
+
+        using var rewritten = Mono.Cecil.AssemblyDefinition.ReadAssembly(output);
+        var type = rewritten.MainModule.GetType("Syncfusion.Windows.Forms.Tools.ComboBoxBaseDataBound");
+        Assert.NotNull(type);
+        var guard = Assert.Single(type.Fields, f => f.Name == "__dwSelectedIndexDepth");
+        Assert.True(guard.IsPrivate && !guard.IsStatic);
+        Assert.Equal("System.Int32", guard.FieldType.FullName);
+        var method = Assert.Single(type.Methods, m => m.Name == "set_SelectedIndex" && m.Parameters.Count == 1);
+        var fin = Assert.Single(method.Body.ExceptionHandlers);
+        Assert.Equal(Mono.Cecil.Cil.ExceptionHandlerType.Finally, fin.HandlerType);
+        Assert.Contains(method.Body.Instructions, i =>
+            i.OpCode == Mono.Cecil.Cil.OpCodes.Ldfld
+            && i.Operand is Mono.Cecil.FieldReference fr
+            && fr.Name == "__dwSelectedIndexDepth");
+        Assert.Contains(method.Body.Instructions, i =>
+            i.OpCode == Mono.Cecil.Cil.OpCodes.Endfinally);
+        // No ret may sit inside the new try region (unverifiable: the
+        // CLR only leaves protected regions via leave); the rule routes
+        // them to the post-handler ret. Execution below proves the
+        // whole body JITs.
+        Mono.Cecil.Cil.Instruction? tryStart = fin.TryStart;
+        Mono.Cecil.Cil.Instruction? tryEnd = fin.TryEnd;
+        Assert.NotNull(tryStart);
+        Assert.NotNull(tryEnd);
+        int first = method.Body.Instructions.IndexOf(tryStart!);
+        int last = method.Body.Instructions.IndexOf(tryEnd!);
+        for (int i = first; i < last; i++)
+            Assert.NotEqual(Mono.Cecil.Cil.OpCodes.Ret, method.Body.Instructions[i].OpCode);
+        // Idempotent: a second transform pass changes nothing.
+        Assert.Equal(0, AssemblyRewriter.EnsureComboBoxSelectedIndexReentrancyGuard(rewritten.MainModule));
+        Assert.Single(method.Body.ExceptionHandlers);
+
+        // Live proof: unbounded same-value recursion now returns.
+        var loaded = System.Reflection.Assembly.LoadFrom(output);
+        System.Type? comboType = loaded.GetType("Syncfusion.Windows.Forms.Tools.ComboBoxBaseDataBound");
+        Assert.NotNull(comboType);
+        object? box = System.Activator.CreateInstance(comboType!);
+        Assert.NotNull(box);
+        System.Reflection.MethodInfo? setter = comboType!.GetMethod("set_SelectedIndex");
+        Assert.NotNull(setter);
+        System.Reflection.FieldInfo? callsField = comboType.GetField("calls");
+        Assert.NotNull(callsField);
+        System.Reflection.FieldInfo? depthField = comboType.GetField(
+            "__dwSelectedIndexDepth",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(depthField);
+        callsField.SetValue(null, 0);
+        setter.Invoke(box, [3]);
+        Assert.Equal(4, callsField.GetValue(null));
+        Assert.Equal(0, depthField.GetValue(box));
+        callsField.SetValue(null, 0);
+        setter.Invoke(box, [1000]); // Unguarded this never returns (StackOverflow).
+        Assert.Equal(16, callsField.GetValue(null));
+        Assert.Equal(0, depthField.GetValue(box));
     }
 }

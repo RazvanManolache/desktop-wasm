@@ -95,6 +95,8 @@ public static partial class XamlLoader
         // XAML attributes land after the implicit style applied its template:
         // every inflated template re-resolves once the tree links.
         TemplateApplier.RefreshLoadedTree(root);
+        if (root is FrameworkElement feRoot)
+            feRoot.RefreshBindingsTree();
         SkipWhitespace(reader);
         if (!reader.EOF)
             throw Fail(lineInfo, "Unexpected trailing content after the root element.");
@@ -613,6 +615,7 @@ public static partial class XamlLoader
             switch (reader.NodeType)
             {
                 case XmlNodeType.Element:
+                    FlushTextBlockChunk(element, textContent, lineInfo);
                     ReadChildNode(element, reader, lineInfo, names, pending, scope, wires, visuals);
                     break;
                 case XmlNodeType.Text:
@@ -1780,6 +1783,66 @@ public static partial class XamlLoader
     /// </summary>
     private static readonly List<ResourceDictionary> HydrationScopes = new();
 
+    /// <summary>Innermost dictionary currently being parsed (the defining
+    /// scope for template StaticResource captures); null outside any
+    /// ResourceDictionary hydration (inline element templates, rebuilds
+    /// without a pushed defining scope).</summary>
+    internal static ResourceDictionary? CurrentHydrationScope =>
+        HydrationScopes.Count > 0 ? HydrationScopes[HydrationScopes.Count - 1] : null;
+
+    /// <summary>Whether a dictionary sits anywhere under an application
+    /// dictionary's merge graph (merged Source files nest one extra level:
+    /// the app merges a wrapper whose own merge is the parsed file).
+    /// Cycle-safe; reference identity throughout.</summary>
+    internal static bool IsInMergeGraph(ResourceDictionary root, ResourceDictionary target)
+    {
+        var seen = new HashSet<ResourceDictionary>();
+        var stack = new Stack<ResourceDictionary>();
+        stack.Push(root);
+        while (stack.Count > 0)
+        {
+            var current = stack.Pop();
+            if (!seen.Add(current)) continue;
+            foreach (var merged in current.MergedDictionaries)
+            {
+                if (ReferenceEquals(merged, target)) return true;
+                stack.Push(merged);
+            }
+        }
+        return false;
+    }
+
+    /// <summary>Whether a template-child Style key is visible from its defining
+    /// dictionary's merge position (native document-order scope): the defining
+    /// dictionary itself, a direct application-level entry, or any sibling
+    /// merged earlier in document order. A key that first lands in a LATER
+    /// sibling is invisible here even when the live application scope carries
+    /// it (B-defer); a key from an EARLIER sibling (the gallery's PageStyles
+    /// before PageHeader, verified against the native WPF oracle in
+    /// reports/UNSTALL-wpf.md) binds through the live scope. The earlier-
+    /// sibling scan stops at the subtree holding the defining dictionary, so
+    /// later siblings never leak in; nested merges resolve through
+    /// TryGetValue.</summary>
+    internal static bool IsStyleKeyVisibleAtDefiningPosition(ResourceDictionary appRoot, ResourceDictionary defining, object key)
+    {
+        ArgumentNullException.ThrowIfNull(appRoot);
+        ArgumentNullException.ThrowIfNull(defining);
+        ArgumentNullException.ThrowIfNull(key);
+        if (defining.TryGetValue(key, out var scoped) && scoped is not null)
+            return true;
+        foreach (var merged in appRoot.MergedDictionaries)
+        {
+            if (ReferenceEquals(merged, defining) || IsInMergeGraph(merged, defining))
+                break;
+            if (merged.TryGetValue(key, out var sibling) && sibling is not null)
+                return true;
+        }
+        foreach (var local in appRoot.Keys)
+            if (Equals(local, key))
+                return true;
+        return false;
+    }
+
     /// <summary>Tries the hydration scopes innermost-first (load-time StaticResource).</summary>
     internal static bool TryFindHydrationResource(object key, out object? value)
     {
@@ -1971,6 +2034,7 @@ public static partial class XamlLoader
     /// </summary>
     private static void ReadResourceEntry(XmlReader reader, IXmlLineInfo lineInfo, ResourceDictionary dict, List<XamlEventWire>? wires = null)
     {
+        HydrationSeenDictionaries?.Add(dict);
         if (TryReadApplicationResource(reader, lineInfo, dict)) return;
         var entry = reader.LocalName;
         if (entry is "DrawingBrush" or "GradientStopCollection" or "LinearGradientBrush" or "RadialGradientBrush")
@@ -3356,13 +3420,35 @@ public static partial class XamlLoader
         }
     }
 
+    /// <summary>Attaches a TextBlock's or Span's buffered direct-text chunk in encounter
+    /// order, before the child element that follows it. Whitespace-only
+    /// chunks stay dropped like the end flush; the trailing trim still runs
+    /// once at the end, so mid-element chunks keep significant edge spaces.
+    /// Other hosts keep single end-flush semantics.</summary>
+    private static void FlushTextBlockChunk(UIElement element, StringBuilder textContent, IXmlLineInfo lineInfo)
+    {
+        if (textContent.Length == 0) return;
+        var chunk = textContent.ToString();
+        textContent.Clear();
+        if (string.IsNullOrWhiteSpace(chunk)) return;
+        var stripped = StripLeadingBoundaryWhitespace(chunk);
+        if (element is TextBlock block)
+            block.AppendLiteral(stripped);
+        else if (element is Span span)
+            span.AppendLiteral(stripped);
+    }
+
     private static void FinishTextContent(UIElement element, string text, IXmlLineInfo lineInfo)
     {
         if (string.IsNullOrWhiteSpace(text)) return;
         switch (element)
         {
-            case Span s when string.IsNullOrEmpty(s.Text): s.Text = text.Trim(); return;
-            case Span s: s.Text += StripLeadingBoundaryWhitespace(text); return;
+            case Span s when s.Inlines.Count == 0 && s.Literals.Count == 0 && string.IsNullOrEmpty(s.Text): s.Text = text.Trim(); return;
+            case Span s when s.Inlines.Count == 0 && s.Literals.Count == 0: s.Text += StripLeadingBoundaryWhitespace(text); return;
+            case Span s:
+                s.AppendLiteral(StripLeadingBoundaryWhitespace(text));
+                s.TrimTrailingLiteralWhitespace();
+                return;
             case Button b when b.Content is null or "": b.Content = text.Trim(); return;
             case ToggleButton tb when tb.Content is null or "": tb.Content = text.Trim(); return;
             case Label label when label.Content is null or "": label.Content = text.Trim(); return;
@@ -3416,7 +3502,7 @@ public static partial class XamlLoader
             case Viewbox vb when vb.Child is null: vb.Child = child; return true;
             case Viewbox: throw Fail(lineInfo, "<Viewbox> accepts a single child element.");
             case TextBlock tb when child is Span span: tb.AddInline(span); return true;
-            case Span host when child is Span nested && nested is not Hyperlink: host.Text += nested.Text; return true;
+            case Span host when child is Span nested: host.AddInline(nested); return true;
             case Paragraph pg when child is Inline inline: pg.Inlines.Add(inline); return true;
 
             case Hyperlink hl when child is Inline inline: hl.Inlines.Add(inline); return true;
@@ -5544,6 +5630,8 @@ private static void ApplyPlainAttribute(UIElement element, string local, string 
         IL_21d8:
         switch (local)
         {
+        case "ItemsSource":
+            throw Fail(lineInfo, "ItemsSource= needs a {Binding} (a literal cannot name a source collection).");
         case "Background":
             control.Background = ParseBrush(value, lineInfo);
             return;
@@ -6356,7 +6444,8 @@ private static void ApplyPlainAttribute(UIElement element, string local, string 
                     }
                     throw Fail(lineInfo, $"'{original}' takes Source as {{x:Static ...}} or {{StaticResource Key}} (other sources need resources/namescope lookup).");
                 case "RelativeSource":
-                    throw Fail(lineInfo, $"'{key}=' needs resources/namescope lookup (not in v1); set DataContext in code or use Source={{StaticResource Key}}.");
+                    binding.RelativeSource = ParseRelativeSource(val, lineInfo);
+                    break;
                 case "UpdateSourceTrigger":
                     binding.UpdateSourceTrigger = val switch
                     {

@@ -54,23 +54,33 @@ public sealed class EngineResolutionTests
         Assert.True(RealWinFormsKnows(fullName),
             $"'{fullName}' is not a real System.Windows.Forms contract member.");
 
-        // Assembly-identity binding needs the built engine image. It is
-        // absent while sources copy: the pipeline must say so visibly.
-        var engine = AppDomain.CurrentDomain.GetAssemblies()
-            .FirstOrDefault(a => a.GetName().Name == "WfWasm.WinForms")
-            ?? TryLoadEngine("WfWasm.WinForms");
+        // Assembly-identity binding: the pinned in-repo engine image
+        // (inputs/winforms/rewritten-small, hash-pinned in source-ready)
+        // proves the routed contract binds under the WfWasm.WinForms
+        // identity; a live build proves the same image compiles from fork
+        // sources (see slice-2 engine build receipt).
+        var engine = LoadPinnedEngine() ?? TryLoadEngine("WfWasm.WinForms");
         if (engine is null)
         {
             var gap = new JointGap(route.TargetAssembly, JointGap.EngineUnavailable,
-                $"Engine image 'WfWasm.WinForms' is not built in this root (WinForms sources still copying): " +
+                $"Engine image 'WfWasm.WinForms' is unavailable: " +
                 $"contract '{fullName}' verified, assembly binding deferred.");
             Assert.Equal(JointGap.EngineUnavailable, gap.Kind);
         }
         else
         {
             Assert.True(engine.GetType(fullName, throwOnError: false) is not null,
-                $"Built engine does not declare routed contract '{fullName}'.");
+                $"Engine image does not declare routed contract '{fullName}'.");
         }
+    }
+
+    private static Assembly? LoadPinnedEngine()
+    {
+        // Pinned by source-ready.json (SHA256 BA68DEB9...); read-only proof,
+        // never a build input for packaging.
+        const string pinned = @"E:\AI\Code\DesktopWasm\inputs\winforms\rewritten-small\WfWasm.WinForms.dll";
+        try { return File.Exists(pinned) ? Assembly.LoadFrom(pinned) : null; }
+        catch { return null; }
     }
 
     private static Assembly? TryLoadEngine(string name)

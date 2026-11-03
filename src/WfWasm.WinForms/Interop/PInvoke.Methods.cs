@@ -1064,6 +1064,7 @@ namespace Windows.Win32
                 int rightMargin = lpdtp is not null ? (int)lpdtp->iRightMargin : 0;
                 string cleaned = CleanPrefix(text, format.HasFlag(DRAW_TEXT_FORMAT.DT_NOPREFIX));
                 using var sf = BuildFormat(format);
+                bool singleLine = true;
 
                 try
                 {
@@ -1111,14 +1112,21 @@ namespace Windows.Win32
                         Math.Max(1, rect.Width - leftMargin - rightMargin),
                         Math.Max(1, rect.Height));
                     using var brush = new global::System.Drawing.SolidBrush(FromColorRef(state.TextColor));
-                    bool singleLine = format.HasFlag(DRAW_TEXT_FORMAT.DT_SINGLELINE)
-                        || (cleaned.IndexOf('\n') < 0 && cleaned.IndexOf('\r') < 0);
+                    // WordBreak without SingleLine wraps at the rect width (desktop
+                    // DrawTextEx parity): newline-free WordBreak text must reach the
+                    // wrapping DrawString fallback, not the single-row fast path.
+                    singleLine = format.HasFlag(DRAW_TEXT_FORMAT.DT_SINGLELINE)
+                        || (!format.HasFlag(DRAW_TEXT_FORMAT.DT_WORDBREAK)
+                            && cleaned.IndexOf('\n') < 0 && cleaned.IndexOf('\r') < 0);
                     if (!(singleLine && sf.Alignment == global::System.Drawing.StringAlignment.Near
                         && TryPaintWordsRect(graphics, cleaned, font, brush, layout, sf)))
                         graphics.DrawString(cleaned, font, brush, layout, sf);
                     }
                     finally { graphics.Transform = savedXf; }
-                    height = font.Height;
+                    height = singleLine
+                        ? font.Height
+                        : Math.Max(1, (int)Math.Ceiling(graphics.MeasureStringTight(
+                            cleaned, font, Math.Max(1, rect.Width - leftMargin - rightMargin), sf).Height)); // Desktop DrawTextEx returns the drawn height: wrapped paint measures with the same constrained-width call the CALCRECT path uses, so paint and measure agree. Single-line paint keeps font.Height.
                     return true;
                 }
                 catch

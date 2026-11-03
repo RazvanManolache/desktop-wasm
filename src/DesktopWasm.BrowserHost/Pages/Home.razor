@@ -127,11 +127,13 @@ else
             var manifest = System.Text.Json.JsonSerializer.Deserialize<DesktopWasm.Core.ApplicationPackage>(
                 await Http.GetStringAsync($"apps/{selected.Slug}/app-manifest.json"), new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web))!;
             var totalFiles = manifest.Assemblies.Length;
-            var doneFiles = 0;
+            var doneFiles = 0; var startedFiles = 0;
             _appLoader = await ApplicationPackageLoader.CreateAsync(manifest, selected.Slug,
                 file => Http.GetByteArrayAsync($"apps/{selected.Slug}/{Uri.EscapeDataString(file)}"),
                 async phase => await JS.InvokeVoidAsync("studioRuntime.progress",
-                    $"Package {System.Threading.Interlocked.Increment(ref doneFiles)}/{totalFiles}: {phase}"));
+                    $"Package {System.Threading.Interlocked.Increment(ref doneFiles)}/{totalFiles}: {phase}"),
+                async name => await JS.InvokeVoidAsync("studioRuntime.progress",
+                    $"Package fetch-start {System.Threading.Interlocked.Increment(ref startedFiles)}/{totalFiles}: {name}"));
             await JS.InvokeVoidAsync("studioRuntime.progress", "Package verified — booting the original application…");
             Action<string> bootPhase = phase => { _ = JS.InvokeVoidAsync("studioRuntime.progress", phase); };
             window = _appLoader.Boot(bootPhase);

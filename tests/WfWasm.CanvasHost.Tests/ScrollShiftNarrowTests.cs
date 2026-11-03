@@ -69,6 +69,17 @@ public sealed class ScrollShiftNarrowTests
     }
 
     [Fact]
+    public void EmptyPriorDirty_NarrowsToExposedStripOnly()
+    {
+        // USERFIX RTE scroll: a proven-pure scroll discards the
+        // scroll-caused whole-dirty and repaints only the exposed strip.
+        // Empty prior dirty must yield exactly the strip (rows 480-600
+        // for dy=-120 on 800x600).
+        Assert.Equal(new System.Drawing.Rectangle(0, H - 120, W, 120),
+            Single(W, H, 0, -120, System.Drawing.Rectangle.Empty));
+    }
+
+    [Fact]
     public void NearFullStrip_FallsBackToFull()
     {
         // A legal-but-huge shift whose strip alone covers >= 90% of the

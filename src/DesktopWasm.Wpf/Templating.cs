@@ -538,6 +538,13 @@ internal sealed class TemplateBindingEntry
     /// that land later still bind), failing loud when absent.</summary>
     public string? DeferredStyleKey { get; set; }
 
+    /// <summary>Defining resource dictionary captured when the template markup
+    /// was parsed (B-defer): template-child Style refs resolve in this scope
+    /// at inflation; null keeps the legacy linked-tree lookup (inline element
+    /// templates and scopes outside any dictionary hydration).</summary>
+    public ResourceDictionary? DefiningDictionary { get; set; }
+
+
     /// <summary>Deferred Freezable binding (RotateTransform.Angle clock
     /// hands): a binding on a DP-less transform property, resolved at
     /// inflation and re-evaluated on source change, like WPF.</summary>
@@ -1023,9 +1030,45 @@ internal static class TemplateApplier
         }
         if (entry.DeferredStyleKey is { } styleKey)
         {
-            if (entry.Element is FrameworkElement keyedHost &&
-                keyedHost.TryFindResource(styleKey, out var found) && found is Style keyedStyle)
-                keyedHost.Style = keyedStyle;
+            if (entry.Element is FrameworkElement keyedHost)
+            {
+                // Native defining-dictionary scope (B-defer): a key from a
+                // later sibling dictionary is invisible here even when the
+                // live application scope carries it, so apply fails loud.
+                if (entry.DefiningDictionary is { } defining)
+                {
+                    if (defining.TryGetValue(styleKey, out var scoped) && scoped is Style scopedStyle)
+                    {
+                        keyedHost.Style = scopedStyle;
+                        return;
+                    }
+
+                    // Strict only across the merged-file boundary (B-defer):
+                    // a template from a dictionary merged into application
+                    // scope cannot see keys that first land in a LATER sibling
+                    // even when the live application scope carries them, so
+                    // apply fails loud. Keys from the defining dictionary
+                    // itself or an EARLIER sibling (the gallery's PageStyles
+                    // before PageHeader) stay visible and bind below.
+                    // Element-local and inline templates keep the linked-tree
+                    // lookup below (theme element Resources, code-registered
+                    // app styles).
+                    var mergedBoundary = Application.Current is { } boundaryApp &&
+                        XamlLoader.IsInMergeGraph(boundaryApp.Resources, defining);
+                    var appHoldsKey =
+                        Application.Current?.Resources.TryGetValue(styleKey, out var appScoped) == true && appScoped is not null;
+                    if (mergedBoundary && appHoldsKey &&
+                        Application.Current is { } scopedApp &&
+                        !XamlLoader.IsStyleKeyVisibleAtDefiningPosition(scopedApp.Resources, defining, styleKey))
+                        throw new InvalidOperationException(
+                            $"StaticResource '{styleKey}' was not found in element, ancestor or application resources (template scope).");
+                }
+                if (keyedHost.TryFindResource(styleKey, out var found) && found is Style keyedStyle)
+                    keyedHost.Style = keyedStyle;
+                else
+                    throw new InvalidOperationException(
+                        $"StaticResource '{styleKey}' was not found in element, ancestor or application resources (template scope).");
+            }
             else
                 throw new InvalidOperationException(
                     $"StaticResource '{styleKey}' was not found in element, ancestor or application resources (template scope).");

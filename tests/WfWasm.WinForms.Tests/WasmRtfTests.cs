@@ -130,6 +130,138 @@ public sealed class WasmRtfTests
         Assert.NotEqual(0, (int)(nowrap.FormatFlags & global::System.Drawing.StringFormatFlags.NoWrap));
     }
 
+    // Word doc-click SO (gen16): GetTextManaged(GT_SELECTION) reads
+    // SelectionLength, whose override calls SelectedText, whose
+    // GetTextEx(GT_SELECTION) trampolines back into GetTextManaged --
+    // unbounded same-box re-entrancy. The guard trips nested entry so
+    // the inner call falls back to full text instead of recursing.
+    // A live cycle needs rewritten bytes (raw GetTextEx dead-ends at
+    // the stubbed SendMessage), so this pins the guard contract
+    // directly; the browser re-gate proves the cycle is broken.
+    // The guard only compares box identity (ReferenceEquals): it never
+    // touches members, so uninitialized instances are adequate here and
+    // keep the desktop MsftEdit demand from the file header intact.
+    private static Fork::System.Windows.Forms.RichTextBox UninitBox() =>
+        (Fork::System.Windows.Forms.RichTextBox)System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(
+            typeof(Fork::System.Windows.Forms.RichTextBox));
+
+    [Fact]
+    public void GetTextGuard_BlocksSameBoxReentry()
+    {
+        var box = UninitBox();
+        Assert.True(ForkRtf.TryEnterGetText(box));
+        Assert.False(ForkRtf.TryEnterGetText(box));
+        ForkRtf.ExitGetText(box);
+        Assert.True(ForkRtf.TryEnterGetText(box));
+        ForkRtf.ExitGetText(box);
+    }
+
+    [Fact]
+    public void GetTextGuard_AllowsCrossBoxEntry()
+    {
+        var first = UninitBox();
+        var second = UninitBox();
+        Assert.True(ForkRtf.TryEnterGetText(first));
+        Assert.True(ForkRtf.TryEnterGetText(second));
+        ForkRtf.ExitGetText(second);
+        ForkRtf.ExitGetText(first);
+        Assert.True(ForkRtf.TryEnterGetText(first));
+        ForkRtf.ExitGetText(first);
+    }
+
+    // Headless RichTextBox char insertion (gen17: KeyDown delivered, 0px
+    // inserted): the host emulates insertion for plain TextBox only, so
+    // the fork splices the char itself. The pure splice math is pinned
+    // below; the glue's base-text read is pinned handleless (a live box
+    // with no created handle, as in the browser) by
+    // InsertBaseText_MatchesForceWindowText_Handleless; the browser
+    // re-gate proves end-to-end insertion.
+    [Fact]
+    public void SpliceInsertion_InsertsAtCaret()
+    {
+        Assert.Equal("hXello", ForkRtf.SpliceInsertion("hello", 1, 0, 'X'));
+    }
+
+    // Gen18: every keystroke replaced the doc with its own char (typed
+    // "Hello World" + " Bold", doc showed a lone "d"). ForceWindowText
+    // on a handleless box lands in managed _text, but the insert glue
+    // read PInvokeCore.GetWindowText (WindowTextStorage only, always ""
+    // handleless), so each splice started from "". The read must see the
+    // same side the write lands on. Plain TextBox exercises the shared
+    // TextBoxBase seam (a live RichTextBox cannot be constructed
+    // in-harness). No handle is created here (browser: never); the write
+    // itself must not create one either.
+    // The in-vivo selection stays (0,0)+fallback while the mirror
+    // dispatch exists: Select(1,0) on a created handle must stick and
+    // read back. Minted handles are pure managed (fork CreateWindowEx),
+    // so this exercises the same FromHandle/mirror path as the browser.
+    // Gen19: RichTextBox.TextLength sends EM_GETTEXTLENGTHEX
+    // unconditionally (no handle check); the fork left it at the
+    // fall-through zero, so Select() clamped every selection to (0,0),
+    // the caret never advanced, and each keystroke replaced the doc
+    // ("Hello World" + " Bold" left a lone "d"). The dispatch now
+    // answers from WindowText storage. A live RichTextBox cannot be
+    // constructed in-harness, but the branch is TextBoxBase-typed, so a
+    // plain TextBox with a created handle pins it.
+    [Fact]
+    public void GetTextLengthEx_AnswersStorageLength()
+    {
+        var box = new Fork::System.Windows.Forms.TextBox();
+        _ = box.Handle;
+        Assert.True(box.IsHandleCreated);
+        box.ForceWindowText("Hi");
+        Assert.Equal(2, box.TextLength);
+        int len = (int)Fork::Windows.Win32.PInvokeCore.SendMessage(
+            box,
+            Fork::Windows.Win32.PInvokeCore.EM_GETTEXTLENGTHEX,
+            default,
+            (Fork::Windows.Win32.Foundation.LPARAM)0);
+        Assert.Equal(2, len);
+    }
+
+    [Fact]
+    public void SelectionMirror_RoundTrips_OnCreatedHandle()
+    {
+        var box = new Fork::System.Windows.Forms.TextBox();
+        box.Text = "Hi";
+        _ = box.Handle;
+        Assert.True(box.IsHandleCreated);
+        box.Select(1, 0);
+        Assert.Equal(1, box.SelectionStart);
+        Assert.Equal(0, box.SelectionLength);
+    }
+
+    [Fact]
+    public void InsertBaseText_MatchesForceWindowText_Handleless()
+    {
+        var box = new Fork::System.Windows.Forms.TextBox();
+        Assert.False(box.IsHandleCreated);
+        box.ForceWindowText("H");
+        Assert.False(box.IsHandleCreated);
+        Assert.Equal("H", ForkRtf.ReadInsertBaseText(box));
+        // The read must work handlelessly too. The old storage-only read
+        // touched box.Handle, which materializes a real handle on desktop
+        // (and the creation pushes _text into storage, masking the bug
+        // in-harness); in the browser no handle ever exists, so every
+        // keystroke read "" and replaced the doc with its own char.
+        Assert.False(box.IsHandleCreated);
+    }
+
+    [Fact]
+    public void SpliceInsertion_ReplacesSelection()
+    {
+        Assert.Equal("hXo", ForkRtf.SpliceInsertion("hello", 1, 3, 'X'));
+    }
+
+    [Fact]
+    public void SpliceInsertion_ClampsToText()
+    {
+        Assert.Equal("hello!", ForkRtf.SpliceInsertion("hello", 9, 4, '!'));
+        Assert.Equal("!hello", ForkRtf.SpliceInsertion("hello", -4, 0, '!'));
+        Assert.Equal("!", ForkRtf.SpliceInsertion("hello", -4, 99, '!'));
+        Assert.Equal("!", ForkRtf.SpliceInsertion(string.Empty, 0, 0, '!'));
+    }
+
     [Fact]
     public void SliceSelection_ClampsToText()
     {
