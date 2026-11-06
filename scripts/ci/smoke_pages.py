@@ -11,11 +11,17 @@ from PIL import Image, ImageChops, ImageStat
 from playwright.sync_api import sync_playwright
 from build_pages import DEMOS, WINFORMS_DEMOS
 
-# Both untrimmed runtimes must cold-start on shared hosted-runner CPUs.
-STARTUP_TIMEOUT_MS = 240000
+STARTUP_TIMEOUT_MS = 120000
+
+
+class StaticServer(ThreadingHTTPServer):
+    # Runtime boot fetches many assemblies concurrently. Windows refuses
+    # connections when the default five-slot listen queue overflows.
+    request_queue_size = 128
 
 
 class StaticHandler(SimpleHTTPRequestHandler):
+    protocol_version = 'HTTP/1.1'
     extensions_map = {**SimpleHTTPRequestHandler.extensions_map, '.wasm': 'application/wasm', '.mjs': 'text/javascript'}
 
     def translate_path(self, path):
@@ -47,18 +53,15 @@ def main():
     temp.mkdir(exist_ok=True)
     os.environ['TEMP'] = os.environ['TMP'] = str(temp)
     errors, bad, framework_requests, cases = [], [], [], []
-    with ThreadingHTTPServer(('127.0.0.1', 0), partial(StaticHandler, directory=str(args.root))) as server:
+    with StaticServer(('127.0.0.1', 0), partial(StaticHandler, directory=str(args.root))) as server:
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         url = args.url or f'http://127.0.0.1:{server.server_port}/desktop-wasm/'
         try:
             with sync_playwright() as pw:
-                browser = pw.chromium.launch(headless=True, args=['--use-angle=swiftshader', '--enable-unsafe-swiftshader',
-                    '--disable-background-timer-throttling', '--disable-renderer-backgrounding',
-                    '--disable-backgrounding-occluded-windows'])
+                browser = pw.chromium.launch(headless=True, args=['--use-angle=swiftshader', '--enable-unsafe-swiftshader'])
                 try:
                     page = browser.new_page(viewport={'width': 1440, 'height': 1100})
-                    page.set_default_timeout(120000)
                     # Observe the labels actually painted by the native controls.
                     page.add_init_script("""window.paintedLabels = [];
                         const original = CanvasRenderingContext2D.prototype.fillText;
