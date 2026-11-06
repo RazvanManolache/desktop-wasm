@@ -31,6 +31,10 @@ foreach ($suite in @('DesktopWasm.Catalog', 'DesktopWasm.Shell')) {
 if ($LASTEXITCODE) { throw 'Browser publish failed.' }
 & python scripts/ci/package_demo.py
 if ($LASTEXITCODE) { throw 'Browser packaging failed.' }
+if ($env:CI -eq 'true') {
+    & dotnet build-server shutdown
+    if ($LASTEXITCODE) { throw 'Build server shutdown failed before browser acceptance.' }
+}
 & python scripts/ci/smoke_browser.py .ci-dist/wpf/wwwroot
 if ($LASTEXITCODE) { throw 'Packaged browser smoke check failed.' }
 & dotnet publish src/WfWasm.CanvasHost -c Release -o .ci-dist/winforms -p:PublishTrimmed=false --nologo -m:1
@@ -39,5 +43,10 @@ if ($LASTEXITCODE) { throw 'WinForms browser publish failed.' }
 if ($LASTEXITCODE) { throw 'Showcase application input download failed.' }
 & python scripts/ci/build_pages.py
 if ($LASTEXITCODE) { throw 'GitHub Pages assembly failed.' }
+if ($env:CI -eq 'true') {
+    & dotnet build-server shutdown
+    if ($LASTEXITCODE) { throw 'Build server shutdown failed before Pages acceptance.' }
+    Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First 8 ProcessName, CPU, WorkingSet64 | Format-Table
+}
 & python scripts/ci/smoke_pages.py .ci-dist/pages
 if ($LASTEXITCODE) { throw 'GitHub Pages interaction checks failed.' }
