@@ -1,7 +1,8 @@
 import {resourceTotals} from './studio-core.mjs';
 
-const session = new URLSearchParams(location.search).get('session');
-const slug = decodeURIComponent(location.pathname.split('/').pop());
+const parameters = new URLSearchParams(location.search);
+const session = parameters.get('session');
+const slug = parameters.get('demo') ?? decodeURIComponent(location.pathname.split('/').pop());
 let failed = false, ready = false, backend = 'Canvas2D';
 function send(type, payload = {}) {
     if (window.parent !== window && session)

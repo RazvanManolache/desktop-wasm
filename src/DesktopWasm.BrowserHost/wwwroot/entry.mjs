@@ -9,9 +9,11 @@ const requestPath = location.pathname;
 const underMount = requestPath === MOUNT_PREFIX || requestPath.startsWith(MOUNT_PREFIX + '/');
 const routePath = underMount ? (requestPath.slice(MOUNT_PREFIX.length) || '/') : requestPath;
 const mountRoot = underMount ? MOUNT_PREFIX : '';
+// A physical directory plus a query works on static hosts without SPA rewrites.
+const staticDemo = new URLSearchParams(location.search).has('demo');
 if (routePath === '/gpu-spike') {
     location.replace(mountRoot + '/?rendering=1');
-} else if (routePath.startsWith('/runtime/') || routePath.startsWith('/demo/')) {
+} else if (staticDemo || routePath.startsWith('/runtime/') || routePath.startsWith('/demo/')) {
     document.body.classList.add('runtime-page');
     document.getElementById('studio').remove();
     const app = document.getElementById('app');

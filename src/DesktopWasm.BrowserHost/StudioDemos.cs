@@ -34,7 +34,8 @@ public static partial class DemoCatalog
         for (var i = 0; i < keys.Length; i++)
         {
             var key = keys[i];
-            var button = AppButton(key, () => display.Text = model.Press(key), 82);
+            var label = key switch { "−" => "-", "⌫" => "Back", _ => key };
+            var button = AppButton(label, () => display.Text = model.Press(key), 82);
             button.SetAttached("Grid.Row", i / 4); button.SetAttached("Grid.Column", i % 4); keypad.AddChild(button);
         }
         panel.AddChild(keypad);

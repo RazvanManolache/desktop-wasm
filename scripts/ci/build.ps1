@@ -33,3 +33,7 @@ if ($LASTEXITCODE) { throw 'Browser publish failed.' }
 if ($LASTEXITCODE) { throw 'Browser packaging failed.' }
 & python scripts/ci/smoke_browser.py .ci-dist/wpf/wwwroot
 if ($LASTEXITCODE) { throw 'Packaged browser smoke check failed.' }
+& python scripts/ci/build_pages.py
+if ($LASTEXITCODE) { throw 'GitHub Pages assembly failed.' }
+& python scripts/ci/smoke_pages.py .ci-dist/pages
+if ($LASTEXITCODE) { throw 'GitHub Pages interaction checks failed.' }

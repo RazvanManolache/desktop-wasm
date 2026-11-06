@@ -40,6 +40,7 @@ else
 
 @code {
     [Parameter] public string? DemoSlug { get; set; }
+    [SupplyParameterFromQuery(Name = "demo")] public string? StaticDemoSlug { get; set; }
     private readonly WasmWindowHandle _window = new(1);
     private WasmWpfHost? _host;
     private WasmInputRouter? _router;
@@ -62,7 +63,7 @@ else
 
     protected override void OnParametersSet()
     {
-        var slug = string.IsNullOrEmpty(DemoSlug) ? DemoCatalog.All[0].Slug : DemoSlug;
+        var slug = DemoSlug ?? StaticDemoSlug ?? DemoCatalog.All[0].Slug;
         var known = DemoCatalog.All.Any(d => d.Slug == slug);
         _unknownSlug = System.Text.RegularExpressions.Regex.IsMatch(slug, "^[a-z0-9]+(?:-[a-z0-9]+)*$") ? null : slug;
         if (_currentSlug != slug) { _currentSlug = slug; _host = null; _router = null; _gpuRevision = -1; }

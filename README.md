@@ -4,6 +4,10 @@ One workspace, one catalog, and one launcher for WinForms and WPF
 applications running on WebAssembly. Real mixed-framework hosting (both UI
 stacks inside one app session) is work in progress.
 
+**[Try the live browser showcase](https://razvanmanolache.github.io/desktop-wasm/)** —
+calculator, project planner, color lab and asset explorer. These source-built WPF
+mini apps run directly from GitHub Pages. The runtime loads when you open a demo.
+
 **Working demos (screenshots of tested builds, staged vs public labeled):**
 
 | | |

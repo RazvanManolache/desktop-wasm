@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Explore DesktopWasm. Run small WPF applications directly in your browser with .NET and WebAssembly."
+    />
+    <meta name="theme-color" content="#142b26" />
+    <base href="@@BASE_PATH@@" />
+    <title>DesktopWasm — desktop apps, open in a tab</title>
+    <link rel="icon" href="assets/mark.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="site.css" />
+    <script type="module" src="site.mjs"></script>
+  </head>
+  <body>
+    <header class="navigation wrap">
+      <a class="brand" href="#top" aria-label="DesktopWasm home"
+        ><span class="brand-mark">dw</span>DesktopWasm</a
+      >
+      <nav aria-label="Main navigation">
+        <a href="#demos">Try the apps</a><a href="#about">The project</a
+        ><a
+          class="source-link"
+          href="https://github.com/RazvanManolache/desktop-wasm"
+          >GitHub <span aria-hidden="true">↗</span></a
+        >
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero wrap" aria-labelledby="headline">
+        <div class="hero-copy">
+          <p class="eyebrow">
+            <span class="live-dot"></span> A .NET × WebAssembly experiment
+          </p>
+          <h1 id="headline">Desktop apps.<br /><em>Open in a tab.</em></h1>
+          <p class="hero-description">
+            Familiar windows, real interactions, a new home in your browser.
+            Explore a few small apps built with our WPF compatibility engine.
+          </p>
+          <div class="hero-actions">
+            <a
+              class="button primary"
+              href="demos/?demo=pocket-calculator"
+              data-demo="pocket-calculator"
+              data-title="Pocket calculator"
+              >Try the calculator <span aria-hidden="true">↗</span></a
+            ><a class="text-link" href="#demos"
+              >Explore the collection <span aria-hidden="true">↓</span></a
+            >
+          </div>
+          <p class="hero-note">
+            Runs in your browser · Open source · No installation
+          </p>
+        </div>
+        <div class="hero-preview">
+          <div class="window-title">
+            <span class="window-dots" aria-hidden="true"
+              ><i></i><i></i><i></i></span
+            ><span>Pocket calculator</span><span class="window-badge">WPF</span>
+          </div>
+          <a
+            href="demos/?demo=pocket-calculator"
+            data-demo="pocket-calculator"
+            data-title="Pocket calculator"
+            aria-label="Run Pocket calculator"
+            ><img
+              src="assets/pocket-calculator.png"
+              width="800"
+              height="600"
+              alt="The actual Pocket calculator running in WebAssembly"
+              fetchpriority="high"
+          /></a>
+          <div class="preview-caption">
+            <span><span class="live-dot"></span> Actual app capture</span
+            ><span>.NET → WebAssembly</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="collection" id="demos" aria-labelledby="collection-title">
+        <div class="wrap">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Small apps, hands on</p>
+              <h2 id="collection-title">Take one for a spin.</h2>
+            </div>
+            <p>
+              Four source-built WPF examples.<br />Pick an app and make
+              something happen.
+            </p>
+          </div>
+          <div class="app-grid">
+            <article class="app-card">
+              <a
+                class="app-preview"
+                href="demos/?demo=pocket-calculator"
+                data-demo="pocket-calculator"
+                data-title="Pocket calculator"
+                aria-label="Run Pocket calculator"
+                ><img
+                  src="assets/pocket-calculator.png"
+                  width="800"
+                  height="600"
+                  alt="Calculator keypad and display"
+                  loading="lazy"
+              /></a>
+              <div class="app-copy">
+                <p class="app-category">01 / Arithmetic</p>
+                <h3>Pocket calculator</h3>
+                <p>
+                  A working keypad, decimal arithmetic and memory. Start with 7
+                  + 8.
+                </p>
+                <a
+                  class="demo-open"
+                  href="demos/?demo=pocket-calculator"
+                  data-demo="pocket-calculator"
+                  data-title="Pocket calculator"
+                  >Run calculator <span aria-hidden="true">↗</span></a
+                >
+              </div>
+            </article>
+            <article class="app-card">
+              <a
+                class="app-preview"
+                href="demos/?demo=project-planner"
+                data-demo="project-planner"
+                data-title="Project planner"
+                aria-label="Run Project planner"
+                ><img
+                  src="assets/project-planner.png"
+                  width="800"
+                  height="600"
+                  alt="Project planner task list and action buttons"
+                  loading="lazy"
+              /></a>
+              <div class="app-copy">
+                <p class="app-category">02 / Everyday work</p>
+                <h3>Project planner</h3>
+                <p>
+                  Add a task, mark it done, remove it. A little list with real
+                  state.
+                </p>
+                <a
+                  class="demo-open"
+                  href="demos/?demo=project-planner"
+                  data-demo="project-planner"
+                  data-title="Project planner"
+                  >Run planner <span aria-hidden="true">↗</span></a
+                >
+              </div>
+            </article>
+            <article class="app-card">
+              <a
+                class="app-preview"
+                href="demos/?demo=color-lab"
+                data-demo="color-lab"
+                data-title="Color lab"
+                aria-label="Run Color lab"
+                ><img
+                  src="assets/color-lab.png"
+                  width="800"
+                  height="600"
+                  alt="Color lab swatch and palette buttons"
+                  loading="lazy"
+              /></a>
+              <div class="app-copy">
+                <p class="app-category">03 / A splash of color</p>
+                <h3>Color lab</h3>
+                <p>
+                  Pick a palette and watch the canvas repaint. Forest, ocean or
+                  iris?
+                </p>
+                <a
+                  class="demo-open"
+                  href="demos/?demo=color-lab"
+                  data-demo="color-lab"
+                  data-title="Color lab"
+                  >Run color lab <span aria-hidden="true">↗</span></a
+                >
+              </div>
+            </article>
+            <article class="app-card">
+              <a
+                class="app-preview"
+                href="demos/?demo=asset-explorer"
+                data-demo="asset-explorer"
+                data-title="Asset explorer"
+                aria-label="Run Asset explorer"
+                ><img
+                  src="assets/asset-explorer.png"
+                  width="800"
+                  height="600"
+                  alt="Asset explorer with an expandable sample project tree"
+                  loading="lazy"
+              /></a>
+              <div class="app-copy">
+                <p class="app-category">04 / Look around</p>
+                <h3>Asset explorer</h3>
+                <p>
+                  Expand folders and inspect files in a sample project tree.
+                </p>
+                <a
+                  class="demo-open"
+                  href="demos/?demo=asset-explorer"
+                  data-demo="asset-explorer"
+                  data-title="Asset explorer"
+                  >Run explorer <span aria-hidden="true">↗</span></a
+                >
+              </div>
+            </article>
+          </div>
+          <p class="download-note">
+            The first app downloads a shared .NET runtime. Later launches can
+            reuse the browser cache. Demo state lasts for the current app
+            session.
+          </p>
+        </div>
+      </section>
+
+      <section class="about wrap" id="about" aria-labelledby="about-title">
+        <div>
+          <p class="eyebrow">Behind the windows</p>
+          <h2 id="about-title">A browser home for<br />desktop interfaces.</h2>
+          <p>
+            DesktopWasm brings WinForms and WPF into one workspace and
+            application catalog. The project explores how desktop layout,
+            drawing, input and application behavior can run on WebAssembly.
+          </p>
+          <p>
+            These mini apps exercise the WPF engine. The wider compatibility
+            work includes converted desktop applications, vendor controls and
+            mixed-framework hosting.
+          </p>
+          <a
+            class="text-link"
+            href="https://github.com/RazvanManolache/desktop-wasm"
+            >Explore the source <span aria-hidden="true">↗</span></a
+          >
+        </div>
+        <div class="project-notes">
+          <div>
+            <span class="note-number">01</span>
+            <h3>Real .NET execution</h3>
+            <p>
+              The app code runs in a browser-hosted .NET runtime. Pointer and
+              keyboard input go through the WPF engine.
+            </p>
+          </div>
+          <div>
+            <span class="note-number">02</span>
+            <h3>A work in progress</h3>
+            <p>
+              Compatibility varies by application. The repository tracks test
+              results, supported behavior and open gaps.
+            </p>
+          </div>
+          <div>
+            <span class="note-number">03</span>
+            <h3>Built in the open</h3>
+            <p>
+              Source, build reports and downloadable browser demos are available
+              on GitHub.
+            </p>
+            <a
+              href="https://github.com/RazvanManolache/desktop-wasm/releases/tag/ci-latest"
+              >Download the latest preview <span aria-hidden="true">↗</span></a
+            >
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="wrap">
+      <a class="brand" href="#top"
+        ><span class="brand-mark">dw</span>DesktopWasm</a
+      >
+      <p>An open-source compatibility experiment.</p>
+      <div>
+        <a href="https://github.com/RazvanManolache/desktop-wasm">Source</a
+        ><a href="licenses/LICENSE">License</a
+        ><a href="licenses/THIRD-PARTY-NOTICES.md">Attribution</a>
+      </div>
+    </footer>
+
+    <dialog id="demo-dialog" aria-labelledby="demo-title">
+      <div class="demo-toolbar">
+        <div>
+          <p class="app-category">WPF / WebAssembly</p>
+          <h2 id="demo-title">Pocket calculator</h2>
+        </div>
+        <div class="demo-actions">
+          <button type="button" id="restart-demo">Restart</button
+          ><button type="button" id="close-demo" aria-label="Close demo">
+            Close <span aria-hidden="true">×</span>
+          </button>
+        </div>
+      </div>
+      <div id="demo-status" role="status" aria-live="polite">
+        Starting the app…
+      </div>
+      <div id="runtime-host"></div>
+      <p class="demo-hint">
+        Use the app with your mouse or keyboard. Closing it ends this demo
+        session.
+      </p>
+    </dialog>
+    <noscript
+      ><p class="wrap">
+        JavaScript is required to run the WebAssembly applications.
+      </p></noscript
+    >
+  </body>
+</html>

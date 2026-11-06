@@ -12,6 +12,8 @@ jobs:
   browser:
     runs-on: windows-2022
     timeout-minutes: 60
+    outputs:
+      pages_artifact_id: ${{ steps.pages-upload.outputs.artifact_id }}
     steps:
     - name: Enable long source paths on Windows
       run: git config --global core.longpaths true
@@ -28,7 +30,7 @@ jobs:
         if ($LASTEXITCODE) { exit $LASTEXITCODE }
         python -m pip install --upgrade pip
         if ($LASTEXITCODE) { exit $LASTEXITCODE }
-        python -m pip install playwright==1.64.0
+        python -m pip install playwright==1.64.0 Pillow==12.0.0
         if ($LASTEXITCODE) { exit $LASTEXITCODE }
         python -m playwright install chromium
         if ($LASTEXITCODE) { exit $LASTEXITCODE }
@@ -57,5 +59,43 @@ jobs:
         BUILD_PATHS: .ci-results/
         BUILD_HIDDEN: 'true'
         BUILD_MISSING: error
+    - name: Configure GitHub Pages
+      if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && github.event_name != 'pull_request'
+      uses: actions/configure-pages@v5
+    - name: Upload temporary Pages deployment
+      id: pages-upload
+      if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && github.event_name != 'pull_request'
+      uses: actions/upload-pages-artifact@v4
+      with:
+        path: .ci-dist/pages
+        retention-days: 1
     permissions:
       contents: write
+      pages: read
+  pages:
+    needs: browser
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+      actions: write
+    steps:
+    - name: Deploy showcase
+      id: deployment
+      uses: actions/deploy-pages@v4
+    - name: Remove completed deployment artifact
+      uses: actions/github-script@v9
+      env:
+        PAGES_ARTIFACT_ID: ${{ needs.browser.outputs.pages_artifact_id }}
+      with:
+        script: |
+          await github.rest.actions.deleteArtifact({
+            ...context.repo,
+            artifact_id: Number(process.env.PAGES_ARTIFACT_ID)
+          });
