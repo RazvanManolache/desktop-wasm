@@ -13,6 +13,8 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 60
     steps:
+      - name: Enable long source paths on Windows
+        run: git config --global core.longpaths true
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-dotnet@v6.1.0
         with:
