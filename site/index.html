@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="Explore DesktopWasm. Run small WinForms and WPF applications directly in your browser with .NET and WebAssembly."
+      content="DesktopWasm converts compiled .NET executables and assemblies for the browser. Explore WinForms and WPF apps running on WebAssembly, even when their original source code is unavailable."
     />
     <meta name="theme-color" content="#142b26" />
     <base href="@@BASE_PATH@@" />
@@ -37,9 +37,10 @@
           </p>
           <h1 id="headline">Desktop apps.<br /><em>Open in a tab.</em></h1>
           <p class="hero-description">
-            Familiar windows, real interactions, a new home in your browser.
-            Explore small apps built with our WinForms and WPF compatibility
-            engines.
+            Bring compiled .NET applications to your browser. DesktopWasm
+            converts existing .exe and .dll files for its WinForms and WPF
+            compatibility engines. It works with compiled applications even when
+            their original source code is unavailable.
           </p>
           <div class="hero-actions">
             <a
@@ -427,9 +428,10 @@
           >
         </div>
         <p class="download-note">
-          Some examples need their upstream application files or vendor demo
-          inputs. The repository documents setup and the remaining compatibility
-          gaps.
+          Build the DesktopWasm runtime from this repository, then supply the
+          applications' compiled binaries and resources. Vendor demos may need
+          separately obtained inputs. The repository documents setup and
+          compatibility gaps.
         </p>
       </section>
 
@@ -438,14 +440,17 @@
           <p class="eyebrow">Behind the windows</p>
           <h2 id="about-title">A browser home for<br />desktop interfaces.</h2>
           <p>
-            DesktopWasm brings WinForms and WPF into one workspace and
-            application catalog. The project explores how desktop layout,
-            drawing, input and application behavior can run on WebAssembly.
+            Conversion starts from the application's compiled .NET executables
+            and assemblies, together with its dependencies and resources.
+            DesktopWasm rewrites their managed intermediate language (IL) for a
+            browser-hosted .NET compatibility runtime.
           </p>
           <p>
-            These mini apps exercise the WinForms and WPF engines. The wider
-            compatibility work includes converted desktop applications, vendor
-            controls and mixed-framework hosting.
+            The pipeline is language-independent. It accepts managed .NET IL
+            produced by C#, VB.NET, F# or any other .NET language. Current UI
+            support focuses on WinForms and WPF. Application API usage, native
+            dependencies and runtime coverage determine what executes
+            successfully.
           </p>
           <a
             class="text-link"

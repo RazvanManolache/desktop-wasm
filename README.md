@@ -4,6 +4,17 @@ One workspace, one catalog, and one launcher for WinForms and WPF
 applications running on WebAssembly. Real mixed-framework hosting (both UI
 stacks inside one app session) is work in progress.
 
+**Conversion starts from compiled .NET binaries.** DesktopWasm takes an
+application's managed `.exe` and `.dll` files, together with its dependencies
+and resources, and rewrites their .NET intermediate language (IL) for the
+browser-hosted compatibility runtime. This works with compiled applications
+even when their original source code is unavailable.
+
+The conversion pipeline is language-independent. It accepts managed .NET IL
+produced by C#, VB.NET, F# or any other .NET language. Current UI support focuses
+on WinForms and WPF. Successful execution depends on the application's API
+usage, native dependencies and runtime compatibility coverage.
+
 **[Try the live browser showcase](https://razvanmanolache.github.io/desktop-wasm/)** —
 four WPF mini apps plus the existing converted WinForms Calculator, To-do and
 Tic-Tac-Toe applications. The runtime loads when you open a demo. The site also
