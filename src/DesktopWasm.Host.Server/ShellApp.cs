@@ -681,7 +681,7 @@ public static class ShellApp
         // Either staged layout boots: manifest-slug dirs (converter output)
         // or catalog-id dirs (legacy alias targets resolve to the id).
         var slugs = new[] { app.Entry.ManifestSlug, app.Id }
-            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .OfType<string>().Where(s => !string.IsNullOrWhiteSpace(s))
             .Distinct(StringComparer.OrdinalIgnoreCase);
         return slugs.Any(slug => File.Exists(
             Path.Combine(mounts.WpfWebRoot, "apps", slug, "app-manifest.json")));

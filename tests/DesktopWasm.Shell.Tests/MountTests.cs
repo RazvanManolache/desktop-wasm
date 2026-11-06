@@ -46,7 +46,7 @@ public sealed class MountHost : IAsyncLifetime
             apps = new[]
             {
                 new { slug = "test-smoke-form", label = "Smoke", available = true, setupNote = (string?)null },
-                new { slug = "test-todo", label = "Todo", available = false, setupNote = "folder missing" },
+                new { slug = "test-todo", label = "Todo", available = false, setupNote = (string?)"folder missing" },
             },
         }));
         backend.MapGet("/mw-page", () => Results.Content(
@@ -117,8 +117,9 @@ public sealed class MountTests(MountHost host)
         Assert.Equal(new string('A', 64),
             Assert.Single(response.Headers.GetValues("X-WfWasm-Sha256")));
         // Stacks may reorder directives; compare as a set.
+        Assert.NotNull(response.Headers.CacheControl);
         Assert.Equal(["immutable", "max-age=31536000", "private"],
-            response.Headers.CacheControl?.ToString().Split(", ").OrderBy(d => d).ToArray());
+            response.Headers.CacheControl.ToString().Split(", ").OrderBy(d => d).ToArray());
     }
 
     [Fact]

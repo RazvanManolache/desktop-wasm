@@ -60,7 +60,7 @@ public sealed class AvailabilityTests
         Assert.Equal(
             CatalogSerializer.Serialize([once]),
             CatalogSerializer.Serialize([twice]));
-        Assert.Single(twice.Evidence.Where(e => e.StartsWith("local:", StringComparison.Ordinal)));
+        Assert.Single(twice.Evidence, e => e.StartsWith("local:", StringComparison.Ordinal));
     }
 
     [Fact]

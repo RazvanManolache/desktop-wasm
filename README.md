@@ -29,7 +29,7 @@ development and releases happen here.
   (see `inputs/README.md`).
 - Pure-framework paths are the proven slice. Mixed sessions, full control
   parity, and performance work remain open and are tracked as gaps, not
-  claims. This repository publishes no release tags and no binary assets;
+  claims. This repository publishes no release tags; development builds are available as GitHub Actions artifacts;
   the initial commit is a source snapshot, and any future release will be
   cut explicitly — never implied by this checkout.
 
@@ -114,3 +114,18 @@ First-party code: [MIT](LICENSE) (winforms-wasm contributors). Vendored
 browser libraries and upstream references: see
 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). No third-party application
 binaries are distributed here.
+## GitHub builds
+
+Open **Actions → Browser demo build → Run workflow**. Pushes and pull requests
+also build. Download `DesktopWasm-browser-demos`, extract the inner ZIP and run
+`python serve_demo.py`, then open **http://127.0.0.1:8080**. The package includes
+35 first-party toolkit demos, compiled WebAssembly, licenses and checksums.
+
+CI compiles the full solution, runs eleven source-only test suites, and checks
+that the packaged calculator renders in Chromium. The screenshot, test reports
+and compiler log are available in `DesktopWasm-build-reports`.
+
+**The older engine still has compiler warnings and tests requiring unavailable
+inputs.** Catalog/shell builds reject warnings; the full engine does not yet.
+See [build scope and remaining work](docs/GITHUB-BUILDS.md). Converted external
+apps and the unified WinForms backend are not included in this demo ZIP.

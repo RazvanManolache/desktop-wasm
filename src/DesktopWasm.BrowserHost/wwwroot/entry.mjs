@@ -1,7 +1,10 @@
 // The launcher never starts .NET. Only an app frame (or legacy demo URL) does.
-if (location.pathname === '/gpu-spike') {
+const mount = '/wpf';
+const route = location.pathname.startsWith(mount + '/')
+    ? location.pathname.slice(mount.length) : location.pathname;
+if (route === '/gpu-spike') {
     location.replace('/?rendering=1');
-} else if (location.pathname.startsWith('/runtime/') || location.pathname.startsWith('/demo/')) {
+} else if (route.startsWith('/runtime/') || route.startsWith('/demo/')) {
     document.body.classList.add('runtime-page');
     document.getElementById('studio').remove();
     const app = document.getElementById('app');

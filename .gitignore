@@ -33,3 +33,6 @@ artifacts-local/
 __pycache__/
 *.pyc
 src/WfWasm.CanvasHost/wwwroot/eval/latest.json
+
+.ci-dist/
+.ci-results/

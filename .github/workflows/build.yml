@@ -1,0 +1,48 @@
+name: Browser demo build
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  browser:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-dotnet@v6.1.0
+        with:
+          dotnet-version: '9.0.x'
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+      - name: Install browser build and test tools
+        run: |
+          dotnet workload install wasm-tools --skip-manifest-update
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -m pip install --upgrade pip
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -m pip install playwright==1.64.0
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -m playwright install chromium
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Build, test, package and render browser demo
+        run: ./scripts/ci/build.ps1
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: DesktopWasm-browser-demos
+          path: .ci-dist/downloads/*
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload build and test evidence
+        if: always() && hashFiles('.ci-results/**') != ''
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: DesktopWasm-build-reports
+          path: .ci-results/
+          if-no-files-found: error
+          retention-days: 30
