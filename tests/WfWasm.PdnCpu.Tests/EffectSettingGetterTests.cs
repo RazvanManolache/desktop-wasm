@@ -225,18 +225,18 @@ public sealed class EffectSettingGetterTests
             CpuPaint.GetInterfaceMemberValue(new object(), null!, "x"));
     }
 
-    private sealed class FakeLazy<T>
-    {
-        public FakeLazy(Func<T> f) => Value = f();
-        public T Value { get; }
-    }
-
     [Fact]
-    public void Lazy_Factory_Constructs_Closed_Type()
+    public void Lazy_Factory_Routes_Through_Static_New_Not_Direct_Construction()
     {
+        // Real LazyResult`1<T> is abstract with only a famandassem .ctor
+        // (pristine Fundamentals IL); it can never be instantiated directly.
+        // The helper must build the concrete product through static
+        // LazyResult.New<T>, exactly as desktop PDN does.
         object lazy = CpuPaint.NewEffectLazyResult(
-            new Func<int>(() => 7), typeof(FakeLazy<int>));
-        Assert.Equal(7, ((FakeLazy<int>)lazy).Value);
+            new Func<string>(() => "q"),
+            typeof(PaintDotNet.Functional.FakeLazyMirror<string>));
+        var impl = Assert.IsType<PaintDotNet.Functional.FakeLazyMirrorImpl<string>>(lazy);
+        Assert.Equal("q", impl.Value);
     }
 
     // GetEffectSourceBitmap/GetEnumerableValues resolve their PDN host

@@ -15,6 +15,37 @@ internal static class DesktopBenchmarkForms
             ?.GetType(benchmark.FormType);
         if (type is null)
             throw new TypeLoadException($"{benchmark.Label}: real form {benchmark.FormType} was not found in {benchmark.FormAssembly}.");
+        // Application-startup init the harness would otherwise skip
+        // (G5-bench gitextensions JTC). Best-effort: false keeps the
+        // original chain, never a new failure. Runs before the adapter
+        // branch: the adapted ctor graph needs the task context.
+        VsThreadingInitShim.EnsureInitialized(type.Assembly);
+        EntryStaticInit.EnsureInitialized(type.Assembly);
+        // RT-ADAPTER-2327: adapter-marked benchmarks skip the generic
+        // checks below (their declared startup type is intentionally not
+        // directly constructible) and build through the startup adapter.
+        // Adapter decline falls through to today's chain, never a new failure.
+        if (string.Equals(benchmark.StartupAdapter, "GitExtensions", StringComparison.Ordinal))
+        {
+            if (GitExtensionsStartupAdapter.TryCreateForm(type, null, out object? adapted))
+            {
+                if (adapted is System.Windows.Forms.Form adaptedForm)
+                    return adaptedForm;
+                throw new InvalidOperationException($"{benchmark.Label}: startup adapter built {type.FullName} but it is not a host Form.");
+            }
+        }
+        // MREMOTENG-0155: same pattern for FrmMain (private ctor behind
+        // the public Default singleton). Decline falls through to today's
+        // chain, never a new failure.
+        if (string.Equals(benchmark.StartupAdapter, "mRemoteNG", StringComparison.Ordinal))
+        {
+            if (MRemoteNGStartupAdapter.TryCreateForm(type, null, out object? adapted))
+            {
+                if (adapted is System.Windows.Forms.Form adaptedForm)
+                    return adaptedForm;
+                throw new InvalidOperationException($"{benchmark.Label}: startup adapter built {type.FullName} but it is not a host Form.");
+            }
+        }
         if (!typeof(System.Windows.Forms.Form).IsAssignableFrom(type))
             throw new TypeLoadException($"{benchmark.Label}: declared startup type is not a compatible WinForms Form.");
         var constructor = type.GetConstructor(BindingFlags.Public | BindingFlags.Instance, null, Type.EmptyTypes, null);

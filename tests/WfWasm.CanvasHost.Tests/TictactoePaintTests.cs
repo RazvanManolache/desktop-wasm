@@ -8,6 +8,17 @@ using FormsForm = System.Windows.Forms.Form;
 
 public sealed class TictactoePaintTests
 {
+    // TMPMOVE canonical-only: rewritten fixtures under retained/.
+    private static string RepoRoot =>
+        Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+    private static string RewrittenSmall
+    {
+        get
+        {
+            var canon = Path.Combine(RepoRoot, ".artifacts", "tmp", "retained", "rewritten-small");
+            return canon;
+        }
+    }
     private static FormsButton FindEmptyCell(FormsControl root)
     {
         foreach (FormsControl c in root.Controls)
@@ -47,9 +58,9 @@ public sealed class TictactoePaintTests
         // layered canvas, so the bitmap travels as Def+Blit (the
         // non-layered DrawImageCommand shape predates retained layers).
         // Same regenerable-data coupling as the fork file reference in this
-        // test project: the rewritten app must exist in E:\tmp.
-        string app = @"E:\tmp\rewritten-small\TicTacToe.dll";
-        Assert.True(File.Exists(app), $"regenerate via E:/tmp/rewrite-small.ps1: {app}");
+        // test project: the rewritten app must exist in the retained tree.
+        string app = Path.Combine(RewrittenSmall, "TicTacToe.dll");
+        Assert.True(File.Exists(app), $"missing rewritten fixture (expected at retained/rewritten-small): {app}");
         var ttt = Assembly.LoadFrom(app);
         // The file is TicTacToe.dll but the assembly name kept its spaces
         // ("Tic Tac Toe"); the host looks it up as "TicTacToe" (which the

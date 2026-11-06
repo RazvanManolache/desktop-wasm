@@ -17,6 +17,15 @@ public sealed class SingletonWatchProbeTests
 
     private readonly WinFormsAppHost _host;
 
+    // TMPMOVE canonical-only: probe progress goes to the repo runs tree.
+    private static string RunsDir =>
+        Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", ".artifacts", "tmp", "runs", "canvashost-probes"));
+    private static void ProbeAppend(string file, string text)
+    {
+        Directory.CreateDirectory(RunsDir);
+        File.AppendAllText(Path.Combine(RunsDir, file), text);
+    }
+
     public SingletonWatchProbeTests(PaintHostFixture fx)
     {
         _host = fx.Host;
@@ -93,7 +102,7 @@ public sealed class SingletonWatchProbeTests
     [Fact]
     public void ProbeC_Strokes_With_Singleton_Watch()
     {
-        File.AppendAllText("E:/tmp/probe-singleton.txt", $"boot: {SingletonState()}{System.Environment.NewLine}");
+        ProbeAppend("probe-singleton.txt", $"boot: {SingletonState()}{System.Environment.NewLine}");
         var host = _host;
         host.Paint(new RecordingRenderer());
         for (int i = 0; i < 20; i++)
@@ -105,10 +114,10 @@ public sealed class SingletonWatchProbeTests
             host.Paint(new RecordingRenderer());
             Thread.Sleep(25);
         }
-        File.AppendAllText("E:/tmp/probe-singleton.txt", $"tooled: {SingletonState()}{System.Environment.NewLine}");
+        ProbeAppend("probe-singleton.txt", $"tooled: {SingletonState()}{System.Environment.NewLine}");
         for (int stroke = 0; stroke < 10; stroke++)
         {
-            Action<string> mark = where => File.AppendAllText("E:/tmp/probe-singleton.txt",
+            Action<string> mark = where => ProbeAppend("probe-singleton.txt",
                 $"s{stroke} {where}: {SingletonState()}{System.Environment.NewLine}");
             mark("pre-paint");
             host.Paint(new RecordingRenderer());
@@ -129,6 +138,6 @@ public sealed class SingletonWatchProbeTests
             host.OnMouseUp(x0 + bounds.Width / 3, y0 + bounds.Height / 6);
             mark("post-up");
         }
-        File.AppendAllText("E:/tmp/probe-singleton.txt", "DONE\n");
+        ProbeAppend("probe-singleton.txt", "DONE\n");
     }
 }

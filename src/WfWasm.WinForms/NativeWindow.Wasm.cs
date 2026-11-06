@@ -29,6 +29,21 @@ public partial class NativeWindow
             return;
         }
 
+        // RVW-1105-0900-runtime Job1 (WC2315 section4, fork item 1): structured
+        // show-path diagnostics. Entry/exit carry the window handle, dialog
+        // type and control name plus a UTC stamp that correlates with the
+        // host [NRE-FUNNEL] breadcrumb lines; the NRE line adds the
+        // throwing-site type+method and message head. Per-signature gated
+        // (show/hide cycles on one handle must not spam). Never throws, never
+        // changes the swallow-and-continue contract below, and never
+        // materializes stack text (hostile frames abort the browser runtime).
+        IntPtr h = (IntPtr)hWnd.Value;
+        string who = NotifyWho(h, window);
+        string cycleKey = "show|h=" + h.ToString("x") + "|s=" + (shown ? "1" : "0");
+        if (NotifyShouldLog(cycleKey))
+        {
+            Console.WriteLine($"[WasmNotifyShowWindow] show h={h:x} {who} shown={(shown ? 1 : 0)} utc={NotifyUtc()}");
+        }
         Message m = Message.Create((IntPtr)hWnd.Value, (int)PInvokeCore.WM_SHOWWINDOW, shown ? (IntPtr)1 : IntPtr.Zero, IntPtr.Zero);
         try
         {
@@ -40,7 +55,17 @@ public partial class NativeWindow
             // handler instead of letting them escape out of ShowWindow. The
             // fork's exception-dialog path is not browser-safe (its icon load
             // fails), so surface the failure on the console and keep showing.
-            Console.WriteLine($"[WasmNotifyShowWindow] {e}");
+            string site = NotifySite(e);
+            string head = NotifyHead(e.Message);
+            if (NotifyShouldLog("shownre|" + site + "|" + head))
+            {
+                Console.WriteLine($"[WasmNotifyShowWindow] NRE h={h:x} {who} site={site} msg={head} utc={NotifyUtc()}");
+            }
+            return;
+        }
+        if (NotifyShouldLog(cycleKey))
+        {
+            Console.WriteLine($"[WasmNotifyShowWindow] shown h={h:x} {who} shown={(shown ? 1 : 0)} utc={NotifyUtc()}");
         }
         // Top-level popups (Telerik menus, combo dropdowns) are parentless
         // non-Form controls: track them for the host paint layer, which
@@ -117,14 +142,125 @@ public partial class NativeWindow
             return;
         }
 
+        // RVW-1105-0900-runtime Job1 (WC2315 section4, fork item 2): structured
+        // destroy-path diagnostics, same contract as the show path above:
+        // handle + dialog type + control name + UTC correlation stamp on
+        // entry/exit, throwing-site type+method + message head on NRE.
+        // Per-signature gated, never throws, swallow-and-continue intact,
+        // no stack-text materialization.
+        IntPtr dh = (IntPtr)hWnd.Value;
+        string dwho = NotifyWho(dh, window);
+        string dcycleKey = "destroy|h=" + dh.ToString("x");
+        if (NotifyShouldLog(dcycleKey))
+        {
+            Console.WriteLine($"[WasmNotifyDestroyWindow] destroy h={dh:x} {dwho} utc={NotifyUtc()}");
+        }
         Message m = Message.Create((IntPtr)hWnd.Value, (int)PInvokeCore.WM_DESTROY, IntPtr.Zero, IntPtr.Zero);
         try
         {
             window.WndProc(ref m);
+            if (NotifyShouldLog(dcycleKey))
+            {
+                Console.WriteLine($"[WasmNotifyDestroyWindow] destroyed h={dh:x} {dwho} utc={NotifyUtc()}");
+            }
         }
         catch (Exception e)
         {
-            Console.WriteLine($"[WasmNotifyDestroyWindow] {e}");
+            string dsite = NotifySite(e);
+            string dhead = NotifyHead(e.Message);
+            if (NotifyShouldLog("destroynre|" + dsite + "|" + dhead))
+            {
+                Console.WriteLine($"[WasmNotifyDestroyWindow] NRE h={dh:x} {dwho} site={dsite} msg={dhead} utc={NotifyUtc()}");
+            }
+            return;
         }
+    }
+
+    // RVW-1105-0900-runtime Job1: gate + formatting for the show/destroy
+    // diagnostics above. Per-signature budgets mirror the host
+    // FirstChanceLogGate so a hot show/hide cycle cannot spam the console.
+    // Every helper is fail-closed and never materializes stack text
+    // (hostile frames abort the browser runtime); throwing-site identity
+    // travels via TargetSite only, the same pattern the host SiteOf uses.
+    private static readonly object s_notifyGate = new();
+    private static readonly Dictionary<string, int> s_notifyCounts = new(StringComparer.Ordinal);
+    private static int s_notifyTotal;
+    private const int NotifyPerSignatureCap = 8;
+    internal static void NotifyGateResetForTests()
+    {
+        try { lock (s_notifyGate) { s_notifyCounts.Clear(); s_notifyTotal = 0; } } catch { }
+    }
+    private const int NotifyGlobalCap = 500;
+
+    private static bool NotifyShouldLog(string key)
+    {
+        try
+        {
+            lock (s_notifyGate)
+            {
+                if (s_notifyTotal >= NotifyGlobalCap) return false;
+                s_notifyCounts.TryGetValue(key, out int n);
+                if (n >= NotifyPerSignatureCap) return false;
+                s_notifyCounts[key] = n + 1;
+                s_notifyTotal++;
+                return true;
+            }
+        }
+        catch
+        {
+            return true;
+        }
+    }
+
+    private static string NotifyWho(IntPtr hWnd, NativeWindow window)
+    {
+        try
+        {
+            Control? c = null;
+            try { c = Control.FromHandle(hWnd); } catch { }
+            string type = c?.GetType().FullName ?? window.GetType().FullName ?? "?";
+            string name = "?";
+            try { name = c?.Name ?? "?"; } catch { }
+            if (string.IsNullOrEmpty(name)) name = "?";
+            return "type=" + type + " name=" + name;
+        }
+        catch
+        {
+            return "type=? name=?";
+        }
+    }
+
+    private static string NotifySite(Exception ex)
+    {
+        try
+        {
+            var target = ex.TargetSite;
+            var dt = target?.DeclaringType;
+            if (target is null || dt is null) return "?";
+            return dt.FullName + "." + target.Name;
+        }
+        catch
+        {
+            return "?";
+        }
+    }
+
+    private static string NotifyHead(string? text)
+    {
+        try
+        {
+            string line = (text ?? "").Split('\n')[0].Trim().Replace('\r', ' ');
+            return line.Length > 160 ? line.Substring(0, 160) : line;
+        }
+        catch
+        {
+            return "";
+        }
+    }
+
+    private static string NotifyUtc()
+    {
+        try { return DateTime.UtcNow.ToString("HH:mm:ss.fff"); }
+        catch { return "?"; }
     }
 }

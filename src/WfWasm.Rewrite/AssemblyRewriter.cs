@@ -31,6 +31,18 @@ public static class AssemblyRewriter
     /// Rewrites <paramref name="inputPath"/> to <paramref name="outputPath"/>
     /// with an empty type map.
     /// </summary>
+    // TMPMOVE: rewrite fallback dirs resolve override-first, then canonical
+    // retained/. No hardcoded legacy-temp fallback.
+    private static string RepoRoot => WorkspacePaths.FindWorkspaceRoot();
+    private static string RewriteDepsRoot =>
+        Environment.GetEnvironmentVariable("WF_RETAINED_ROOT")
+        ?? Path.Combine(RepoRoot, ".artifacts", "tmp", "retained");
+    private static string[] RewriteDeps() =>
+    [
+        Path.Combine(RewriteDepsRoot, "rewritten-small"),
+        Path.Combine(RewriteDepsRoot, "rewritten-paint"),
+    ];
+
     public static void Rewrite(string inputPath, string outputPath, IReadOnlyDictionary<string, string> assemblyMap)
     {
         Rewrite(inputPath, outputPath, assemblyMap, new Dictionary<string, (string Assembly, string Type)>());
@@ -42,16 +54,18 @@ public static class AssemblyRewriter
     /// <param name="assemblyMap">Framework assembly name to replacement file.</param>
     /// <param name="typeMap">Full type name to (assembly, type) target.</param>
     /// <param name="cpuPaintPath">Optional CPU paint helper assembly.</param>
+    /// <param name="forkPath">Optional fork assembly (SendMessage forward seam).</param>
     public static void Rewrite(
         string inputPath,
         string outputPath,
         IReadOnlyDictionary<string, string> assemblyMap,
         IReadOnlyDictionary<string, (string Assembly, string Type)> typeMap,
-        string? cpuPaintPath = null)
+        string? cpuPaintPath = null,
+        string? forkPath = null)
     {
         File.WriteAllBytes(outputPath, RewriteToBytes(
             inputPath, assemblyMap, typeMap, cpuPaintPath,
-            Path.GetExtension(outputPath)));
+            Path.GetExtension(outputPath), null, forkPath));
     }
 
     // CustomAttribute blobs encode Type values inline, not as TypeRef
@@ -185,7 +199,8 @@ public static class AssemblyRewriter
         IReadOnlyDictionary<string, (string Assembly, string Type)> typeMap,
         string? cpuPaintPath = null,
         string? outputExtension = null,
-        IEnumerable<string>? extraDirs = null)
+        IEnumerable<string>? extraDirs = null,
+        string? forkPath = null)
     {
         string? inputDir = Path.GetDirectoryName(Path.GetFullPath(inputPath));
         var mapDirs = assemblyMap.Values.Distinct(StringComparer.Ordinal).Select(Path.GetDirectoryName).OfType<string>();
@@ -246,6 +261,14 @@ public static class AssemblyRewriter
             catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException)
             {
             }
+            // Zero-HKL input language (culture-0): headless answers
+            // handle 0 and get_LanguageTag dies in GetCultureInfo(0),
+            // killing printable-key KeyPress (see method). Answer
+            // CurrentUICulture on the zero handle only.
+            try { FixInputLanguageZeroHkl(module); }
+            catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException)
+            {
+            }
         }
         if (assembly.Name.Name == "Telerik.WinControls")
         {
@@ -289,6 +312,16 @@ public static class AssemblyRewriter
             // (DrawTransparentText draws nothing); the sibling
             // DrawGdiPlus path paints through managed GDI+.
             try { RetargetTextBlockGdiPaint(module); }
+            catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException)
+            {
+            }
+        }
+        if (assembly.Name.Name == "Syncfusion.Edit.Windows")
+        {
+            // Press-chain c1 (RT-REGATE-W15-1832): headless HKL 0 kills
+            // InputLanguage.get_Culture in the it-IT/ar name tests; answer
+            // CurrentUICulture at those sites (see method). Pure BCL.
+            try { RetargetSyncfusionInputCulture(module); }
             catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException)
             {
             }
@@ -418,8 +451,22 @@ public static class AssemblyRewriter
             || assembly.Name.Name == "PaintDotNet.Effects.Gpu"
             || assembly.Name.Name == "PaintDotNet.Effects.Legacy")
         {
+            // Clouds MixMode dropdown goes through the lazy Services
+            // acquisition (remaining NRE-capable span in the served window);
+            // construct the real factory with a MixMode-only predicate
+            // instead (see method). Downstream untouched.
+            // ORDER: bypass FIRST. RetargetEffectSettingGetters inserts
+            // extra ldtoken/GetTypeFromHandle pairs into
+            // CloudsGpuEffect.OnCreateConfigUI (w14 converts miss: pristine
+            // 1 ldtoken -> 3 post-getters), which used to trip the bypass's
+            // ldtoken guard while the pipeline swallow hid it. Running the
+            // bypass on pristine bytes keeps the shape exact.
+            try { BypassCloudsServicesFactory(module); }
+            catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException)
+            {
+            }
             // Twist/Quantize/Bulge/Clouds invalid-IL (SF1120-TWISTGATE-1032):
-            // first effects-modules pass for the generic value-read
+            // effects-modules pass for the generic value-read
             // family (see RetargetEffectSettingGetters). Clouds' NRE is
             // a separate served-bundle staging gap, not this rule.
             try { RetargetEffectSettingGetters(module, cpuPaintPath); }
@@ -474,6 +521,14 @@ public static class AssemblyRewriter
             catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException)
             {
             }
+            // TEMP-ORACLE-V7 (REMOVE after localization): worker-phase
+            // first-chance logging for the Quantize post-palette stall
+            // (QuantizeBitmapEffect + quantizer GeneratePalette + the
+            // EffectMenuBase closer; see EmitQuantizePhaseOracleV7).
+            try { EmitQuantizePhaseOracleV7(module, cpuPaintPath); }
+            catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException)
+            {
+            }
         }
         // TRIO-R23: the oracle block above is scoped StartsWith("PaintDotNet.")
         // (case-sensitive), so the lowercase app assembly paintdotnet.dll â€”
@@ -488,6 +543,14 @@ public static class AssemblyRewriter
             {
             }
         }
+            // TEMP-ORACLE-V7 (REMOVE after localization): worker-phase
+            // first-chance logging for the Quantize post-palette stall
+            // (QuantizeBitmapEffect + quantizer GeneratePalette + the
+            // EffectMenuBase closer; see EmitQuantizePhaseOracleV7).
+            try { EmitQuantizePhaseOracleV7(module, cpuPaintPath); }
+            catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException)
+            {
+            }
         if (assembly.Name.Name == "PaintDotNet.Windows")
         {
             // The Win7 taskbar COM object cannot exist headless: its
@@ -507,6 +570,34 @@ public static class AssemblyRewriter
             // PdnCheckBox measure throws inside layout/show and aborts
             // dialog presentation: measure on the CPU instead (see method).
             try { RedirectPdnCheckBoxMeasure(module); }
+            catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException)
+            {
+            }
+            // DWrite text layout is null headless, so every
+            // PdnRadioButton measure throws inside layout/show (WC2334 served
+            // NRE): measure on the CPU instead (see method).
+            try { RedirectPdnRadioButtonMeasure(module); } catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException) { }
+            // Same headless DWrite gap blanks radio text at paint time
+            // (circle draws, text NREs): keep DWrite paint, fall back to
+            // GDI classic circle + TextRenderer text (see method).
+            try { FallbackPdnRadioButtonPaint(module); }
+            catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException)
+            {
+            }
+            // PdnDropDownList frees its animation handler in Dispose(bool)
+            // before the window is destroyed, so the destroy message NREs
+            // in WndProc on served w8 (one caught NRE per dropdown):
+            // null-guard the relay prologue, base-dispatch when freed.
+            try { GuardPdnDropDownListWndProc(module); }
+            catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException)
+            {
+            }
+            // PdnDropDownList.Renderer.DrawText paints dropdown text through
+            // DWrite (null factory headless: ArgumentNullException, blank
+            // Algorithm/Edge-Behavior dropdowns on served Quantize/Bulge
+            // dialogs): keep the DWrite path, fall back to TextRenderer GDI
+            // text on any exception (see method).
+            try { FallbackPdnDropDownListDrawText(module); }
             catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException)
             {
             }
@@ -578,6 +669,12 @@ public static class AssemblyRewriter
             {
             }
             try { EmitTouchLogging(module); }
+            catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException)
+            {
+            }
+            // Quantize WIC quantizer wedge (VEN5): null factory headless wedges
+            // WaitWithUI; answer the managed Octree palette instead.
+            try { EnsureQuantizerWicOctreeFallback(module); }
             catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException)
             {
             }
@@ -809,6 +906,28 @@ public static class AssemblyRewriter
             {
             }
         }
+        if (assembly.Name.Name == "GitCommands")
+        {
+            // FileSystemWatcher seam (gitext w27 wall, runtime FP-0445-949):
+            // FileSettingsCache..ctor `new FileSystemWatcher()` PNSE-poisons
+            // AppSettings..cctor process-wide (GitModule essential path plus
+            // the 0315 peripheral edge); neutralize at the source (see rule).
+            try { NeutralizeFileSystemWatcherInFileSettingsCache(module); }
+            catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException)
+            {
+            }
+        }
+        if (assembly.Name.Name == "mRemoteNG")
+        {
+            // ThemeManager PNSE wall (mRemoteNG w27/w28, runtime RVW3293-RT2):
+            // getInstance() -> IsDesignTimeHost() -> Process.GetCurrentProcess()
+            // PNSE-poisons FrmMain construction into a blank window; force the
+            // vendor's own design-time stub (see rule).
+            try { NeutralizeMRemoteNGThemeManagerDesignTime(module); }
+            catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException)
+            {
+            }
+        }
         if (assembly.Name.Name == "Syncfusion.Tools.Windows")
         {
             // SF05: ComboBoxBaseDataBound.set_SelectedIndex self-recursion
@@ -833,6 +952,15 @@ public static class AssemblyRewriter
             // (constant-stub GetWindow + IsWindowVisible-false spins on
             // mouse-move; see rule).
             try { CapMiniToolBarTopWindowLoop(module); }
+            catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException)
+            {
+            }
+            // PSTALL: Wizard.set_SelectedPage builds the AfterPageSelect
+            // args from a get_SelectedPage() read-back that can miss
+            // served while the requested page is visibly presented, so
+            // OnAfterPageSelect skips RaisePageLoad and the page timer
+            // never arms (see rule).
+            try { RepairWizardSelectedPageFallback(module); }
             catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException)
             {
             }
@@ -1051,7 +1179,7 @@ public static class AssemblyRewriter
         // Native imports cannot bind headless: stub them with the same
         // defaults as the file pass (targeted Ensure* stubs above already
         // cleared PInvokeImpl, so this only touches the remainder).
-        StubModulePInvokes(module, cpuPaintPath);
+        StubModulePInvokes(module, cpuPaintPath, forkPath);
 
         // Designer InitializeComponent runs inside the reflection-invoked
         // ctor; WASM interp cannot unwind across that boundary, so any
@@ -6689,6 +6817,9 @@ public static class AssemblyRewriter
     private static readonly Dictionary<string, AssemblyDefinition> CpuPaintCache =
         new(StringComparer.OrdinalIgnoreCase);
 
+    private static readonly Dictionary<string, AssemblyDefinition> ForkCache =
+        new(StringComparer.OrdinalIgnoreCase);
+
     private static MethodReference ImportCpuPaintMethod(
         ModuleDefinition module, string? cpuPaintPath, string name, int argc)
     {
@@ -6705,6 +6836,23 @@ public static class AssemblyRewriter
         MethodDefinition? def = cpuAsm.MainModule.GetType("WfWasm.PdnCpu.CpuPaint")?.Methods
             .FirstOrDefault(m => m.Name == name && m.Parameters.Count == argc)
             ?? throw new InvalidOperationException($"CpuPaint: CpuPaint.{name}/{argc} missing");
+        return module.ImportReference(def);
+    }
+
+    private static MethodReference ImportForkMethod(ModuleDefinition module, string forkPath)
+    {
+        if (!File.Exists(forkPath))
+            throw new InvalidOperationException($"Fork: helper assembly missing for SendMessage/4");
+        if (!ForkCache.TryGetValue(forkPath, out AssemblyDefinition? forkAsm))
+        {
+            forkAsm = AssemblyDefinition.ReadAssembly(forkPath);
+            ForkCache[forkPath] = forkAsm;
+        }
+        if (module.AssemblyReferences.All(r => r.Name != forkAsm.Name.Name))
+            module.AssemblyReferences.Add(new AssemblyNameReference(forkAsm.Name.Name, forkAsm.Name.Version));
+        MethodDefinition? def = forkAsm.MainModule.GetType("Windows.Win32.ForkSendMessage")?.Methods
+            .FirstOrDefault(m => m.Name == "SendMessage" && m.Parameters.Count == 4)
+            ?? throw new InvalidOperationException($"Fork: ForkSendMessage.SendMessage/4 missing");
         return module.ImportReference(def);
     }
 
@@ -8832,6 +8980,19 @@ public static class AssemblyRewriter
                 && m.Parameters[0].ParameterType.FullName == "PaintDotNet.Imaging.IImagingFactory"
                 && m.Parameters[2].ParameterType.FullName == "PaintDotNet.Imaging.IColorProfile")
                 Identity(m, 1);
+            // VEN-BRIDGE-2212: the WASM factory (and its innermost ref)
+            // does not implement IImagingFactoryInternal, so the
+            // null-buffer CreateBufferedBitmap overloads throw
+            // InterfaceNotSupportedException (Quantize Colors-2
+            // TryGetQuantizer wall). A buffer's contract is the same
+            // pixels, so answer the source itself (refcounted), like
+            // the clipper/color cases above. The explicit-buffer
+            // overloads keep their bodies.
+            if (m.Name == "CreateBufferedBitmap"
+                && m.Parameters.Count == 3
+                && m.Parameters[0].ParameterType.FullName == "PaintDotNet.Imaging.IImagingFactory"
+                && m.Parameters[2].ParameterType.FullName == "System.Int32")
+                Identity(m, 1);
         }
     }
     // WIC imaging has no headless factory (ImagingFactory.instance stays
@@ -8917,6 +9078,78 @@ public static class AssemblyRewriter
         if (patched == 0)
             throw new InvalidOperationException("scaler fallback found no Mode2 overload");
     }
+    // Quantize headless wedge (VEN5): MedianCutWicQuantizer.GeneratePalette
+    // dereferences ImagingFactory.Instance, which the WIC rule leaves null
+    // (COM activation never runs in the browser). The fault never settles
+    // WaitWithUI.doneSignal, so the modal progress dialog never closes and
+    // TRUE-OK wedges the session with 0 CPU. OctreeQuantizer is pure
+    // managed histogram/octree math (no WIC/native/Invoke/wait in any
+    // GeneratePalette overload) and shares the exact
+    // (IBitmapSource, Int32, Boolean, ICancellationToken) shape. When the
+    // factory is null, answer the Octree palette; a present factory
+    // (desktop) keeps the exact original WIC path. Public so the rewrite
+    // tests pin it directly, like the Redirect* rules.
+    public static void EnsureQuantizerWicOctreeFallback(Mono.Cecil.ModuleDefinition module)
+    {
+        ArgumentNullException.ThrowIfNull(module);
+        var wic = module.GetType("PaintDotNet.Imaging.Quantization.MedianCutWicQuantizer")
+            ?? throw new InvalidOperationException("CpuPaint: MedianCutWicQuantizer missing");
+        var oct = module.GetType("PaintDotNet.Imaging.Quantization.OctreeQuantizer")
+            ?? throw new InvalidOperationException("CpuPaint: OctreeQuantizer missing");
+        var octCtor = oct.Methods.FirstOrDefault(m => m.Name == ".ctor" && !m.HasParameters && !m.IsStatic)
+            ?? throw new InvalidOperationException("CpuPaint: OctreeQuantizer ctor shape changed");
+        var octGen = oct.Methods.FirstOrDefault(m => m.Name == "GeneratePalette"
+            && m.Parameters.Count == 4
+            && m.Parameters[0].ParameterType.FullName == "PaintDotNet.Imaging.IBitmapSource"
+            && m.Parameters[1].ParameterType.FullName == "System.Int32"
+            && m.Parameters[2].ParameterType.FullName == "System.Boolean"
+            && m.Parameters[3].ParameterType.FullName == "PaintDotNet.Threading.ICancellationToken")
+            ?? throw new InvalidOperationException("CpuPaint: OctreeQuantizer GeneratePalette shape changed");
+        TypeDefinition factoryDef = ResolveExternalDef(module, "PaintDotNet.Windows.Core", "PaintDotNet.Imaging.ImagingFactory");
+        var getFactory = factoryDef.Methods.FirstOrDefault(m => m.Name == "get_Instance" && m.IsStatic && !m.HasParameters)
+            ?? throw new InvalidOperationException("CpuPaint: ImagingFactory.get_Instance shape changed");
+        int patched = 0;
+        foreach (MethodDefinition m in wic.Methods)
+        {
+            if (m.Name != "GeneratePalette" || !m.HasBody) continue;
+            if (m.Parameters.Count != 4) continue;
+            if (m.Parameters[0].ParameterType.FullName != "PaintDotNet.Imaging.IBitmapSource") continue;
+            if (m.Parameters[1].ParameterType.FullName != "System.Int32") continue;
+            if (m.Parameters[2].ParameterType.FullName != "System.Boolean") continue;
+            if (m.Parameters[3].ParameterType.FullName != "PaintDotNet.Threading.ICancellationToken") continue;
+            if (octGen.ReturnType.FullName != m.ReturnType.FullName)
+                throw new InvalidOperationException("CpuPaint: quantizer palette return type changed");
+            bool callsWic = false;
+            foreach (var ins in m.Body.Instructions)
+            {
+                if (ins.Operand is MethodReference mr && mr.Name == "GeneratePaletteWicImpl") { callsWic = true; break; }
+            }
+            if (!callsWic)
+                throw new InvalidOperationException("CpuPaint: WIC GeneratePalette shape changed");
+            var il = m.Body.GetILProcessor();
+            var first = m.Body.Instructions[0];
+            var keep = il.Create(Mono.Cecil.Cil.OpCodes.Nop);
+            var chain = new Mono.Cecil.Cil.Instruction[]
+            {
+                il.Create(Mono.Cecil.Cil.OpCodes.Call, module.ImportReference(getFactory)),
+                il.Create(Mono.Cecil.Cil.OpCodes.Brtrue_S, keep),
+                il.Create(Mono.Cecil.Cil.OpCodes.Newobj, module.ImportReference(octCtor)),
+                il.Create(Mono.Cecil.Cil.OpCodes.Ldarg, m.Parameters[0]),
+                il.Create(Mono.Cecil.Cil.OpCodes.Ldarg, m.Parameters[1]),
+                il.Create(Mono.Cecil.Cil.OpCodes.Ldarg, m.Parameters[2]),
+                il.Create(Mono.Cecil.Cil.OpCodes.Ldarg, m.Parameters[3]),
+                il.Create(Mono.Cecil.Cil.OpCodes.Callvirt, module.ImportReference(octGen)),
+                il.Create(Mono.Cecil.Cil.OpCodes.Ret),
+                keep,
+            };
+            foreach (var ins in chain) il.InsertBefore(first, ins);
+            if (m.Body.MaxStackSize < 8) m.Body.MaxStackSize = 8;
+            patched++;
+        }
+        if (patched == 0)
+            throw new InvalidOperationException("CpuPaint: quantizer fallback found no site");
+    }
+
     // The MagicScaler thumbnail path still dies one level deeper: both
     // pixel-format converters (to/from Pbgra128Float) resolve the source
     // format through PixelFormatInfo.GetRef, whose value factory calls
@@ -9648,6 +9881,8 @@ public static class AssemblyRewriter
         target.Body.Variables.Add(new Mono.Cecil.Cil.VariableDefinition(sizeType));
         target.Body.Variables.Add(new Mono.Cecil.Cil.VariableDefinition(padType));
         target.Body.Variables.Add(new Mono.Cecil.Cil.VariableDefinition(sizeType));
+        var scaleVar = new Mono.Cecil.Cil.VariableDefinition(getCurrentScale.ReturnType);
+        target.Body.Variables.Add(scaleVar);
         target.Body.InitLocals = true;
         var il = target.Body.GetILProcessor();
         il.Emit(Mono.Cecil.Cil.OpCodes.Ldarg_0);
@@ -9661,9 +9896,13 @@ public static class AssemblyRewriter
         il.Emit(Mono.Cecil.Cil.OpCodes.Ldc_I4_1);
         il.Emit(Mono.Cecil.Cil.OpCodes.Call, classic);
         il.Emit(Mono.Cecil.Cil.OpCodes.Stloc_1);
-        // ConvertDipsToPixelsInt is an instance method (like the original
-        // classic-box body): the instance comes from the static Current.
+        // VEN-QC4-2057: UIScaleFactor is a readonly struct; the instance call
+        // needs a managed-pointer this. Materialize Current into a local and
+        // pass its address (pristine classic shape); the bare stack value
+        // throws InvalidProgramException when run.
         il.Emit(Mono.Cecil.Cil.OpCodes.Call, getCurrentScale);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Stloc_S, scaleVar);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldloca_S, scaleVar);
         il.Emit(Mono.Cecil.Cil.OpCodes.Ldc_I4_3);
         il.Emit(Mono.Cecil.Cil.OpCodes.Call, convertDips);
         il.Emit(Mono.Cecil.Cil.OpCodes.Stloc_2);
@@ -9721,6 +9960,910 @@ public static class AssemblyRewriter
             target.Body.MaxStackSize = 8;
     }
 
+    // PdnRadioButton measure/layout/show all run through DWrite text layout,
+    // which is null headless: every radio measure throws the served WC2334
+    // NRE (PdnRadioButton.<MeasureAndDraw>b__1 ->
+    // GetCachedOrCreateResource[ITextLayout], first-chance-caught for layout;
+    // same abort class as the checkbox arm, so option-button dialogs never
+    // finish showing). Measure on the CPU instead: the button width comes
+    // from the pure-for-measure in-module classic path and the text from
+    // TextRenderer.MeasureText (the fork CPU-measures headless; PdnNumericSpin
+    // already measures this way with no faults), with the original 3-DIP gap,
+    // max(text, button) height and padding math. Member refs are reused from
+    // the module (no new scopes); anything missing fails loudly. Draw paths
+    // are untouched (still fault-and-blank) -- this unblocks measure only.
+    // Public so the rewrite tests pin it directly, like the Redirect* rules.
+    public static void RedirectPdnRadioButtonMeasure(Mono.Cecil.ModuleDefinition module)
+    {
+        ArgumentNullException.ThrowIfNull(module);
+        Mono.Cecil.TypeDefinition radio = module.GetType("PaintDotNet.Controls.PdnRadioButton")
+            ?? throw new InvalidOperationException("PdnRadio: PdnRadioButton missing");
+        Mono.Cecil.MethodDefinition? target = null;
+        Mono.Cecil.MethodDefinition? classic = null;
+        foreach (Mono.Cecil.MethodDefinition m in radio.Methods)
+        {
+            if (m.Name == "GetPreferredSize" && m.HasBody && m.Parameters.Count == 1
+                && m.Parameters[0].ParameterType.FullName == "System.Drawing.Size"
+                && m.ReturnType.FullName == "System.Drawing.Size")
+                target = m;
+            if (m.Name == "MeasureAndDrawClassicButton" && m.Parameters.Count == 3)
+                classic = m;
+        }
+        if (target is null)
+            throw new InvalidOperationException("PdnRadio: GetPreferredSize(Size) missing");
+        if (classic is null)
+            throw new InvalidOperationException("PdnRadio: MeasureAndDrawClassicButton missing");
+        Mono.Cecil.MethodReference Req(string type, string name, params string[] ps)
+        {
+            foreach (Mono.Cecil.TypeDefinition t in AllTypes(module))
+            {
+                foreach (Mono.Cecil.MethodDefinition m in t.Methods)
+                {
+                    if (!m.HasBody) continue;
+                    foreach (var i in m.Body.Instructions)
+                    {
+                        if (i.Operand is Mono.Cecil.MethodReference r
+                            && r.DeclaringType.FullName == type && r.Name == name
+                            && r.Parameters.Count == ps.Length)
+                        {
+                            bool ok = true;
+                            for (int k = 0; k < ps.Length; k++)
+                                if (r.Parameters[k].ParameterType.FullName != ps[k]) { ok = false; break; }
+                            if (ok) return r;
+                        }
+                    }
+                }
+            }
+            throw new InvalidOperationException("PdnRadio: " + type + "::" + name + " missing");
+        }
+        var createGraphics = Req("System.Windows.Forms.Control", "CreateGraphics");
+        var getText = Req("System.Windows.Forms.Control", "get_Text");
+        var getFont = Req("System.Windows.Forms.Control", "get_Font");
+        var measureText = Req("System.Windows.Forms.TextRenderer", "MeasureText", "System.String", "System.Drawing.Font");
+        var convertDips = Req("PaintDotNet.UIScaleFactor", "ConvertDipsToPixelsInt", "System.Int32");
+        var getCurrentScale = Req("PaintDotNet.UIScaleFactor", "get_Current");
+        var sizeGetWidth = Req("System.Drawing.Size", "get_Width");
+        var sizeGetHeight = Req("System.Drawing.Size", "get_Height");
+        var sizeCtor = Req("System.Drawing.Size", ".ctor", "System.Int32", "System.Int32");
+        var getPadding = Req("System.Windows.Forms.Control", "get_Padding");
+        var padH = Req("System.Windows.Forms.Padding", "get_Horizontal");
+        var padV = Req("System.Windows.Forms.Padding", "get_Vertical");
+        var max2 = Req("System.Math", "Max", "System.Int32", "System.Int32");
+        var dispose = Req("System.IDisposable", "Dispose");
+        target.Body.ExceptionHandlers.Clear();
+        target.Body.Variables.Clear();
+        target.Body.Instructions.Clear();
+        var gfxType = createGraphics.ReturnType;
+        var sizeType = sizeCtor.DeclaringType;
+        var padType = getPadding.ReturnType;
+        target.Body.Variables.Add(new Mono.Cecil.Cil.VariableDefinition(gfxType));
+        target.Body.Variables.Add(new Mono.Cecil.Cil.VariableDefinition(sizeType));
+        target.Body.Variables.Add(new Mono.Cecil.Cil.VariableDefinition(module.TypeSystem.Int32));
+        target.Body.Variables.Add(new Mono.Cecil.Cil.VariableDefinition(sizeType));
+        target.Body.Variables.Add(new Mono.Cecil.Cil.VariableDefinition(padType));
+        target.Body.Variables.Add(new Mono.Cecil.Cil.VariableDefinition(module.TypeSystem.Int32));
+        target.Body.Variables.Add(new Mono.Cecil.Cil.VariableDefinition(module.TypeSystem.Int32));
+        target.Body.Variables.Add(new Mono.Cecil.Cil.VariableDefinition(sizeType));
+        var scaleVar = new Mono.Cecil.Cil.VariableDefinition(getCurrentScale.ReturnType);
+        target.Body.Variables.Add(scaleVar);
+        target.Body.InitLocals = true;
+        var il = target.Body.GetILProcessor();
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldarg_0);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Call, createGraphics);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Stloc_0);
+        var tryStart = il.Create(Mono.Cecil.Cil.OpCodes.Nop);
+        il.Append(tryStart);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldarg_0);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldloc_0);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldc_I4_0);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldc_I4_1);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Call, classic);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Stloc_1);
+        // VEN-QC4-2057: UIScaleFactor is a readonly struct; the instance call
+        // needs a managed-pointer this. Materialize Current into a local and
+        // pass its address (pristine classic shape); the bare stack value
+        // throws InvalidProgramException when run.
+        il.Emit(Mono.Cecil.Cil.OpCodes.Call, getCurrentScale);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Stloc_S, scaleVar);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldloca_S, scaleVar);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldc_I4_3);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Call, convertDips);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Stloc_2);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldarg_0);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Callvirt, getText);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldarg_0);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Callvirt, getFont);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Call, measureText);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Stloc_3);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldloca_S, target.Body.Variables[1]);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Call, sizeGetWidth);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldloc_2);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Add);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldloca_S, target.Body.Variables[3]);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Call, sizeGetWidth);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Add);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldarg_0);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Call, getPadding);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Stloc_S, target.Body.Variables[4]);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldloca_S, target.Body.Variables[4]);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Call, padH);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Add);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Stloc_S, target.Body.Variables[5]);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldloca_S, target.Body.Variables[3]);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Call, sizeGetHeight);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldloca_S, target.Body.Variables[1]);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Call, sizeGetHeight);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Call, max2);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldarg_0);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Call, getPadding);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Stloc_S, target.Body.Variables[4]);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldloca_S, target.Body.Variables[4]);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Call, padV);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Add);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Stloc_S, target.Body.Variables[6]);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldloc_S, target.Body.Variables[5]);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldloc_S, target.Body.Variables[6]);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Newobj, sizeCtor);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Stloc_S, target.Body.Variables[7]);
+        var ok = il.Create(Mono.Cecil.Cil.OpCodes.Nop);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Leave, ok);
+        var handlerStart = il.Create(Mono.Cecil.Cil.OpCodes.Nop);
+        il.Append(handlerStart);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldloc_0);
+        var noDispose = il.Create(Mono.Cecil.Cil.OpCodes.Nop);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Brfalse_S, noDispose);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldloc_0);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Callvirt, dispose);
+        il.Append(noDispose);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Endfinally);
+        il.Append(ok);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldloc_S, target.Body.Variables[7]);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ret);
+        target.Body.ExceptionHandlers.Add(new Mono.Cecil.Cil.ExceptionHandler(
+            Mono.Cecil.Cil.ExceptionHandlerType.Finally)
+        {
+            TryStart = tryStart,
+            TryEnd = handlerStart,
+            HandlerStart = handlerStart,
+            HandlerEnd = ok,
+        });
+        if (target.Body.MaxStackSize < 8)
+            target.Body.MaxStackSize = 8;
+    }
+
+    // PdnRadioButton.OnPaintRadioButton draws its circle in GDI (classic
+    // path, works headless) but its text through DWrite: UIText.CreateLayout
+    // + GetCachedOrCreateResource[ITextLayout] inside MeasureAndDraw, which
+    // NREs on the null headless layout (WC2334 served NRE). The NRE is not a
+    // retryable device fault, so DrawWithErrorHandling rethrows and the paint
+    // dies: the radio renders as a bare circle / blank. Measure is already
+    // CPU-redirected; keep the original paint as the try path (it wins where
+    // DWrite exists) and fall back to pure GDI on any exception: the proven
+    // in-module classic circle (state mapping included, no enum literals)
+    // plus TextRenderer text at the same 3-DIP gap, grayed when disabled.
+    // Fail loud on shape drift (never a silent no-op).
+    // Public so the rewrite tests pin it directly, like the Redirect* rules.
+    public static void FallbackPdnRadioButtonPaint(Mono.Cecil.ModuleDefinition module)
+    {
+        ArgumentNullException.ThrowIfNull(module);
+        Mono.Cecil.TypeDefinition radio = module.GetType("PaintDotNet.Controls.PdnRadioButton")
+            ?? throw new InvalidOperationException("PdnRadioPaint: PdnRadioButton missing");
+        Mono.Cecil.MethodDefinition? paint = null;
+        Mono.Cecil.MethodDefinition? classic = null;
+        foreach (Mono.Cecil.MethodDefinition m in radio.Methods)
+        {
+            if (m.Name == "OnPaintRadioButton" && m.HasBody && m.Parameters.Count == 4
+                && m.Parameters[0].ParameterType.FullName == "System.Drawing.IDeviceContext"
+                && m.Parameters[1].ParameterType.FullName == "System.Windows.Forms.VisualStyles.RadioButtonState"
+                && m.Parameters[2].ParameterType.FullName == "System.Boolean"
+                && m.Parameters[3].ParameterType.FullName == "System.Boolean"
+                && m.ReturnType.FullName == "System.Void")
+                paint = m;
+            if (m.Name == "MeasureAndDrawClassicButton" && m.Parameters.Count == 3)
+                classic = m;
+        }
+        if (paint is null)
+            throw new InvalidOperationException("PdnRadioPaint: OnPaintRadioButton missing");
+        if (classic is null)
+            throw new InvalidOperationException("PdnRadioPaint: MeasureAndDrawClassicButton missing");
+        if (paint.Body.ExceptionHandlers.Count != 0)
+            throw new InvalidOperationException("PdnRadioPaint: OnPaintRadioButton already guarded");
+        int drawCalls = 0;
+        foreach (var i in paint.Body.Instructions)
+        {
+            if ((i.OpCode == Mono.Cecil.Cil.OpCodes.Call || i.OpCode == Mono.Cecil.Cil.OpCodes.Callvirt)
+                && i.Operand is Mono.Cecil.MethodReference mr && mr.Name == "MeasureAndDraw")
+                drawCalls++;
+        }
+        if (drawCalls != 1)
+            throw new InvalidOperationException("PdnRadioPaint: MeasureAndDraw call shape drifted");
+        Mono.Cecil.MethodReference Req(string type, string name, params string[] ps)
+        {
+            foreach (Mono.Cecil.TypeDefinition t in AllTypes(module))
+            {
+                foreach (Mono.Cecil.MethodDefinition m in t.Methods)
+                {
+                    if (!m.HasBody) continue;
+                    foreach (var i in m.Body.Instructions)
+                    {
+                        if (i.Operand is Mono.Cecil.MethodReference r
+                            && r.DeclaringType.FullName == type && r.Name == name
+                            && r.Parameters.Count == ps.Length)
+                        {
+                            bool ok = true;
+                            for (int k = 0; k < ps.Length; k++)
+                                if (r.Parameters[k].ParameterType.FullName != ps[k]) { ok = false; break; }
+                            if (ok) return r;
+                        }
+                    }
+                }
+            }
+            throw new InvalidOperationException("PdnRadioPaint: " + type + "::" + name + " missing");
+        }
+        var getText = Req("System.Windows.Forms.Control", "get_Text");
+        var getFont = Req("System.Windows.Forms.Control", "get_Font");
+        var getEnabled = Req("System.Windows.Forms.Control", "get_Enabled");
+        var getForeColor = Req("System.Windows.Forms.Control", "get_ForeColor");
+        var getClientRect = Req("System.Windows.Forms.Control", "get_ClientRectangle");
+        var measureText = Req("System.Windows.Forms.TextRenderer", "MeasureText", "System.String", "System.Drawing.Font");
+        Mono.Cecil.MethodReference? drawText = null;
+        try
+        {
+            drawText = Req("System.Windows.Forms.TextRenderer", "DrawText",
+                "System.Drawing.IDeviceContext", "System.String", "System.Drawing.Font",
+                "System.Drawing.Point", "System.Drawing.Color");
+        }
+        catch (InvalidOperationException)
+        {
+            var textRenderer = measureText.DeclaringType;
+            var manual = new Mono.Cecil.MethodReference("DrawText", module.TypeSystem.Void, textRenderer);
+            manual.Parameters.Add(new Mono.Cecil.ParameterDefinition(paint.Parameters[0].ParameterType));
+            manual.Parameters.Add(new Mono.Cecil.ParameterDefinition(module.TypeSystem.String));
+            manual.Parameters.Add(new Mono.Cecil.ParameterDefinition(getFont.ReturnType));
+            manual.Parameters.Add(new Mono.Cecil.ParameterDefinition(module.ImportReference(typeof(System.Drawing.Point))));
+            manual.Parameters.Add(new Mono.Cecil.ParameterDefinition(module.ImportReference(typeof(System.Drawing.Color))));
+            drawText = manual;
+        }
+        var getGrayText = Req("System.Drawing.SystemColors", "get_GrayText");
+        var getCurrentScale = Req("PaintDotNet.UIScaleFactor", "get_Current");
+        Mono.Cecil.MethodReference convertDips;
+        try { convertDips = Req("PaintDotNet.UIScaleFactor", "ConvertDipsToPixelsInt", "System.Int32"); }
+        catch (InvalidOperationException)
+        {
+            throw new InvalidOperationException("PdnRadioPaint: ConvertDipsToPixelsInt(Int32) missing");
+        }
+        var sizeGetWidth = Req("System.Drawing.Size", "get_Width");
+        var sizeGetHeight = Req("System.Drawing.Size", "get_Height");
+        var rectGetHeight = Req("System.Drawing.Rectangle", "get_Height");
+        var max2 = Req("System.Math", "Max", "System.Int32", "System.Int32");
+        var pointCtor = Req("System.Drawing.Point", ".ctor", "System.Int32", "System.Int32");
+        var sizeType = sizeGetWidth.DeclaringType;
+        var rectType = getClientRect.ReturnType;
+        var pointType = pointCtor.DeclaringType;
+        var colorType = getForeColor.ReturnType;
+        var il = paint.Body.GetILProcessor();
+        var sizeVar = new Mono.Cecil.Cil.VariableDefinition(sizeType);
+        var textVar = new Mono.Cecil.Cil.VariableDefinition(sizeType);
+        var rectVar = new Mono.Cecil.Cil.VariableDefinition(rectType);
+        var pointVar = new Mono.Cecil.Cil.VariableDefinition(pointType);
+        var colorVar = new Mono.Cecil.Cil.VariableDefinition(colorType);
+        paint.Body.Variables.Add(sizeVar);
+        paint.Body.Variables.Add(textVar);
+        paint.Body.Variables.Add(rectVar);
+        paint.Body.Variables.Add(pointVar);
+        paint.Body.Variables.Add(colorVar);
+        var scaleVar = new Mono.Cecil.Cil.VariableDefinition(getCurrentScale.ReturnType);
+        paint.Body.Variables.Add(scaleVar);
+        paint.Body.InitLocals = true;
+        var first = paint.Body.Instructions[0];
+        var handlerStart = il.Create(Mono.Cecil.Cil.OpCodes.Nop);
+        il.Append(handlerStart);
+        // circleSize = MeasureAndDrawClassicButton(dc, false, state)
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldarg_0);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldarg_1);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldc_I4_0);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldarg_2);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Call, classic);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Stloc_S, sizeVar);
+        // MeasureAndDrawClassicButton(dc, true, state); pop (draws circle)
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldarg_0);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldarg_1);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldc_I4_1);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldarg_2);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Call, classic);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Pop);
+        // textSize = TextRenderer.MeasureText(Text, Font)
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldarg_0);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Callvirt, getText);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldarg_0);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Callvirt, getFont);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Call, measureText);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Stloc_S, textVar);
+        // rect = ClientRectangle
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldarg_0);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Callvirt, getClientRect);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Stloc_S, rectVar);
+        // x = circleSize.Width + 3 DIP
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldloca_S, sizeVar);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Call, sizeGetWidth);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Call, getCurrentScale);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Stloc_S, scaleVar);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldloca_S, scaleVar);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldc_I4_3);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Call, convertDips);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Add);
+        // y = Max(0, (rect.Height - textSize.Height) / 2)
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldloca_S, rectVar);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Call, rectGetHeight);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldloca_S, textVar);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Call, sizeGetHeight);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Sub);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldc_I4_2);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Div);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldc_I4_0);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Call, max2);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Newobj, pointCtor);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Stloc_S, pointVar);
+        // color = Enabled ? ForeColor : GrayText
+        var gray = il.Create(Mono.Cecil.Cil.OpCodes.Nop);
+        var colorDone = il.Create(Mono.Cecil.Cil.OpCodes.Nop);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldarg_0);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Callvirt, getEnabled);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Brfalse_S, gray);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldarg_0);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Callvirt, getForeColor);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Br_S, colorDone);
+        il.Append(gray);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Call, getGrayText);
+        il.Append(colorDone);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Stloc_S, colorVar);
+        // TextRenderer.DrawText(dc, Text, Font, point, color); ret
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldarg_1);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldarg_0);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Callvirt, getText);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldarg_0);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Callvirt, getFont);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldloc_S, pointVar);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldloc_S, colorVar);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Call, drawText);
+        var handlerRealEnd = il.Create(Mono.Cecil.Cil.OpCodes.Ret);
+        il.Append(handlerRealEnd);
+        paint.Body.ExceptionHandlers.Add(new Mono.Cecil.Cil.ExceptionHandler(
+            Mono.Cecil.Cil.ExceptionHandlerType.Catch)
+        {
+            CatchType = module.ImportReference(typeof(System.Exception)),
+            TryStart = first,
+            TryEnd = handlerStart,
+            HandlerStart = handlerStart,
+            HandlerEnd = handlerRealEnd,
+        });
+        if (paint.Body.MaxStackSize < 8)
+            paint.Body.MaxStackSize = 8;
+    }
+
+    // PdnDropDownList.WndProc relays every message through animationHandler,
+    // which Dispose(bool) frees (nulls) BEFORE base.Dispose destroys the
+    // window: the destroy message then NREs on the null field. Served w8
+    // File>New teardown shows it deterministically (one caught
+    // PdnDropDownList.WndProc NRE per dropdown destroyed, dialog dispose
+    // continues). Null-guard the prologue so a freed handler falls
+    // through to base.WndProc; the relay/fast path is otherwise untouched.
+    // Fail loud on shape drift (never a silent no-op).
+    // Public so the rewrite tests pin it directly, like the Redirect* rules.
+    public static void GuardPdnDropDownListWndProc(Mono.Cecil.ModuleDefinition module)
+    {
+        ArgumentNullException.ThrowIfNull(module);
+        Mono.Cecil.TypeDefinition ddl = module.GetType("PaintDotNet.Controls.PdnDropDownList")
+            ?? throw new InvalidOperationException("PdnDropDown: PdnDropDownList missing");
+        Mono.Cecil.MethodDefinition? target = null;
+        foreach (Mono.Cecil.MethodDefinition m in ddl.Methods)
+        {
+            if (m.Name == "WndProc" && m.HasBody && m.Parameters.Count == 1
+                && m.Parameters[0].ParameterType.FullName == "System.Windows.Forms.Message&")
+                target = m;
+        }
+        if (target is null)
+            throw new InvalidOperationException("PdnDropDown: WndProc(Message&) missing");
+        var instrs = target.Body.Instructions;
+        if (instrs.Count < 4
+            || instrs[0].OpCode != Mono.Cecil.Cil.OpCodes.Ldarg_0
+            || instrs[1].OpCode != Mono.Cecil.Cil.OpCodes.Ldfld
+            || instrs[1].Operand is not Mono.Cecil.FieldReference fld
+            || fld.Name != "animationHandler")
+            throw new InvalidOperationException("PdnDropDown: WndProc prologue drifted");
+        Mono.Cecil.MethodReference? relay = null;
+        Mono.Cecil.MethodReference? baseWnd = null;
+        int callCount = 0;
+        foreach (var i in instrs)
+        {
+            if ((i.OpCode == Mono.Cecil.Cil.OpCodes.Call || i.OpCode == Mono.Cecil.Cil.OpCodes.Callvirt)
+                && i.Operand is Mono.Cecil.MethodReference mr)
+            {
+                callCount++;
+                if (mr.Name == "RelayWndProc") relay = mr;
+                if (mr.Name == "WndProc" && mr.DeclaringType.FullName != "PaintDotNet.Controls.PdnDropDownList")
+                    baseWnd = mr;
+            }
+        }
+        if (callCount != 2 || relay is null || baseWnd is null)
+            throw new InvalidOperationException("PdnDropDown: WndProc call shape drifted");
+        var first = instrs[0];
+        var il = target.Body.GetILProcessor();
+        var newFirst = il.Create(Mono.Cecil.Cil.OpCodes.Ldarg_0);
+        il.InsertBefore(first, newFirst);
+        il.InsertBefore(first, il.Create(Mono.Cecil.Cil.OpCodes.Ldfld, fld));
+        il.InsertBefore(first, il.Create(Mono.Cecil.Cil.OpCodes.Brtrue_S, first));
+        il.InsertBefore(first, il.Create(Mono.Cecil.Cil.OpCodes.Ldarg_0));
+        il.InsertBefore(first, il.Create(Mono.Cecil.Cil.OpCodes.Ldarg_1));
+        il.InsertBefore(first, il.Create(Mono.Cecil.Cil.OpCodes.Call, baseWnd));
+        il.InsertBefore(first, il.Create(Mono.Cecil.Cil.OpCodes.Ret));
+        foreach (var h in target.Body.ExceptionHandlers)
+        {
+            if (h.TryStart == first) h.TryStart = newFirst;
+            if (h.TryEnd == first) h.TryEnd = newFirst;
+            if (h.HandlerStart == first) h.HandlerStart = newFirst;
+            if (h.HandlerEnd == first) h.HandlerEnd = newFirst;
+            if (h.FilterStart == first) h.FilterStart = newFirst;
+        }
+        if (target.Body.MaxStackSize < 2)
+            target.Body.MaxStackSize = 2;
+    }
+
+    // PdnDropDownList.Renderer.DrawText paints dropdown text through
+    // DrawingContextUtil.Draw (DWrite). Headless the D2D factory is null,
+    // so every dropdown paint throws ArgumentNullException("factory") and
+    // the text never paints (blank Algorithm/Edge-Behavior dropdowns on
+    // served w9 Quantize/Bulge dialogs; caught by DrawWithErrorHandling,
+    // so dialogs still function). Keep the DWrite path, fall back to
+    // TextRenderer.DrawText in pure GDI on any exception. Fail loud on
+    // shape drift (never a silent no-op).
+    // Public so the rewrite tests pin it directly, like the Redirect* rules.
+    public static void FallbackPdnDropDownListDrawText(Mono.Cecil.ModuleDefinition module)
+    {
+        ArgumentNullException.ThrowIfNull(module);
+        Mono.Cecil.TypeDefinition ddl = module.GetType("PaintDotNet.Controls.PdnDropDownList")
+            ?? throw new InvalidOperationException("PdnDropDownText: PdnDropDownList missing");
+        Mono.Cecil.TypeDefinition? renderer = null;
+        foreach (Mono.Cecil.TypeDefinition n in ddl.NestedTypes)
+        {
+            if (n.Name == "Renderer")
+                renderer = n;
+        }
+        if (renderer is null)
+            throw new InvalidOperationException("PdnDropDownText: Renderer missing");
+        Mono.Cecil.MethodDefinition? draw = null;
+        foreach (Mono.Cecil.MethodDefinition m in renderer.Methods)
+        {
+            if (m.Name == "DrawText" && m.HasBody && m.Parameters.Count == 5
+                && m.Parameters[0].ParameterType.FullName == "System.Drawing.Graphics"
+                && m.Parameters[1].ParameterType.FullName == "System.String"
+                && m.Parameters[2].ParameterType.FullName == "System.Drawing.Font"
+                && m.Parameters[3].ParameterType.FullName == "System.Drawing.Color"
+                && m.Parameters[4].ParameterType.FullName == "System.Drawing.Rectangle"
+                && m.ReturnType.FullName == "System.Void")
+                draw = m;
+        }
+        if (draw is null)
+            throw new InvalidOperationException("PdnDropDownText: Renderer.DrawText missing");
+        if (draw.Body.ExceptionHandlers.Count != 0)
+            throw new InvalidOperationException("PdnDropDownText: DrawText already guarded");
+        int drawCalls = 0;
+        int nullChecks = 0;
+        foreach (var i in draw.Body.Instructions)
+        {
+            if ((i.OpCode == Mono.Cecil.Cil.OpCodes.Call || i.OpCode == Mono.Cecil.Cil.OpCodes.Callvirt)
+                && i.Operand is Mono.Cecil.MethodReference mr)
+            {
+                if (mr.Name == "Draw" && mr.DeclaringType.FullName == "PaintDotNet.Drawing.DrawingContextUtil")
+                    drawCalls++;
+                if (mr.Name == "IsNullOrEmpty" && mr.DeclaringType.FullName == "System.String")
+                    nullChecks++;
+            }
+        }
+        if (drawCalls != 1)
+            throw new InvalidOperationException("PdnDropDownText: DrawingContextUtil.Draw call shape drifted");
+        if (nullChecks != 1)
+            throw new InvalidOperationException("PdnDropDownText: IsNullOrEmpty guard drifted");
+        Mono.Cecil.MethodReference Req(string type, string name, params string[] ps)
+        {
+            foreach (Mono.Cecil.TypeDefinition t in AllTypes(module))
+            {
+                foreach (Mono.Cecil.MethodDefinition m in t.Methods)
+                {
+                    if (!m.HasBody) continue;
+                    foreach (var i in m.Body.Instructions)
+                    {
+                        if (i.Operand is Mono.Cecil.MethodReference r
+                            && r.DeclaringType.FullName == type && r.Name == name
+                            && r.Parameters.Count == ps.Length)
+                        {
+                            bool ok = true;
+                            for (int k = 0; k < ps.Length; k++)
+                                if (r.Parameters[k].ParameterType.FullName != ps[k]) { ok = false; break; }
+                            if (ok) return r;
+                        }
+                    }
+                }
+            }
+            throw new InvalidOperationException("PdnDropDownText: " + type + "::" + name + " missing");
+        }
+        var isNullOrEmpty = Req("System.String", "IsNullOrEmpty", "System.String");
+        var rectGetX = Req("System.Drawing.Rectangle", "get_X");
+        var rectGetY = Req("System.Drawing.Rectangle", "get_Y");
+        var getCurrentScale = Req("PaintDotNet.UIScaleFactor", "get_Current");
+        Mono.Cecil.MethodReference convertDips;
+        try { convertDips = Req("PaintDotNet.UIScaleFactor", "ConvertDipsToPixelsInt", "System.Int32"); }
+        catch (InvalidOperationException)
+        {
+            throw new InvalidOperationException("PdnDropDownText: ConvertDipsToPixelsInt(Int32) missing");
+        }
+        var pointCtor = Req("System.Drawing.Point", ".ctor", "System.Int32", "System.Int32");
+        var measureText = Req("System.Windows.Forms.TextRenderer", "MeasureText", "System.String", "System.Drawing.Font");
+        Mono.Cecil.MethodReference? drawText = null;
+        try
+        {
+            drawText = Req("System.Windows.Forms.TextRenderer", "DrawText",
+                "System.Drawing.IDeviceContext", "System.String", "System.Drawing.Font",
+                "System.Drawing.Point", "System.Drawing.Color");
+        }
+        catch (InvalidOperationException)
+        {
+            var textRenderer = measureText.DeclaringType;
+            var manual = new Mono.Cecil.MethodReference("DrawText", module.TypeSystem.Void, textRenderer);
+            // typeof(IDeviceContext) is not visible to this project's
+            // references (forwarded to System.Drawing.Common), so borrow
+            // the reference from any module method declaring it
+            // (OnPaintRadioButton carries it; fail loud if it ever goes).
+            Mono.Cecil.TypeReference? deviceContext = null;
+            foreach (Mono.Cecil.TypeDefinition dt in AllTypes(module))
+            {
+                foreach (Mono.Cecil.MethodDefinition dm in dt.Methods)
+                {
+                    foreach (var dp in dm.Parameters)
+                    {
+                        if (dp.ParameterType.FullName == "System.Drawing.IDeviceContext")
+                        {
+                            deviceContext = dp.ParameterType;
+                            break;
+                        }
+                    }
+                    if (deviceContext is not null) break;
+                }
+                if (deviceContext is not null) break;
+            }
+            if (deviceContext is null)
+                throw new InvalidOperationException("PdnDropDownText: IDeviceContext reference missing");
+            manual.Parameters.Add(new Mono.Cecil.ParameterDefinition(deviceContext));
+            manual.Parameters.Add(new Mono.Cecil.ParameterDefinition(module.TypeSystem.String));
+            manual.Parameters.Add(new Mono.Cecil.ParameterDefinition(draw.Parameters[2].ParameterType));
+            manual.Parameters.Add(new Mono.Cecil.ParameterDefinition(module.ImportReference(typeof(System.Drawing.Point))));
+            manual.Parameters.Add(new Mono.Cecil.ParameterDefinition(draw.Parameters[3].ParameterType));
+            drawText = manual;
+        }
+        var il = draw.Body.GetILProcessor();
+        var pointVar = new Mono.Cecil.Cil.VariableDefinition(pointCtor.DeclaringType);
+        draw.Body.Variables.Add(pointVar);
+        var scaleVar = new Mono.Cecil.Cil.VariableDefinition(getCurrentScale.ReturnType);
+        draw.Body.Variables.Add(scaleVar);
+        draw.Body.InitLocals = true;
+        var first = draw.Body.Instructions[0];
+        var handlerStart = il.Create(Mono.Cecil.Cil.OpCodes.Nop);
+        il.Append(handlerStart);
+        // if (string.IsNullOrEmpty(text)) return;
+        var paint = il.Create(Mono.Cecil.Cil.OpCodes.Nop);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldarg_2);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Call, isNullOrEmpty);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Brfalse_S, paint);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ret);
+        il.Append(paint);
+        // x = bounds.X + UIScaleFactor.Current.ConvertDipsToPixelsInt(1)
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldarga, draw.Parameters[4]);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Call, rectGetX);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Call, getCurrentScale);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Stloc_S, scaleVar);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldloca_S, scaleVar);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldc_I4_1);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Call, convertDips);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Add);
+        // y = bounds.Y
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldarga, draw.Parameters[4]);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Call, rectGetY);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Newobj, pointCtor);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Stloc_S, pointVar);
+        // TextRenderer.DrawText(g, text, font, point, color); ret
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldarg_1);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldarg_2);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldarg_3);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldloc_S, pointVar);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldarg, draw.Parameters[3]);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Call, drawText);
+        var handlerRealEnd = il.Create(Mono.Cecil.Cil.OpCodes.Ret);
+        il.Append(handlerRealEnd);
+        draw.Body.ExceptionHandlers.Add(new Mono.Cecil.Cil.ExceptionHandler(
+            Mono.Cecil.Cil.ExceptionHandlerType.Catch)
+        {
+            CatchType = module.ImportReference(typeof(System.Exception)),
+            TryStart = first,
+            TryEnd = handlerStart,
+            HandlerStart = handlerStart,
+            HandlerEnd = handlerRealEnd,
+        });
+        if (draw.Body.MaxStackSize < 8)
+            draw.Body.MaxStackSize = 8;
+    }
+
+    // CloudsGpuEffect.OnCreateConfigUI localizes its MixMode dropdown via
+    // Services.GetRequiredService<IEnumLocalizerFactory>(). By exhaustive
+    // elimination over the real IL (all other instructions NotNull-guarded,
+    // proven total, or proven green by the MixMode lifecycle construct test),
+    // the remaining NRE-capable span is the lazy Services acquisition and the
+    // app-registered factory predicate. The rewrite swaps just the acquisition
+    // for activator construction of the REAL factory (single implementation in
+    // the closure) driven by a synthesized MixMode-only predicate (fail-closed:
+    // any other enum still throws ArgumentException, exactly today's contract).
+    // Downstream (Create, GetLocalizedEnumValues, enumerator loop, NotNull
+    // rails) is untouched: no loop surgery, no new assembly references, no
+    // handler changes. No blanket guard. Fail loud on shape drift.
+    // Public so the rewrite tests pin it directly, like the Redirect* rules.
+    public static void BypassCloudsServicesFactory(Mono.Cecil.ModuleDefinition module)
+    {
+        ArgumentNullException.ThrowIfNull(module);
+        Mono.Cecil.TypeDefinition clouds = module.GetType("PaintDotNet.Effects.Gpu.CloudsGpuEffect")
+            ?? throw new InvalidOperationException("CloudsFactory: CloudsGpuEffect missing");
+        Mono.Cecil.MethodDefinition? ui = null;
+        foreach (Mono.Cecil.MethodDefinition m in clouds.Methods)
+        {
+            if (m.Name == "OnCreateConfigUI" && m.HasBody && m.IsVirtual
+                && m.Parameters.Count == 1
+                && m.Parameters[0].ParameterType.FullName == "PaintDotNet.PropertySystem.PropertyCollection"
+                && m.ReturnType.FullName == "PaintDotNet.IndirectUI.ControlInfo")
+                ui = m;
+        }
+        if (ui is null)
+            throw new InvalidOperationException("CloudsFactory: OnCreateConfigUI missing");
+        Mono.Cecil.Cil.Instruction? ldargThis = null;
+        Mono.Cecil.Cil.Instruction? getServices = null;
+        Mono.Cecil.Cil.Instruction? getRequired = null;
+        foreach (var i in ui.Body.Instructions)
+        {
+            if ((i.OpCode == Mono.Cecil.Cil.OpCodes.Call || i.OpCode == Mono.Cecil.Cil.OpCodes.Callvirt)
+                && i.Operand is Mono.Cecil.MethodReference mr)
+            {
+                if (mr.Name == "get_Services") getServices = getServices is null ? i : throw new InvalidOperationException("CloudsFactory: get_Services not unique");
+                if (mr.Name == "GetRequiredService") getRequired = getRequired is null ? i : throw new InvalidOperationException("CloudsFactory: GetRequiredService not unique");
+            }
+        }
+        if (getServices is null)
+            throw new InvalidOperationException("CloudsFactory: get_Services missing (already bypassed?)");
+        if (getRequired is null)
+            throw new InvalidOperationException("CloudsFactory: GetRequiredService missing");
+        int gi = ui.Body.Instructions.IndexOf(getRequired);
+        if (gi < 2
+            || ui.Body.Instructions[gi - 2].OpCode != Mono.Cecil.Cil.OpCodes.Ldarg_0
+            || ui.Body.Instructions[gi - 1] != getServices)
+            throw new InvalidOperationException("CloudsFactory: service-chain prologue drifted");
+        ldargThis = ui.Body.Instructions[gi - 2];
+        foreach (var i in ui.Body.Instructions)
+        {
+            if (i == ldargThis || i == getServices || i == getRequired) continue;
+            if (i.Operand == ldargThis || i.Operand == getServices || i.Operand == getRequired)
+                throw new InvalidOperationException("CloudsFactory: branch into service chain");
+        }
+        foreach (var h in ui.Body.ExceptionHandlers)
+        {
+            int tryStart = ui.Body.Instructions.IndexOf(h.TryStart);
+            int tryEnd = h.TryEnd is null ? tryStart : ui.Body.Instructions.IndexOf(h.TryEnd);
+            int handStart = h.HandlerStart is null ? tryEnd : ui.Body.Instructions.IndexOf(h.HandlerStart);
+            int handEnd = h.HandlerEnd is null ? handStart : ui.Body.Instructions.IndexOf(h.HandlerEnd);
+            foreach (var ei in new[] { ldargThis, getServices, getRequired })
+            {
+                int at = ui.Body.Instructions.IndexOf(ei);
+                if ((at >= tryStart && at < tryEnd) || (at >= handStart && at < handEnd))
+                    throw new InvalidOperationException("CloudsFactory: handler covers service chain");
+            }
+        }
+        // The getters rule inserts extra ldtoken/GetTypeFromHandle pairs
+        // into this method for generic-instantiation operands, so a lone
+        // total-ldtoken count is order-fragile (w14 converts miss). Locate
+        // the pristine MixMode enum token specifically: a non-generic
+        // MixMode type token immediately followed by GetTypeFromHandle.
+        // Exactly one must exist; anything else is shape drift (fail loud).
+        Mono.Cecil.TypeReference? mixModeRef = null;
+        Mono.Cecil.MethodReference? getTypeFromHandle = null;
+        foreach (var i in ui.Body.Instructions)
+        {
+            if (i.OpCode != Mono.Cecil.Cil.OpCodes.Ldtoken || i.Operand is not Mono.Cecil.TypeReference tr)
+                continue;
+            if (tr is Mono.Cecil.GenericInstanceType || !string.Equals(tr.Name, "MixMode", StringComparison.Ordinal))
+                continue;
+            int li = ui.Body.Instructions.IndexOf(i);
+            if (li + 1 >= ui.Body.Instructions.Count
+                || ui.Body.Instructions[li + 1].Operand is not Mono.Cecil.MethodReference gth
+                || gth.Name != "GetTypeFromHandle")
+                continue;
+            if (mixModeRef is not null)
+                throw new InvalidOperationException("CloudsFactory: MixMode ldtoken not unique");
+            mixModeRef = tr;
+            getTypeFromHandle = gth;
+        }
+        if (mixModeRef is null || getTypeFromHandle is null)
+            throw new InvalidOperationException("CloudsFactory: MixMode ldtoken shape drifted");
+        var allow = new Mono.Cecil.MethodDefinition("CloudsMixModeAllowlist",
+            Mono.Cecil.MethodAttributes.Private | Mono.Cecil.MethodAttributes.Static | Mono.Cecil.MethodAttributes.HideBySig,
+            module.TypeSystem.Boolean);
+        allow.Parameters.Add(new Mono.Cecil.ParameterDefinition(module.ImportReference(typeof(System.Type))));
+        clouds.Methods.Add(allow);
+        var allowIl = allow.Body.GetILProcessor();
+        allowIl.Emit(Mono.Cecil.Cil.OpCodes.Ldarg_0);
+        allowIl.Emit(Mono.Cecil.Cil.OpCodes.Ldtoken, mixModeRef);
+        allowIl.Emit(Mono.Cecil.Cil.OpCodes.Call, getTypeFromHandle);
+        allowIl.Emit(Mono.Cecil.Cil.OpCodes.Ceq);
+        allowIl.Emit(Mono.Cecil.Cil.OpCodes.Ret);
+        var funcType = module.ImportReference(typeof(System.Func<System.Type, bool>));
+        var funcCtor = new Mono.Cecil.MethodReference(".ctor", module.TypeSystem.Void, funcType) { HasThis = true };
+        funcCtor.Parameters.Add(new Mono.Cecil.ParameterDefinition(module.TypeSystem.Object));
+        funcCtor.Parameters.Add(new Mono.Cecil.ParameterDefinition(module.ImportReference(typeof(System.IntPtr))));
+        var getType = module.ImportReference(typeof(System.Type).GetMethod("GetType", new[] { typeof(string) })!);
+        var createInstance = module.ImportReference(typeof(System.Activator).GetMethod("CreateInstance", new[] { typeof(System.Type), typeof(object[]) })!);
+        Mono.Cecil.MethodReference? factoryCreate = null;
+        foreach (var i in ui.Body.Instructions)
+        {
+            if (i.Operand is Mono.Cecil.MethodReference fr
+                && fr.Name == "Create"
+                && fr.DeclaringType.FullName == "PaintDotNet.AppModel.IEnumLocalizerFactory")
+            {
+                if (factoryCreate is not null)
+                    throw new InvalidOperationException("CloudsFactory: factory Create not unique");
+                factoryCreate = fr;
+            }
+        }
+        if (factoryCreate is null)
+            throw new InvalidOperationException("CloudsFactory: factory Create missing");
+        var ifaceRef = factoryCreate.DeclaringType;
+        var argsLocal = new Mono.Cecil.Cil.VariableDefinition(new Mono.Cecil.ArrayType(module.TypeSystem.Object));
+        ui.Body.Variables.Add(argsLocal);
+        ui.Body.InitLocals = true;
+        var il = ui.Body.GetILProcessor();
+        var emit = new System.Collections.Generic.List<Mono.Cecil.Cil.Instruction>();
+        emit.Add(il.Create(Mono.Cecil.Cil.OpCodes.Ldc_I4_1));
+        emit.Add(il.Create(Mono.Cecil.Cil.OpCodes.Newarr, module.TypeSystem.Object));
+        emit.Add(il.Create(Mono.Cecil.Cil.OpCodes.Dup));
+        emit.Add(il.Create(Mono.Cecil.Cil.OpCodes.Ldc_I4_0));
+        emit.Add(il.Create(Mono.Cecil.Cil.OpCodes.Ldnull));
+        emit.Add(il.Create(Mono.Cecil.Cil.OpCodes.Ldftn, allow));
+        emit.Add(il.Create(Mono.Cecil.Cil.OpCodes.Newobj, funcCtor));
+        emit.Add(il.Create(Mono.Cecil.Cil.OpCodes.Stelem_Ref));
+        emit.Add(il.Create(Mono.Cecil.Cil.OpCodes.Stloc, argsLocal));
+        emit.Add(il.Create(Mono.Cecil.Cil.OpCodes.Ldstr, "PaintDotNet.AppModel.EnumLocalizerFactory, paintdotnet"));
+        emit.Add(il.Create(Mono.Cecil.Cil.OpCodes.Call, getType));
+        emit.Add(il.Create(Mono.Cecil.Cil.OpCodes.Ldloc, argsLocal));
+        emit.Add(il.Create(Mono.Cecil.Cil.OpCodes.Call, createInstance));
+        emit.Add(il.Create(Mono.Cecil.Cil.OpCodes.Castclass, ifaceRef));
+        foreach (var e in emit)
+            il.InsertBefore(ldargThis, e);
+        il.Remove(ldargThis);
+        il.Remove(getServices);
+        il.Remove(getRequired);
+    }
+
+    // Zero-HKL input language (culture-0): headless there is no keyboard
+    // layout, so CurrentInputLanguage answers handle 0 and
+    // get_LanguageTag dies in CultureInfo.GetCultureInfo(0)
+    // (ArgumentOutOfRange 'culture ('0')'), killing every printable-key
+    // KeyPress (Syncfusion editor probe). A zero handle is the precise
+    // degenerate input: answer CurrentUICulture there; the nonzero path
+    // (registry transient branch + GetCultureInfo) stays byte-identical.
+    // Public so the rewrite tests pin it directly, like the Redirect* rules.
+    public static void FixInputLanguageZeroHkl(Mono.Cecil.ModuleDefinition module)
+    {
+        ArgumentNullException.ThrowIfNull(module);
+        Mono.Cecil.TypeDefinition lang = module.GetType("System.Windows.Forms.InputLanguage")
+            ?? throw new InvalidOperationException("InputLang: InputLanguage missing");
+        Mono.Cecil.MethodDefinition? target = null;
+        foreach (Mono.Cecil.MethodDefinition m in lang.Methods)
+        {
+            if (m.Name == "get_LanguageTag" && m.HasBody && m.Parameters.Count == 0
+                && m.ReturnType.FullName == "System.String")
+                target = m;
+        }
+        if (target is null)
+            throw new InvalidOperationException("InputLang: get_LanguageTag() missing");
+        foreach (var i in target.Body.Instructions)
+        {
+            if ((i.OpCode == Mono.Cecil.Cil.OpCodes.Call || i.OpCode == Mono.Cecil.Cil.OpCodes.Callvirt)
+                && i.Operand is Mono.Cecil.MethodReference mr && mr.Name == "get_CurrentUICulture")
+                throw new InvalidOperationException("InputLang: already fixed");
+        }
+        Mono.Cecil.FieldDefinition? handle = null;
+        foreach (Mono.Cecil.FieldDefinition f in lang.Fields)
+        {
+            if (f.Name == "_handle")
+                handle = f;
+        }
+        if (handle is null)
+            throw new InvalidOperationException("InputLang: _handle missing");
+        var getCuic = module.ImportReference(typeof(System.Globalization.CultureInfo).GetProperty("CurrentUICulture")!.GetMethod!);
+        var getName = module.ImportReference(typeof(System.Globalization.CultureInfo).GetProperty("Name")!.GetMethod!);
+        var il = target.Body.GetILProcessor();
+        var first = target.Body.Instructions[0];
+        il.InsertBefore(first, il.Create(Mono.Cecil.Cil.OpCodes.Ldarg_0));
+        il.InsertBefore(first, il.Create(Mono.Cecil.Cil.OpCodes.Ldfld, handle));
+        il.InsertBefore(first, il.Create(Mono.Cecil.Cil.OpCodes.Brtrue_S, first));
+        il.InsertBefore(first, il.Create(Mono.Cecil.Cil.OpCodes.Call, getCuic));
+        il.InsertBefore(first, il.Create(Mono.Cecil.Cil.OpCodes.Callvirt, getName));
+        il.InsertBefore(first, il.Create(Mono.Cecil.Cil.OpCodes.Ret));
+    }
+
+    // Syncfusion press-chain c1 (RT-REGATE-W15-1832): headless answers HKL
+    // 0, so InputLanguage.get_Culture() dies in GetCultureInfo(0) inside
+    // StreamEditControl.OnKeyPress (it-IT IME branch) and ControlStateStore
+    // (ar RTL branches), killing every printable-key KeyPress with a TIE.
+    // The fork-side InputLanguage guard never reaches served bytes (the
+    // frontend bundle is plain publish); the Syncfusion assemblies DO pass
+    // through the per-request rewrite, so answer CurrentUICulture at the
+    // name-test call sites (the culture value is consumed only by the name
+    // test that follows). Pure BCL: no helper/spec change. Fail loud on
+    // shape drift.
+    // Public so the rewrite tests pin it directly, like the Redirect* rules.
+    public static int RetargetSyncfusionInputCulture(Mono.Cecil.ModuleDefinition module)
+    {
+        ArgumentNullException.ThrowIfNull(module);
+        var getCuic = module.ImportReference(typeof(System.Globalization.CultureInfo).GetProperty("CurrentUICulture")!.GetMethod!);
+        int count = 0;
+        foreach (Mono.Cecil.TypeDefinition top in module.Types)
+            count += RetargetSyncfusionInputCultureIn(module, top, getCuic);
+        if (count == 0)
+            throw new InvalidOperationException("SyncCulture: no input-culture sites found");
+        Console.WriteLine($"CpuFx: syncfusion input-culture rerouted {count} sites in {module.Name}");
+        return count;
+    }
+    private static int RetargetSyncfusionInputCultureIn(
+        Mono.Cecil.ModuleDefinition module,
+        Mono.Cecil.TypeDefinition type,
+        Mono.Cecil.MethodReference getCuic)
+    {
+        int count = 0;
+        foreach (Mono.Cecil.MethodDefinition method in type.Methods)
+        {
+            if (!method.HasBody) continue;
+            var il = method.Body.GetILProcessor();
+            foreach (Mono.Cecil.Cil.Instruction ins in method.Body.Instructions.ToArray())
+            {
+                if (ins.OpCode != Mono.Cecil.Cil.OpCodes.Callvirt
+                    || ins.Operand is not Mono.Cecil.MethodReference mr
+                    || mr.Name != "get_Culture"
+                    || mr.DeclaringType.FullName != "System.Windows.Forms.InputLanguage"
+                    || mr.Parameters.Count != 0)
+                    continue;
+                int at = method.Body.Instructions.IndexOf(ins);
+                if (at < 1 || at + 1 >= method.Body.Instructions.Count)
+                    throw new InvalidOperationException(
+                        "SyncCulture: site shape drifted at " + type.FullName + "::" + method.Name);
+                var prev = method.Body.Instructions[at - 1];
+                var next = method.Body.Instructions[at + 1];
+                if (prev.OpCode != Mono.Cecil.Cil.OpCodes.Call
+                    || prev.Operand is not Mono.Cecil.MethodReference pm
+                    || pm.Name != "get_CurrentInputLanguage"
+                    || pm.DeclaringType.FullName != "System.Windows.Forms.InputLanguage")
+                    throw new InvalidOperationException(
+                        "SyncCulture: prologue drifted at " + type.FullName + "::" + method.Name);
+                if (next.OpCode != Mono.Cecil.Cil.OpCodes.Callvirt
+                    || next.Operand is not Mono.Cecil.MethodReference nm
+                    || nm.Name != "get_Name"
+                    || nm.DeclaringType.FullName != "System.Globalization.CultureInfo")
+                    throw new InvalidOperationException(
+                        "SyncCulture: consumer drifted at " + type.FullName + "::" + method.Name);
+                il.InsertBefore(ins, il.Create(Mono.Cecil.Cil.OpCodes.Pop));
+                ins.OpCode = Mono.Cecil.Cil.OpCodes.Call;
+                ins.Operand = getCuic;
+                count++;
+            }
+        }
+        foreach (Mono.Cecil.TypeDefinition nested in type.NestedTypes)
+            count += RetargetSyncfusionInputCultureIn(module, nested, getCuic);
+        return count;
+    }
+
     // Syncfusion SfForm checks the Win11 build number from
     // HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\CurrentBuild in
     // its constructor; headless the value is missing and int.Parse(null)
@@ -9747,7 +10890,7 @@ public static class AssemblyRewriter
         var bytes = File.ReadAllBytes(assemblyPath);
         using var stream = new MemoryStream(bytes);
         string? dir = Path.GetDirectoryName(assemblyPath);
-        using var resolver = new FrameworkResolver(dir, [@"E:\tmp\rewritten-small", @"E:\tmp\rewritten-paint"]);
+        using var resolver = new FrameworkResolver(dir, RewriteDeps());
         var readerParams = new ReaderParameters { AssemblyResolver = resolver };
         using var assembly = Mono.Cecil.AssemblyDefinition.ReadAssembly(stream, readerParams);
         NeutralizeRichEditOleCallback(assembly.MainModule);
@@ -10121,7 +11264,7 @@ public static class AssemblyRewriter
         var bytes = File.ReadAllBytes(assemblyPath);
         using var stream = new MemoryStream(bytes);
         string? dir = Path.GetDirectoryName(assemblyPath);
-        using var resolver = new FrameworkResolver(dir, [@"E:\tmp\rewritten-small", @"E:\tmp\rewritten-paint"]);
+        using var resolver = new FrameworkResolver(dir, RewriteDeps());
         var readerParams = new ReaderParameters { AssemblyResolver = resolver };
         using var assembly = Mono.Cecil.AssemblyDefinition.ReadAssembly(stream, readerParams);
         ReplaceRichTextStreamMethods(assembly.MainModule);
@@ -10342,13 +11485,15 @@ public static class AssemblyRewriter
         setItem ??= module.ImportReference(typeof(System.Collections.Hashtable).GetMethod(
             "set_Item", new[] { typeof(object), typeof(object) })!);
         var il = setter.Body.GetILProcessor();
-        il.InsertBefore(anchorLdarg, il.Create(Mono.Cecil.Cil.OpCodes.Ldloc_0));
+        Mono.Cecil.Cil.Instruction firstInserted = il.Create(Mono.Cecil.Cil.OpCodes.Ldloc_0);
+        il.InsertBefore(anchorLdarg, firstInserted);
         il.InsertBefore(anchorLdarg, il.Create(Mono.Cecil.Cil.OpCodes.Brfalse_S, anchorLdarg));
         il.InsertBefore(anchorLdarg, il.Create(Mono.Cecil.Cil.OpCodes.Ldarg_0));
         il.InsertBefore(anchorLdarg, il.Create(Mono.Cecil.Cil.OpCodes.Ldfld, reverse));
         il.InsertBefore(anchorLdarg, il.Create(Mono.Cecil.Cil.OpCodes.Ldloc_0));
         il.InsertBefore(anchorLdarg, il.Create(Mono.Cecil.Cil.OpCodes.Ldarg_1));
         il.InsertBefore(anchorLdarg, il.Create(Mono.Cecil.Cil.OpCodes.Callvirt, setItem));
+        ExpandShortBranches(setter);
         if (setter.Body.MaxStackSize < 8)
             setter.Body.MaxStackSize = 8;
         return 1;
@@ -10383,6 +11528,92 @@ public static class AssemblyRewriter
             return false;
         p = p.Previous;
         return p is not null && p.OpCode == Mono.Cecil.Cil.OpCodes.Ldloc_0;
+    }
+
+    // PSTALL (rev333): Wizard.set_SelectedPage builds the AfterPageSelect
+    // args from a get_SelectedPage() read-back. Served, that read-back
+    // can miss (stale/blank reverse lookup, or a failed Validate() that
+    // skips the switch) while the requested page is visibly presented,
+    // so OnAfterPageSelect skips RaisePageLoad (brfalse) and the page's
+    // logic (the wizard processing timer) never arms: Next stays
+    // disabled, zero pixels. When the read-back is null, fall back to
+    // the requested page (ldarg.1): BeforePageSelect already carries
+    // the requested page, so After becomes consistent with Before, and
+    // desktop parity holds (there the read-back equals the requested
+    // page, so the fallback never triggers). Returns 1 when patched, 0
+    // when already present. Public so the rewrite tests pin it
+    // directly, like the Redirect* rules.
+    public static int RepairWizardSelectedPageFallback(Mono.Cecil.ModuleDefinition module)
+    {
+        ArgumentNullException.ThrowIfNull(module);
+        Mono.Cecil.TypeDefinition wizard = module.GetType("Syncfusion.Windows.Forms.Tools.Wizard")
+            ?? throw new InvalidOperationException("PSTALLFB: Wizard missing");
+        Mono.Cecil.MethodDefinition? setter = null;
+        foreach (Mono.Cecil.MethodDefinition m in wizard.Methods)
+        {
+            if (m.Name == "set_SelectedPage" && m.HasBody && m.Parameters.Count == 1
+                && m.Parameters[0].ParameterType.FullName == "Syncfusion.Windows.Forms.Tools.WizardPage"
+                && m.ReturnType.FullName == "System.Void")
+                setter = m;
+        }
+        if (setter is null)
+            throw new InvalidOperationException("PSTALLFB: set_SelectedPage(WizardPage) missing");
+        if (setter.Body.ExceptionHandlers.Count > 0)
+            throw new InvalidOperationException("PSTALLFB: set_SelectedPage already has handlers");
+        var instrs = setter.Body.Instructions;
+        foreach (Mono.Cecil.Cil.Instruction cand in instrs)
+        {
+            if (cand.OpCode == Mono.Cecil.Cil.OpCodes.Newobj
+                && cand.Operand is Mono.Cecil.MethodReference candCtor
+                && candCtor.Name == ".ctor"
+                && candCtor.DeclaringType.FullName == "Syncfusion.Windows.Forms.Tools.WizardPageSelectEventArgs"
+                && IsSelectedPageFallbackPresent(cand))
+                return 0; // Already repaired: re-running the transform is a no-op.
+        }
+        Mono.Cecil.Cil.Instruction? newobj = null;
+        int anchorHits = 0;
+        for (int k = 1; k < instrs.Count; k++)
+        {
+            if (instrs[k].OpCode == Mono.Cecil.Cil.OpCodes.Newobj
+                && instrs[k].Operand is Mono.Cecil.MethodReference nmb
+                && nmb.Name == ".ctor"
+                && nmb.DeclaringType.FullName == "Syncfusion.Windows.Forms.Tools.WizardPageSelectEventArgs"
+                && instrs[k - 1].OpCode == Mono.Cecil.Cil.OpCodes.Callvirt
+                && instrs[k - 1].Operand is Mono.Cecil.MethodReference gsp
+                && gsp.Name == "get_SelectedPage")
+            {
+                anchorHits++;
+                newobj = instrs[k];
+            }
+        }
+        if (anchorHits != 1 || newobj is null)
+            throw new InvalidOperationException("PSTALLFB: AfterPageSelect args build not found");
+        var il = setter.Body.GetILProcessor();
+        il.InsertBefore(newobj, il.Create(Mono.Cecil.Cil.OpCodes.Dup));
+        il.InsertBefore(newobj, il.Create(Mono.Cecil.Cil.OpCodes.Brtrue_S, newobj));
+        il.InsertBefore(newobj, il.Create(Mono.Cecil.Cil.OpCodes.Pop));
+        il.InsertBefore(newobj, il.Create(Mono.Cecil.Cil.OpCodes.Ldarg_1));
+        ExpandShortBranches(setter);
+        if (setter.Body.MaxStackSize < 8)
+            setter.Body.MaxStackSize = 8;
+        return 1;
+    }
+
+    private static bool IsSelectedPageFallbackPresent(Mono.Cecil.Cil.Instruction newobj)
+    {
+        Mono.Cecil.Cil.Instruction? p = newobj.Previous;
+        if (p is null || p.OpCode != Mono.Cecil.Cil.OpCodes.Ldarg_1)
+            return false;
+        p = p.Previous;
+        if (p is null || p.OpCode != Mono.Cecil.Cil.OpCodes.Pop)
+            return false;
+        p = p.Previous;
+        if (p is null
+            || (p.OpCode != Mono.Cecil.Cil.OpCodes.Brtrue_S && p.OpCode != Mono.Cecil.Cil.OpCodes.Brtrue)
+            || !ReferenceEquals(p.Operand, newobj))
+            return false;
+        p = p.Previous;
+        return p is not null && p.OpCode == Mono.Cecil.Cil.OpCodes.Dup;
     }
 
     // Syncfusion telemetry asks for the host process name to detect designer
@@ -10835,6 +12066,364 @@ public static class AssemblyRewriter
     // instance+path and push false (the existing pop consumes it).
     // Replacing 1 instruction with 3 shorter ones shrinks the body, so
     // no branch distance grows. Returns neutralized call sites.
+    // FileSystemWatcher seam (gitext w27 wall, runtime FP-0445-949):
+    // FileSettingsCache..ctor runs `new FileSystemWatcher()` as a field
+    // initializer; on wasm that ctor throws PNSE, and the TIE poisons ALL
+    // AppSettings use process-wide (GitModule essential path via
+    // AppSettings..cctor, plus the 0315 peripheral edge via
+    // GitExtSettingsCache.FromCache). Neutralize at the source:
+    // field-init newobj -> ldnull, plus a null-guard over the .ctor
+    // watcher block (lands on the FileChanged tail call) and over the
+    // Dispose-lambda teardown run (lands past the watcher Dispose call).
+    // Watcher absence degrades gracefully: _forceFileChangeChecks stays
+    // false so timestamp checks take over; Save/Load/FileChanged paths
+    // are untouched. Guards use long-form branches and bump maxstack;
+    // no existing short branch spans an insertion point (pinned by test).
+    // Returns transformed sites (1 newobj + N guards). Throws
+    // InvalidOperationException when the expected shape is absent (the
+    // dispatcher catches it and skips the rule for that regen).
+    public static int NeutralizeFileSystemWatcherInFileSettingsCache(Mono.Cecil.ModuleDefinition module)
+    {
+        ArgumentNullException.ThrowIfNull(module);
+        Mono.Cecil.TypeDefinition? type = module.GetType("GitCommands.Settings.FileSettingsCache")
+            ?? throw new InvalidOperationException("FswWatch: FileSettingsCache missing");
+        Mono.Cecil.FieldDefinition? watcherField = type.Fields.FirstOrDefault(f =>
+                f.Name == "_fileWatcher"
+                && f.FieldType.FullName == "System.IO.FileSystemWatcher")
+            ?? throw new InvalidOperationException("FswWatch: _fileWatcher missing");
+        int sites = 0;
+        foreach (Mono.Cecil.MethodDefinition method in type.Methods)
+        {
+            if (!method.HasBody || method.IsStatic || !method.HasThis)
+                continue;
+            var insns = method.Body.Instructions;
+            if (method.IsConstructor)
+            {
+                var newobj = insns.FirstOrDefault(i =>
+                    i.OpCode == Mono.Cecil.Cil.OpCodes.Newobj
+                    && i.Operand is Mono.Cecil.MethodReference mr
+                    && mr.Name == ".ctor"
+                    && mr.DeclaringType.FullName == "System.IO.FileSystemWatcher");
+                if (newobj is null)
+                    continue;
+                var il = method.Body.GetILProcessor();
+                il.Replace(newobj, il.Create(Mono.Cecil.Cil.OpCodes.Ldnull));
+                sites++;
+                Mono.Cecil.Cil.Instruction? guardStart = insns.FirstOrDefault(i =>
+                    i.OpCode == Mono.Cecil.Cil.OpCodes.Ldfld
+                    && i.Operand is Mono.Cecil.FieldReference fr
+                    && fr.FullName == watcherField.FullName);
+                Mono.Cecil.Cil.Instruction? tailCall = insns.LastOrDefault(i =>
+                    (i.OpCode == Mono.Cecil.Cil.OpCodes.Call
+                        || i.OpCode == Mono.Cecil.Cil.OpCodes.Callvirt)
+                    && i.Operand is Mono.Cecil.MethodReference tmr
+                    && tmr.Name == "FileChanged"
+                    && !tmr.HasParameters);
+                if (guardStart is null || tailCall is null)
+                    throw new InvalidOperationException("FswWatch: ctor guard shape missing");
+                if (tailCall.Previous is not Mono.Cecil.Cil.Instruction tailRecv
+                    || tailRecv.OpCode != Mono.Cecil.Cil.OpCodes.Ldarg_0)
+                    throw new InvalidOperationException("FswWatch: ctor tail shape missing");
+                Mono.Cecil.Cil.Instruction? after = tailCall.Next;
+                if (after is null || after.OpCode != Mono.Cecil.Cil.OpCodes.Ret)
+                    throw new InvalidOperationException("FswWatch: ctor tail ret missing");
+                AssertNoOutsideBranchInto(insns, guardStart, after);
+                VerifySingleReceiverDepth(method, guardStart);
+                il.InsertAfter(guardStart, il.Create(Mono.Cecil.Cil.OpCodes.Dup));
+                var brCtorNull = il.Create(Mono.Cecil.Cil.OpCodes.Brfalse, guardStart);
+                il.InsertAfter(guardStart.Next, brCtorNull);
+                var popCtorNull = il.Create(Mono.Cecil.Cil.OpCodes.Pop);
+                il.InsertBefore(after, popCtorNull);
+                var brCtorEnd = il.Create(Mono.Cecil.Cil.OpCodes.Br, after);
+                il.InsertBefore(popCtorNull, brCtorEnd);
+                brCtorNull.Operand = popCtorNull;
+                method.Body.MaxStackSize += 1;
+                sites++;
+            }
+            else
+            {
+                Mono.Cecil.Cil.Instruction? disposeCall = insns.FirstOrDefault(i =>
+                    (i.OpCode == Mono.Cecil.Cil.OpCodes.Call
+                        || i.OpCode == Mono.Cecil.Cil.OpCodes.Callvirt)
+                    && i.Operand is Mono.Cecil.MethodReference dmr
+                    && dmr.Name == "Dispose"
+                    && !dmr.HasParameters
+                    && dmr.ReturnType.FullName == "System.Void"
+                    && i.Previous is Mono.Cecil.Cil.Instruction prev
+                    && prev.OpCode == Mono.Cecil.Cil.OpCodes.Ldfld
+                    && prev.Operand is Mono.Cecil.FieldReference pfr
+                    && pfr.FullName == watcherField.FullName);
+                if (disposeCall is null)
+                    continue;
+                int di = insns.IndexOf(disposeCall);
+                int gsIdx = -1;
+                for (int p = di - 1; p >= 0; p--)
+                {
+                    bool clean = true;
+                    for (int k = p; k <= di; k++)
+                        if (!IsWatcherRunInstruction(insns[k], watcherField))
+                        { clean = false; break; }
+                    if (!clean)
+                        break;
+                    if (insns[p].OpCode == Mono.Cecil.Cil.OpCodes.Ldfld
+                        && insns[p].Operand is Mono.Cecil.FieldReference gfr
+                        && gfr.FullName == watcherField.FullName)
+                        gsIdx = p;
+                }
+                if (gsIdx < 0)
+                    throw new InvalidOperationException("FswWatch: cleanup run shape missing");
+                Mono.Cecil.Cil.Instruction guardStart = insns[gsIdx];
+                Mono.Cecil.Cil.Instruction? after = disposeCall.Next
+                    ?? throw new InvalidOperationException("FswWatch: cleanup tail missing");
+                AssertNoOutsideBranchInto(insns, guardStart, after);
+                VerifySingleReceiverDepth(method, guardStart);
+                var il2 = method.Body.GetILProcessor();
+                il2.InsertAfter(guardStart, il2.Create(Mono.Cecil.Cil.OpCodes.Dup));
+                var brNull = il2.Create(Mono.Cecil.Cil.OpCodes.Brfalse, guardStart);
+                il2.InsertAfter(guardStart.Next, brNull);
+                var popNull = il2.Create(Mono.Cecil.Cil.OpCodes.Pop);
+                il2.InsertBefore(after, popNull);
+                var brEnd = il2.Create(Mono.Cecil.Cil.OpCodes.Br, after);
+                il2.InsertBefore(popNull, brEnd);
+                brNull.Operand = popNull;
+                method.Body.MaxStackSize += 1;
+                sites++;
+            }
+        }
+        return sites;
+    }
+
+    // RVW3293-RT2 (mRemoteNG w27/w28 wall, runtime): ThemeManager.getInstance()
+    // calls IsDesignTimeHost(), which calls Process.GetCurrentProcess()
+    // (PNSE headless), aborting FrmMain construction into a blank window
+    // (served [CTOR-GUARD] PNSE after the PresentationCore FNF). Force the
+    // vendor's own design-time stub (no file I/O, no Process, theming
+    // inactive): it exists precisely for contexts without native services,
+    // and theming is cosmetic next to a real connection tree. Whole-body
+    // replace (ldc.i4.1; ret). Throws InvalidOperationException when the
+    // expected shape is absent (the dispatcher skips the rule for that
+    // regen). Returns transformed sites (0 or 1).
+    public static int NeutralizeMRemoteNGThemeManagerDesignTime(Mono.Cecil.ModuleDefinition module)
+    {
+        ArgumentNullException.ThrowIfNull(module);
+        Mono.Cecil.TypeDefinition? type = module.GetType("mRemoteNG.Themes.ThemeManager")
+            ?? throw new InvalidOperationException("MrnTheme: ThemeManager missing");
+        Mono.Cecil.MethodDefinition? method = type.Methods.FirstOrDefault(m =>
+                m.Name == "IsDesignTimeHost"
+                && m.IsPrivate
+                && m.IsStatic
+                && !m.HasParameters
+                && !m.HasGenericParameters
+                && m.ReturnType.FullName == "System.Boolean"
+                && m.HasBody)
+            ?? throw new InvalidOperationException("MrnTheme: IsDesignTimeHost missing");
+        bool touchesProcess = false;
+        foreach (Mono.Cecil.Cil.Instruction ins in method.Body.Instructions)
+        {
+            if (ins.Operand is Mono.Cecil.MethodReference mr
+                && mr.DeclaringType.FullName == "System.Diagnostics.Process"
+                && mr.Name == "GetCurrentProcess")
+            {
+                touchesProcess = true;
+                break;
+            }
+        }
+        if (!touchesProcess)
+            throw new InvalidOperationException("MrnTheme: Process probe shape missing");
+        method.Body.Instructions.Clear();
+        method.Body.ExceptionHandlers.Clear();
+        method.Body.Variables.Clear();
+        var il = method.Body.GetILProcessor();
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ldc_I4_1);
+        il.Emit(Mono.Cecil.Cil.OpCodes.Ret);
+        method.Body.MaxStackSize = System.Math.Max(method.Body.MaxStackSize, 1);
+        method.Body.InitLocals = false;
+        return 1;
+    }
+
+    // Proves the guard site runs with exactly the watcher receiver on the
+    // stack (depth 1 at guardStart): a forward abstract walk over the
+    // straight-line prefix. Any branch that diverts fallthrough, any
+    // unknown opcode, any negative depth, or a final depth != 1 throws
+    // (fail loud: the guard's pop/branch balance depends on it).
+    private static void VerifySingleReceiverDepth(
+        Mono.Cecil.MethodDefinition method, Mono.Cecil.Cil.Instruction guardStart)
+    {
+        int depth = 0;
+        foreach (Mono.Cecil.Cil.Instruction ins in method.Body.Instructions)
+        {
+            if (ins == guardStart)
+                break;
+            switch (ins.OpCode.Code)
+            {
+                case Mono.Cecil.Cil.Code.Br:
+                case Mono.Cecil.Cil.Code.Br_S:
+                case Mono.Cecil.Cil.Code.Leave:
+                case Mono.Cecil.Cil.Code.Leave_S:
+                case Mono.Cecil.Cil.Code.Ret:
+                case Mono.Cecil.Cil.Code.Throw:
+                case Mono.Cecil.Cil.Code.Rethrow:
+                case Mono.Cecil.Cil.Code.Jmp:
+                case Mono.Cecil.Cil.Code.Switch:
+                    throw new InvalidOperationException("FswWatch: unverifiable prefix");
+                case Mono.Cecil.Cil.Code.Brfalse:
+                case Mono.Cecil.Cil.Code.Brfalse_S:
+                case Mono.Cecil.Cil.Code.Brtrue:
+                case Mono.Cecil.Cil.Code.Brtrue_S:
+                    depth -= 1;
+                    break;
+                case Mono.Cecil.Cil.Code.Beq:
+                case Mono.Cecil.Cil.Code.Beq_S:
+                case Mono.Cecil.Cil.Code.Bne_Un:
+                case Mono.Cecil.Cil.Code.Bne_Un_S:
+                case Mono.Cecil.Cil.Code.Bge:
+                case Mono.Cecil.Cil.Code.Bge_S:
+                case Mono.Cecil.Cil.Code.Bgt:
+                case Mono.Cecil.Cil.Code.Bgt_S:
+                case Mono.Cecil.Cil.Code.Ble:
+                case Mono.Cecil.Cil.Code.Ble_S:
+                case Mono.Cecil.Cil.Code.Blt:
+                case Mono.Cecil.Cil.Code.Blt_S:
+                    depth -= 2;
+                    break;
+                case Mono.Cecil.Cil.Code.Ldarg_0:
+                case Mono.Cecil.Cil.Code.Ldarg_1:
+                case Mono.Cecil.Cil.Code.Ldarg_2:
+                case Mono.Cecil.Cil.Code.Ldarg_3:
+                case Mono.Cecil.Cil.Code.Ldarg:
+                case Mono.Cecil.Cil.Code.Ldarg_S:
+                case Mono.Cecil.Cil.Code.Ldloc_0:
+                case Mono.Cecil.Cil.Code.Ldloc_1:
+                case Mono.Cecil.Cil.Code.Ldloc_2:
+                case Mono.Cecil.Cil.Code.Ldloc_3:
+                case Mono.Cecil.Cil.Code.Ldloc:
+                case Mono.Cecil.Cil.Code.Ldloc_S:
+                case Mono.Cecil.Cil.Code.Ldc_I4_0:
+                case Mono.Cecil.Cil.Code.Ldc_I4_1:
+                case Mono.Cecil.Cil.Code.Ldc_I4_2:
+                case Mono.Cecil.Cil.Code.Ldc_I4_3:
+                case Mono.Cecil.Cil.Code.Ldc_I4_4:
+                case Mono.Cecil.Cil.Code.Ldc_I4_5:
+                case Mono.Cecil.Cil.Code.Ldc_I4_6:
+                case Mono.Cecil.Cil.Code.Ldc_I4_7:
+                case Mono.Cecil.Cil.Code.Ldc_I4_8:
+                case Mono.Cecil.Cil.Code.Ldc_I4_M1:
+                case Mono.Cecil.Cil.Code.Ldc_I4:
+                case Mono.Cecil.Cil.Code.Ldc_I4_S:
+                case Mono.Cecil.Cil.Code.Ldc_I8:
+                case Mono.Cecil.Cil.Code.Ldc_R4:
+                case Mono.Cecil.Cil.Code.Ldc_R8:
+                case Mono.Cecil.Cil.Code.Ldstr:
+                case Mono.Cecil.Cil.Code.Ldnull:
+                case Mono.Cecil.Cil.Code.Ldftn:
+                case Mono.Cecil.Cil.Code.Ldsfld:
+                case Mono.Cecil.Cil.Code.Dup:
+                    depth += 1;
+                    break;
+                case Mono.Cecil.Cil.Code.Stloc_0:
+                case Mono.Cecil.Cil.Code.Stloc_1:
+                case Mono.Cecil.Cil.Code.Stloc_2:
+                case Mono.Cecil.Cil.Code.Stloc_3:
+                case Mono.Cecil.Cil.Code.Stloc:
+                case Mono.Cecil.Cil.Code.Stloc_S:
+                case Mono.Cecil.Cil.Code.Starg:
+                case Mono.Cecil.Cil.Code.Starg_S:
+                case Mono.Cecil.Cil.Code.Pop:
+                    depth -= 1;
+                    break;
+                case Mono.Cecil.Cil.Code.Ldfld:
+                case Mono.Cecil.Cil.Code.Ldflda:
+                case Mono.Cecil.Cil.Code.Nop:
+                    break;
+                case Mono.Cecil.Cil.Code.Stfld:
+                    depth -= 2;
+                    break;
+                case Mono.Cecil.Cil.Code.Newobj:
+                    if (ins.Operand is Mono.Cecil.MethodReference nc)
+                        depth += 1 - nc.Parameters.Count;
+                    else
+                        throw new InvalidOperationException("FswWatch: unverifiable prefix");
+                    break;
+                case Mono.Cecil.Cil.Code.Call:
+                case Mono.Cecil.Cil.Code.Callvirt:
+                    if (ins.Operand is Mono.Cecil.MethodReference cm)
+                        depth += (cm.ReturnType.FullName == "System.Void" ? 0 : 1)
+                            - (cm.HasThis ? 1 : 0) - cm.Parameters.Count;
+                    else
+                        throw new InvalidOperationException("FswWatch: unverifiable prefix");
+                    break;
+                default:
+                    throw new InvalidOperationException("FswWatch: unverifiable prefix");
+            }
+            if (depth < 0)
+                throw new InvalidOperationException("FswWatch: unverifiable prefix");
+        }
+        if (depth != 1)
+            throw new InvalidOperationException("FswWatch: receiver depth != 1");
+    }
+
+    private static bool IsWatcherRunInstruction(
+        Mono.Cecil.Cil.Instruction ins, Mono.Cecil.FieldDefinition watcherField)
+    {
+        switch (ins.OpCode.Code)
+        {
+            case Mono.Cecil.Cil.Code.Ldarg_0:
+            case Mono.Cecil.Cil.Code.Ldarg_1:
+            case Mono.Cecil.Cil.Code.Ldarg_2:
+            case Mono.Cecil.Cil.Code.Ldarg_3:
+            case Mono.Cecil.Cil.Code.Ldarg:
+            case Mono.Cecil.Cil.Code.Ldarg_S:
+            case Mono.Cecil.Cil.Code.Ldloc_0:
+            case Mono.Cecil.Cil.Code.Ldloc_1:
+            case Mono.Cecil.Cil.Code.Ldloc_2:
+            case Mono.Cecil.Cil.Code.Ldloc_3:
+            case Mono.Cecil.Cil.Code.Ldloc:
+            case Mono.Cecil.Cil.Code.Ldloc_S:
+            case Mono.Cecil.Cil.Code.Ldftn:
+            case Mono.Cecil.Cil.Code.Newobj:
+            case Mono.Cecil.Cil.Code.Dup:
+            case Mono.Cecil.Cil.Code.Nop:
+            case Mono.Cecil.Cil.Code.Pop:
+            case Mono.Cecil.Cil.Code.Ldc_I4_0:
+            case Mono.Cecil.Cil.Code.Ldc_I4_1:
+            case Mono.Cecil.Cil.Code.Ldstr:
+                return true;
+            case Mono.Cecil.Cil.Code.Ldfld:
+                return ins.Operand is Mono.Cecil.FieldReference fr
+                    && fr.FullName == watcherField.FullName;
+            case Mono.Cecil.Cil.Code.Call:
+            case Mono.Cecil.Cil.Code.Callvirt:
+                return ins.Operand is Mono.Cecil.MethodReference mr
+                    && (mr.DeclaringType.FullName == "System.IO.FileSystemWatcher"
+                        || mr.DeclaringType.FullName == "System.ComponentModel.Component"
+                        || mr.DeclaringType.FullName == "System.IO.FileSystemEventHandler"
+                        || mr.DeclaringType.FullName == "System.IO.RenamedEventHandler");
+            default:
+                return false;
+        }
+    }
+
+    private static void AssertNoOutsideBranchInto(
+        System.Collections.Generic.IList<Mono.Cecil.Cil.Instruction> insns,
+        Mono.Cecil.Cil.Instruction guardStart,
+        Mono.Cecil.Cil.Instruction after)
+    {
+        var index = new System.Collections.Generic.Dictionary<Mono.Cecil.Cil.Instruction, int>();
+        for (int i = 0; i < insns.Count; i++) index[insns[i]] = i;
+        int gs = index[guardStart];
+        int ae = index[after];
+        for (int i = 0; i < insns.Count; i++)
+        {
+            Mono.Cecil.Cil.Instruction? target = null;
+            if (insns[i].Operand is Mono.Cecil.Cil.Instruction t)
+                target = t;
+            if (target is null || !index.TryGetValue(target, out int ti))
+                continue;
+            if (ti > gs && ti < ae && (i <= gs || i >= ae))
+                throw new InvalidOperationException("FswWatch: outside branch into guarded span");
+        }
+    }
+
     public static int NeutralizeDemoSourceViewerLoads(Mono.Cecil.ModuleDefinition module)
     {
         ArgumentNullException.ThrowIfNull(module);
@@ -12677,6 +14266,11 @@ private static int RetargetShadowCacheTryAdd(ModuleDefinition module, string? cp
                     // (Quantize OnSetToken wall: dialog never opens). Same
                     // kind-check convention as the interface-bridge post-op.
                     Mono.Cecil.TypeReference settingType = gi.GenericArguments[0];
+                    // VEN-QC4-2057: get_IsValue (which 3) returns bool, not the setting type.
+                    // Using gi arg0 emitted (PaletteTable) on a bool -> InvalidCastException
+                    // at Quantize Colors-2 (TryGetQuantizer). IsValue sites unbox bool.
+                    if (which == 3)
+                        settingType = module.TypeSystem.Boolean;
                     EmitBridgePostOp(il, ins, settingType, module, unwrapOpen);
                     touched = true;
                     count++;
@@ -12789,7 +14383,15 @@ private static int RetargetShadowCacheTryAdd(ModuleDefinition module, string? cp
                         il.InsertBefore(ins, il.Create(OpCodes.Ldtoken, gim.GenericArguments[0]));
                         il.InsertBefore(ins, il.Create(OpCodes.Call, typeFromHandle));
                     }
-                    il.InsertBefore(ins, il.Create(OpCodes.Ldtoken, sub));
+                    // GetSourceBitmap<TPixel>: the helper resolves the generic
+                    // definition by the PIXEL struct (struct-constrained); the
+                    // substituted return interface would violate the constraint
+                    // (MAKENO miss). The bridge post-op target stays sub (the
+                    // return interface, via class-constrained Unwrap<T>).
+                    TypeReference pixelArg = helper == getBitmap && gim.GenericArguments.Count == 1
+                        ? gim.GenericArguments[0]
+                        : sub;
+                    il.InsertBefore(ins, il.Create(OpCodes.Ldtoken, pixelArg));
                     il.InsertBefore(ins, il.Create(OpCodes.Call, typeFromHandle));
                     ins.OpCode = OpCodes.Call;
                     ins.Operand = helper;
@@ -13126,6 +14728,96 @@ private static int RetargetShadowCacheTryAdd(ModuleDefinition module, string? cp
                 method.Body.MaxStackSize += 2;
                 count++;
                 System.Console.WriteLine($"CpuFx: TEMP-ORACLE-R6 touch {tag}");
+            }
+        }
+        return count;
+    }
+
+    // TEMP-ORACLE-V7 (REMOVE after the Quantize post-palette fault is
+    // localized): worker-side first-chance logging around the worker-phase
+    // methods (EffectMenuBase.WaitWithUI closer, QuantizeBitmapEffect.OnRender /
+    // TryGetQuantizer/ReturnQuantizer, and the
+    // bitmap-overload GeneratePalette of MedianCutWicQuantizer +
+    // OctreeQuantizer). ENTER/EXIT via TraceBridgeSite plus a
+    // log-then-rethrow fault wrapper capturing TargetSite, so the next
+    // served regen names the terminal site headless. Zero behavior
+    // change: rethrow preserves propagation and the probes are capped
+    // console lines. Methods carrying handlers are SKIPPED (WaitWithUI
+    // owns a finally; its EH keeps its exact shape), and every original
+    // call operand is preserved. Public so the rewrite tests pin it
+    // directly.
+    public static int EmitQuantizePhaseOracleV7(ModuleDefinition module, string? cpuPaintPath)
+    {
+        ArgumentNullException.ThrowIfNull(module);
+        MethodReference? site = null;
+        MethodReference? fault = null;
+        var targets = new (string Type, string Method, int Params, string? FirstParam)[]
+        {
+            ("PaintDotNet.Menus.EffectMenuBase", "WaitWithUI", 4, null),
+            ("PaintDotNet.Effects.QuantizeBitmapEffect", "TryGetQuantizer", 1, null),
+            ("PaintDotNet.Effects.QuantizeBitmapEffect", "OnRender", 2, null),
+            ("PaintDotNet.Effects.QuantizeBitmapEffect", "ReturnQuantizer", 2, null),
+            ("PaintDotNet.Imaging.Quantization.MedianCutWicQuantizer", "GeneratePalette", 4, "PaintDotNet.Imaging.IBitmapSource"),
+            ("PaintDotNet.Imaging.Quantization.OctreeQuantizer", "GeneratePalette", 4, "PaintDotNet.Imaging.IBitmapSource"),
+        };
+        int count = 0;
+        var stack = new System.Collections.Generic.Stack<TypeDefinition>(module.Types);
+        while (stack.Count > 0)
+        {
+            TypeDefinition type = stack.Pop();
+            foreach (TypeDefinition n in type.NestedTypes)
+                stack.Push(n);
+            foreach (MethodDefinition method in type.Methods)
+            {
+                if (!method.HasBody)
+                    continue;
+                bool hit = false;
+                foreach (var t in targets)
+                {
+                    if (type.FullName == t.Type && method.Name == t.Method
+                        && method.Parameters.Count == t.Params
+                        && (t.FirstParam is null || method.Parameters[0].ParameterType.FullName == t.FirstParam))
+                    { hit = true; break; }
+                }
+                if (!hit)
+                    continue;
+                string tag = "ORACLE-V7 " + type.FullName + "::" + method.Name;
+                if (method.Body.HasExceptionHandlers)
+                {
+                    System.Console.WriteLine($"CpuFx: TEMP-ORACLE-V7 skip-eh {tag}");
+                    continue;
+                }
+                site ??= ImportCpuPaintMethod(module, cpuPaintPath, "TraceBridgeSite", 1);
+                fault ??= ImportCpuPaintMethod(module, cpuPaintPath, "TraceWorkerFault", 1);
+                var il = method.Body.GetILProcessor();
+                Instruction entry = method.Body.Instructions[0];
+                il.InsertBefore(entry, il.Create(OpCodes.Ldstr, "ENTER " + tag));
+                il.InsertBefore(entry, il.Create(OpCodes.Call, site));
+                foreach (Instruction ins in method.Body.Instructions.ToArray())
+                {
+                    if (ins.OpCode != OpCodes.Ret)
+                        continue;
+                    il.InsertBefore(ins, il.Create(OpCodes.Ldstr, "EXIT " + tag));
+                    il.InsertBefore(ins, il.Create(OpCodes.Call, site));
+                }
+                Instruction handlerStart = il.Create(OpCodes.Call, fault);
+                Instruction handlerRethrow = il.Create(OpCodes.Rethrow);
+                Instruction handlerEnd = il.Create(OpCodes.Nop);
+                il.Append(handlerStart);
+                il.Append(handlerRethrow);
+                il.Append(handlerEnd);
+                method.Body.ExceptionHandlers.Add(new ExceptionHandler(ExceptionHandlerType.Catch)
+                {
+                    CatchType = module.ImportReference(typeof(System.Exception)),
+                    TryStart = entry,
+                    TryEnd = handlerStart,
+                    HandlerStart = handlerStart,
+                    HandlerEnd = handlerEnd,
+                });
+                method.Body.MaxStackSize += 2;
+                ExpandShortBranches(method);
+                count++;
+                System.Console.WriteLine($"CpuFx: TEMP-ORACLE-V7 touch {tag}");
             }
         }
         return count;
@@ -15595,6 +17287,218 @@ private static int RetargetShadowCacheTryAdd(ModuleDefinition module, string? cp
         }
 
         MethodReference prgba128ValRef = Bgra32Value("get_Prgba128Float");
+        // VEN-SPLICE-2308: indexed display conversion. The Quantize worker
+        // buffers its quantized result as Indexed8 and converts it back to
+        // Bgra32 for rendering; WIC is unavailable headless, so route that
+        // exact pair through the source bitmap's own palette (exact lookup,
+        // no resampling). Any other unknown pair keeps the loud throw:
+        // Bgra32->Indexed8 needs a palette the converter API never receives.
+        MethodReference indexed8Ref = Bgra32Value("get_Indexed8");
+        MethodReference getPaletteRef =
+            VirtualCpuCall(module, "PaintDotNet.Imaging.IBitmapSource", "GetPalette", 0);
+        MethodReference getColorsRef =
+            VirtualCpuCall(module, "PaintDotNet.Imaging.IPalette", "get_Colors", 0);
+        var colorsListType = (GenericInstanceType)getColorsRef.ReturnType;
+        TypeReference colorBgraType = colorsListType.GenericArguments[0];
+        // VEN-QC4-W22: mirror the interface definition exactly. A
+        // hand-built concrete return type (ColorBgra32 instead of the
+        // definition's !0) resolves null in Cecil and detonated live on
+        // w22 (MissingMethodException IReadOnlyList`1.get_Item on every
+        // render). Fail-loud at regen if the BCL shape drifts.
+        TypeDefinition listDef = ResolveCpuDef(colorsListType.ElementType);
+        MethodDefinition? listGetItemDef = listDef.Methods.FirstOrDefault(m =>
+            m.Name == "get_Item" && m.Parameters.Count == 1 && !m.IsStatic)
+            ?? throw new InvalidOperationException(
+                "CpuPaint: IReadOnlyList<T>.get_Item missing");
+        var listGetItemRef = new MethodReference(
+            listGetItemDef.Name, listGetItemDef.ReturnType, colorsListType)
+        {
+            HasThis = true,
+        };
+        foreach (ParameterDefinition p in listGetItemDef.Parameters)
+            listGetItemRef.Parameters.Add(new ParameterDefinition(p.ParameterType));
+        MethodReference allocGchRef = module.ImportReference(
+            typeof(GCHandle).GetMethod("Alloc", [typeof(object), typeof(GCHandleType)])!);
+        MethodReference addrOfPinnedRef = module.ImportReference(
+            typeof(GCHandle).GetMethod("AddrOfPinnedObject", Type.EmptyTypes)!);
+        MethodReference toPointerRef = module.ImportReference(
+            typeof(IntPtr).GetMethod("ToPointer", Type.EmptyTypes)!);
+        MethodReference freeGchRef = module.ImportReference(
+            typeof(GCHandle).GetMethod("Free", Type.EmptyTypes)!);
+
+        void EmitIndexedConvert(ILProcessor il, ParameterDefinition sourceParam,
+            VariableDefinition sizeLoc, VariableDefinition wLoc, VariableDefinition hLoc,
+            VariableDefinition dstLoc, VariableDefinition ptrLoc, VariableDefinition strideLoc,
+            VariableDefinition clipLoc, VariableDefinition bgraVal,
+            VariableDefinition idxArrLoc, VariableDefinition gchLoc, VariableDefinition srcPtrLoc,
+            VariableDefinition palLoc, VariableDefinition colorsLoc, VariableDefinition nLoc,
+            VariableDefinition iLoc)
+        {
+            // sizeLoc already holds source.Size on entry.
+            il.Emit(OpCodes.Ldloca_S, sizeLoc);
+            il.Emit(OpCodes.Call, sizeW);
+            il.Emit(OpCodes.Stloc, wLoc);
+            il.Emit(OpCodes.Ldloca_S, sizeLoc);
+            il.Emit(OpCodes.Call, sizeH);
+            il.Emit(OpCodes.Stloc, hLoc);
+            il.Emit(OpCodes.Ldloc, wLoc);
+            il.Emit(OpCodes.Ldloc, hLoc);
+            il.Emit(OpCodes.Mul);
+            il.Emit(OpCodes.Stloc, nLoc);
+            // Fresh Bgra32 target: address of the shared Bgra32 value slot.
+            il.Emit(OpCodes.Ldloc, sizeLoc);
+            il.Emit(OpCodes.Ldloca_S, bgraVal);
+            il.Emit(OpCodes.Ldc_I4_0); // BitmapAllocationOptions.Default
+            il.Emit(OpCodes.Call, allocateRef);
+            il.Emit(OpCodes.Stloc, dstLoc);
+            il.Emit(OpCodes.Ldloc, dstLoc);
+            il.Emit(OpCodes.Callvirt, lockBuffer);
+            il.Emit(OpCodes.Stloc, ptrLoc);
+            il.Emit(OpCodes.Ldloc, dstLoc);
+            il.Emit(OpCodes.Callvirt, lockStride);
+            il.Emit(OpCodes.Stloc, strideLoc);
+            // Palette from the indexed source itself.
+            il.Emit(OpCodes.Ldarg, sourceParam);
+            il.Emit(OpCodes.Callvirt, getPaletteRef);
+            il.Emit(OpCodes.Stloc, palLoc);
+            il.Emit(OpCodes.Ldloc, palLoc);
+            il.Emit(OpCodes.Callvirt, getColorsRef);
+            il.Emit(OpCodes.Stloc, colorsLoc);
+            // Tight index buffer, pinned for CopyPixels.
+            il.Emit(OpCodes.Ldloc, nLoc);
+            il.Emit(OpCodes.Newarr, module.TypeSystem.Byte);
+            il.Emit(OpCodes.Stloc, idxArrLoc);
+            il.Emit(OpCodes.Ldloc, idxArrLoc);
+            il.Emit(OpCodes.Ldc_I4_3); // GCHandleType.Pinned
+            il.Emit(OpCodes.Call, allocGchRef);
+            il.Emit(OpCodes.Stloc, gchLoc);
+            il.Emit(OpCodes.Ldloca_S, gchLoc);
+            il.Emit(OpCodes.Call, addrOfPinnedRef);
+            il.Emit(OpCodes.Stloc, srcPtrLoc);
+            il.Emit(OpCodes.Ldarg, sourceParam);
+            il.Emit(OpCodes.Ldloc, srcPtrLoc);
+            il.Emit(OpCodes.Call, toPointerRef);
+            il.Emit(OpCodes.Ldloc, wLoc);
+            il.Emit(OpCodes.Ldloc, nLoc);
+            il.Emit(OpCodes.Ldloca_S, clipLoc);
+            il.Emit(OpCodes.Callvirt, copyPixels);
+            // Per-pixel palette lookup into the Bgra32 target.
+            il.Emit(OpCodes.Ldc_I4_0);
+            il.Emit(OpCodes.Stloc, iLoc);
+            var loopHead = il.Create(OpCodes.Nop);
+            var loopDone = il.Create(OpCodes.Nop);
+            il.Append(loopHead);
+            il.Emit(OpCodes.Ldloc, iLoc);
+            il.Emit(OpCodes.Ldloc, nLoc);
+            il.Emit(OpCodes.Bge_S, loopDone);
+            il.Emit(OpCodes.Ldloc, ptrLoc);
+            il.Emit(OpCodes.Ldloc, iLoc);
+            il.Emit(OpCodes.Ldc_I4_4);
+            il.Emit(OpCodes.Mul);
+            il.Emit(OpCodes.Add);
+            il.Emit(OpCodes.Ldloc, colorsLoc);
+            il.Emit(OpCodes.Ldloc, idxArrLoc);
+            il.Emit(OpCodes.Ldloc, iLoc);
+            il.Emit(OpCodes.Ldelem_U1);
+            il.Emit(OpCodes.Callvirt, listGetItemRef);
+            il.Emit(OpCodes.Stobj, colorBgraType);
+            il.Emit(OpCodes.Ldloc, iLoc);
+            il.Emit(OpCodes.Ldc_I4_1);
+            il.Emit(OpCodes.Add);
+            il.Emit(OpCodes.Stloc, iLoc);
+            il.Emit(OpCodes.Br_S, loopHead);
+            il.Append(loopDone);
+            il.Emit(OpCodes.Ldloca_S, gchLoc);
+            il.Emit(OpCodes.Call, freeGchRef);
+        }
+
+        // VEN-SPLICE-2308B: same indexed display conversion for the generic
+        // dither worker (the path Quantize actually exercises). The generic
+        // allocator types the target by TPixelDst; the arm only fires when
+        // TPixelDst materializes Bgra32, so every other instantiation keeps
+        // its existing arms. All branches use the long form: Cecil never
+        // expands short branches.
+        void EmitIndexedGeneric(ILProcessor il, ParameterDefinition tSource,
+            VariableDefinition tSize, VariableDefinition tW, VariableDefinition tH,
+            VariableDefinition tDst, VariableDefinition tDstPtr, VariableDefinition tDstStride,
+            VariableDefinition tClip, VariableDefinition gN, VariableDefinition gIdx,
+            VariableDefinition gGch, VariableDefinition gSrc, VariableDefinition gPal,
+            VariableDefinition gColors, VariableDefinition gI, MethodReference galloc)
+        {
+            il.Emit(OpCodes.Ldarg, tSource);
+            il.Emit(OpCodes.Callvirt, getSize);
+            il.Emit(OpCodes.Stloc, tSize);
+            il.Emit(OpCodes.Ldloca_S, tSize);
+            il.Emit(OpCodes.Call, sizeW);
+            il.Emit(OpCodes.Stloc, tW);
+            il.Emit(OpCodes.Ldloca_S, tSize);
+            il.Emit(OpCodes.Call, sizeH);
+            il.Emit(OpCodes.Stloc, tH);
+            il.Emit(OpCodes.Ldloc, tW);
+            il.Emit(OpCodes.Ldloc, tH);
+            il.Emit(OpCodes.Mul);
+            il.Emit(OpCodes.Stloc, gN);
+            il.Emit(OpCodes.Ldloc, tSize);
+            il.Emit(OpCodes.Ldc_I4_0);
+            il.Emit(OpCodes.Call, galloc);
+            il.Emit(OpCodes.Stloc, tDst);
+            il.Emit(OpCodes.Ldloc, tDst);
+            il.Emit(OpCodes.Callvirt, lockBuffer);
+            il.Emit(OpCodes.Stloc, tDstPtr);
+            il.Emit(OpCodes.Ldloc, tDst);
+            il.Emit(OpCodes.Callvirt, lockStride);
+            il.Emit(OpCodes.Stloc, tDstStride);
+            il.Emit(OpCodes.Ldarg, tSource);
+            il.Emit(OpCodes.Callvirt, getPaletteRef);
+            il.Emit(OpCodes.Stloc, gPal);
+            il.Emit(OpCodes.Ldloc, gPal);
+            il.Emit(OpCodes.Callvirt, getColorsRef);
+            il.Emit(OpCodes.Stloc, gColors);
+            il.Emit(OpCodes.Ldloc, gN);
+            il.Emit(OpCodes.Newarr, module.TypeSystem.Byte);
+            il.Emit(OpCodes.Stloc, gIdx);
+            il.Emit(OpCodes.Ldloc, gIdx);
+            il.Emit(OpCodes.Ldc_I4_3);
+            il.Emit(OpCodes.Call, allocGchRef);
+            il.Emit(OpCodes.Stloc, gGch);
+            il.Emit(OpCodes.Ldloca_S, gGch);
+            il.Emit(OpCodes.Call, addrOfPinnedRef);
+            il.Emit(OpCodes.Stloc, gSrc);
+            il.Emit(OpCodes.Ldarg, tSource);
+            il.Emit(OpCodes.Ldloc, gSrc);
+            il.Emit(OpCodes.Call, toPointerRef);
+            il.Emit(OpCodes.Ldloc, tW);
+            il.Emit(OpCodes.Ldloc, gN);
+            il.Emit(OpCodes.Ldloca_S, tClip);
+            il.Emit(OpCodes.Callvirt, copyPixels);
+            il.Emit(OpCodes.Ldc_I4_0);
+            il.Emit(OpCodes.Stloc, gI);
+            var gLoopHead = il.Create(OpCodes.Nop);
+            var gLoopDone = il.Create(OpCodes.Nop);
+            il.Append(gLoopHead);
+            il.Emit(OpCodes.Ldloc, gI);
+            il.Emit(OpCodes.Ldloc, gN);
+            il.Emit(OpCodes.Bge, gLoopDone);
+            il.Emit(OpCodes.Ldloc, tDstPtr);
+            il.Emit(OpCodes.Ldloc, gI);
+            il.Emit(OpCodes.Ldc_I4_4);
+            il.Emit(OpCodes.Mul);
+            il.Emit(OpCodes.Add);
+            il.Emit(OpCodes.Ldloc, gColors);
+            il.Emit(OpCodes.Ldloc, gIdx);
+            il.Emit(OpCodes.Ldloc, gI);
+            il.Emit(OpCodes.Ldelem_U1);
+            il.Emit(OpCodes.Callvirt, listGetItemRef);
+            il.Emit(OpCodes.Stobj, colorBgraType);
+            il.Emit(OpCodes.Ldloc, gI);
+            il.Emit(OpCodes.Ldc_I4_1);
+            il.Emit(OpCodes.Add);
+            il.Emit(OpCodes.Stloc, gI);
+            il.Emit(OpCodes.Br, gLoopHead);
+            il.Append(gLoopDone);
+            il.Emit(OpCodes.Ldloca_S, gGch);
+            il.Emit(OpCodes.Call, freeGchRef);
+        }
         MethodReference disposeCpu = module.ImportReference(
             typeof(IDisposable).GetMethod("Dispose", Type.EmptyTypes)!);
         foreach (MethodDefinition method in ext.Methods
@@ -15636,12 +17540,24 @@ private static int RetargetShadowCacheTryAdd(ModuleDefinition module, string? cp
             var tmpPtrLoc = new VariableDefinition(module.TypeSystem.IntPtr);
             var tmpStrideLoc = new VariableDefinition(module.TypeSystem.Int32);
             var toPbgraFloatLoc = new VariableDefinition(module.TypeSystem.Int32);
+            var indexed8Val = new VariableDefinition(pixelFormat);
+            var toIndexedBgraLoc = new VariableDefinition(module.TypeSystem.Int32);
+            var idxArrLoc = new VariableDefinition(new ArrayType(module.TypeSystem.Byte));
+            var gchLoc = new VariableDefinition(module.ImportReference(typeof(GCHandle)));
+            var srcPtrLoc = new VariableDefinition(module.TypeSystem.IntPtr);
+            var palLoc = new VariableDefinition(getPaletteRef.ReturnType);
+            var colorsLoc = new VariableDefinition(getColorsRef.ReturnType);
+            var nLoc = new VariableDefinition(module.TypeSystem.Int32);
+            var iLoc = new VariableDefinition(module.TypeSystem.Int32);
             foreach (var v in new[] { formatLoc, bgraVal, pbgraVal, dstScratch,
                 sizeLoc, wLoc, hLoc, dstLoc, ptrLoc, strideLoc, clipLoc,
                 toPbgraLoc, toBgraLoc, prgbaVal, tmpLoc, tmpPtrLoc, tmpStrideLoc,
-                toPbgraFloatLoc })
+                toPbgraFloatLoc, indexed8Val, toIndexedBgraLoc, idxArrLoc, gchLoc,
+                srcPtrLoc, palLoc, colorsLoc, nLoc, iLoc })
                 method.Body.Variables.Add(v);
             method.Body.InitLocals = true;
+            if (method.Body.MaxStackSize < 8)
+                method.Body.MaxStackSize = 8;
             ParameterDefinition sourceParam = method.Parameters[sourceIndex];
             ParameterDefinition formatParam = method.Parameters[formatIndex];
             il.Emit(OpCodes.Ldarg, sourceParam);
@@ -15791,6 +17707,35 @@ private static int RetargetShadowCacheTryAdd(ModuleDefinition module, string? cp
             il.Emit(OpCodes.Callvirt, disposeCpu);
             il.Emit(OpCodes.Ldloc, dstLoc);
             il.Emit(OpCodes.Ret);
+            // VEN-SPLICE-2308: throwLabel anchor lives below (indexed arm).
+            // VEN-SPLICE-2308: indexed display pair routes through the
+            // source palette; everything else still fail-louds.
+            il.Emit(OpCodes.Call, indexed8Ref);
+            il.Emit(OpCodes.Stloc, indexed8Val);
+            il.Emit(OpCodes.Ldloca_S, srcFmtAlias);
+            il.Emit(OpCodes.Ldloca_S, indexed8Val);
+            il.Emit(OpCodes.Call, equalityRef);
+            var indexedFalse = il.Create(OpCodes.Nop);
+            il.Emit(OpCodes.Brfalse, indexedFalse);
+            il.Emit(OpCodes.Ldarg, formatParam);
+            il.Emit(OpCodes.Ldobj, pixelFormat);
+            il.Emit(OpCodes.Stloc, dstScratch);
+            il.Emit(OpCodes.Ldloca_S, dstScratch);
+            il.Emit(OpCodes.Ldloca_S, bgraVal);
+            il.Emit(OpCodes.Call, equalityRef);
+            var indexedDone = il.Create(OpCodes.Nop);
+            il.Emit(OpCodes.Br, indexedDone);
+            il.Append(indexedFalse);
+            il.Emit(OpCodes.Ldc_I4_0);
+            il.Append(indexedDone);
+            il.Emit(OpCodes.Stloc, toIndexedBgraLoc);
+            il.Emit(OpCodes.Ldloc, toIndexedBgraLoc);
+            il.Emit(OpCodes.Brfalse, throwLabel);
+            EmitIndexedConvert(il, sourceParam, sizeLoc, wLoc, hLoc, dstLoc,
+                ptrLoc, strideLoc, clipLoc, bgraVal, idxArrLoc, gchLoc, srcPtrLoc,
+                palLoc, colorsLoc, nLoc, iLoc);
+            il.Emit(OpCodes.Ldloc, dstLoc);
+            il.Emit(OpCodes.Ret);
             il.Append(throwLabel);
             EmitNamedThrow(il, formatLoc, formatParam);
         }
@@ -15879,11 +17824,23 @@ private static int RetargetShadowCacheTryAdd(ModuleDefinition module, string? cp
             var fSrcBgra = new VariableDefinition(module.TypeSystem.Int32);
             var fSrcPbgra = new VariableDefinition(module.TypeSystem.Int32);
             var fToFloat = new VariableDefinition(module.TypeSystem.Int32);
+            var vIndexed8 = new VariableDefinition(pixelFormat);
+            var fToIndexed = new VariableDefinition(module.TypeSystem.Int32);
+            var gN = new VariableDefinition(module.TypeSystem.Int32);
+            var gIdx = new VariableDefinition(new ArrayType(module.TypeSystem.Byte));
+            var gGch = new VariableDefinition(module.ImportReference(typeof(GCHandle)));
+            var gSrc = new VariableDefinition(module.TypeSystem.IntPtr);
+            var gPal = new VariableDefinition(getPaletteRef.ReturnType);
+            var gColors = new VariableDefinition(getColorsRef.ReturnType);
+            var gI = new VariableDefinition(module.TypeSystem.Int32);
             foreach (var v in new[] { tSrcFmt, tDstFmt, tVal, vBgra, vPbgra, vPrgba,
                 tSize, tW, tH, tDst, tTmp, tTmpPtr, tTmpStride, tDstPtr, tDstStride,
-                tClip, fDstFloat, fSrcBgra, fSrcPbgra, fToFloat })
+                tClip, fDstFloat, fSrcBgra, fSrcPbgra, fToFloat,
+                vIndexed8, fToIndexed, gN, gIdx, gGch, gSrc, gPal, gColors, gI })
                 method.Body.Variables.Add(v);
             method.Body.InitLocals = true;
+            if (method.Body.MaxStackSize < 8)
+                method.Body.MaxStackSize = 8;
             ParameterDefinition tSource = method.Parameters[1];
 
             // Already-typed sources need no conversion at all.
@@ -15936,6 +17893,17 @@ private static int RetargetShadowCacheTryAdd(ModuleDefinition module, string? cp
             il.Emit(OpCodes.Or);
             il.Emit(OpCodes.And);
             il.Emit(OpCodes.Stloc, fToFloat);
+            // VEN-SPLICE-2308B: indexed display pair for TPixelDst=Bgra32.
+            il.Emit(OpCodes.Call, indexed8Ref);
+            il.Emit(OpCodes.Stloc, vIndexed8);
+            il.Emit(OpCodes.Ldloca_S, tDstFmt);
+            il.Emit(OpCodes.Ldloca_S, vBgra);
+            il.Emit(OpCodes.Call, equalityRef);
+            il.Emit(OpCodes.Ldloca_S, tSrcFmt);
+            il.Emit(OpCodes.Ldloca_S, vIndexed8);
+            il.Emit(OpCodes.Call, equalityRef);
+            il.Emit(OpCodes.And);
+            il.Emit(OpCodes.Stloc, fToIndexed);
             // Unconvertible pairs throw inline here so no branch spans the
             // conversion body: Cecil never expands short branches, and a
             // span over 127 bytes silently writes a bad target
@@ -15944,6 +17912,19 @@ private static int RetargetShadowCacheTryAdd(ModuleDefinition module, string? cp
             il.Emit(OpCodes.Ldloc, fToFloat);
             var tConvertBody = il.Create(OpCodes.Nop);
             il.Emit(OpCodes.Brtrue, tConvertBody);
+            il.Emit(OpCodes.Ldloc, fToIndexed);
+            var tIndexedBody = il.Create(OpCodes.Nop);
+            il.Emit(OpCodes.Brtrue, tIndexedBody);
+            var tIndexedThrow = il.Create(OpCodes.Nop);
+            il.Emit(OpCodes.Br, tIndexedThrow);
+            il.Append(tIndexedBody);
+            EmitIndexedGeneric(il, tSource, tSize, tW, tH, tDst, tDstPtr, tDstStride,
+                tClip, gN, gIdx, gGch, gSrc, gPal, gColors, gI, gallocInst);
+            il.Emit(OpCodes.Ldloc, tDst);
+            il.Emit(OpCodes.Ret);
+            il.Append(tIndexedThrow);
+            // VEN-SPLICE-2308B: (stray load removed; throw helper loads its own operands)
+            // VEN-SPLICE-2308B: (stray load removed; throw helper loads its own operands)
             EmitNamedThrowLocal(il, tSrcFmt, tDstFmt);
             il.Append(tConvertBody);
 
@@ -16019,6 +18000,434 @@ private static int RetargetShadowCacheTryAdd(ModuleDefinition module, string? cp
             il.Append(tConvertDone);
             il.Emit(OpCodes.Ldloc, tDst);
             il.Emit(OpCodes.Ret);
+        }
+    }
+
+    // VEN-QC4-W23B (PUSH1106-vendor-qc4arm): CPU palette for the dead
+    // headless factory. The Quantize OK flow builds the output palette
+    // via ImagingFactoryExtensions.CreatePalette(factory, colors[,
+    // start, length]); factory is null headless, so the pristine
+    // validation throws ArgumentNullException, surfacing as
+    // WorkerThread + identity push + 418-repaint (live w23 MISS THROW
+    // stack: CreatePalette <- CreatePalette(colors) <- quantized
+    // output). The arm ignores the factory and builds a synthesized
+    // CPU palette over a snapshot copy of the colors. Flag semantics
+    // are computed over the entries (Bgra32 packs B|G<<8|R<<16|A<<24):
+    // HasAlpha when any A != 255, grayscale when every R == G == B,
+    // black-white when every channel is 0 or 255. Empty palettes
+    // answer false/true/true. Runs after the identity converter above.
+    private static TypeDefinition SynthesizeCpuPalette(ModuleDefinition module)
+    {
+        TypeReference iface = LocalOrOwnedCpuRef(module, "PaintDotNet.Imaging.IPalette");
+        TypeDefinition ifaceDef = ResolveCpuDef(iface);
+        TypeReference colorBgra = module.GetTypeReferences()
+            .FirstOrDefault(t => t.FullName == "PaintDotNet.Imaging.ColorBgra32")
+            ?? throw new InvalidOperationException("CpuPaint: ColorBgra32 reference missing");
+        TypeDefinition colorDef = colorBgra.Resolve()
+            ?? throw new InvalidOperationException("CpuPaint: ColorBgra32 definition missing");
+        // w25: read channels through the PUBLIC get_Bgra accessor.
+        // The private bgra field is inaccessible from the synthesized
+        // type and detonated live with FieldAccessException
+        // (shape-green, execution-red). No ldfld on foreign private
+        // state, per the filed handoff.
+        MethodDefinition bgraGetterDef = colorDef.Methods
+            .FirstOrDefault(m => m.Name == "get_Bgra" && m.IsPublic && !m.IsStatic
+                && m.Parameters.Count == 0
+                && m.ReturnType.FullName == "System.UInt32")
+            ?? throw new InvalidOperationException("CpuPaint: ColorBgra32.get_Bgra missing");
+        var bgraGetterRef = new MethodReference(
+            bgraGetterDef.Name, module.TypeSystem.UInt32, colorBgra)
+        {
+            HasThis = true,
+        };
+        TypeReference listElem = module.GetTypeReferences()
+            .FirstOrDefault(t => t.FullName == "System.Collections.Generic.IReadOnlyList`1")
+            ?? throw new InvalidOperationException("CpuPaint: IReadOnlyList<> reference missing");
+        TypeDefinition listElemDef = listElem.Resolve()
+            ?? throw new InvalidOperationException("CpuPaint: IReadOnlyList<> definition missing");
+        var colorsListType = new GenericInstanceType(listElem);
+        colorsListType.GenericArguments.Add(colorBgra);
+        // get_Count lives on the base IReadOnlyCollection<T>: walk up.
+        MethodDefinition? countDef = null;
+        MethodDefinition? itemDef = null;
+        foreach (MethodDefinition m in InterfaceCpuMethods(listElemDef))
+        {
+            if (countDef is null && m.Name == "get_Count" && m.Parameters.Count == 0 && !m.IsStatic)
+                countDef = m;
+            if (itemDef is null && m.Name == "get_Item" && m.Parameters.Count == 1 && !m.IsStatic)
+                itemDef = m;
+        }
+        if (countDef is null)
+            throw new InvalidOperationException("CpuPaint: IReadOnlyList<T>.get_Count missing");
+        // Definition-exact indexer (return !0): a hand-built concrete
+        // return resolves null and detonated live on w22.
+        if (itemDef is null)
+            throw new InvalidOperationException("CpuPaint: IReadOnlyList<T>.get_Item missing");
+        // get_Count is NOT owned by IReadOnlyList<T> (base
+        // IReadOnlyCollection<T> owns it): declare the ref on the closed
+        // base, or the token resolves null (caught by arm resolve test).
+        // DeclaringType is a foreign typedef: import it so the target
+        // module owns the token (Cecil "another module" ArgumentException
+        // otherwise). listElem above needs no import: GetTypeReferences
+        // already returns module-owned refs.
+        var countDecl = new GenericInstanceType(module.ImportReference(countDef.DeclaringType));
+        countDecl.GenericArguments.Add(colorBgra);
+        var countRef = new MethodReference(countDef.Name, module.TypeSystem.Int32, countDecl)
+        {
+            HasThis = true,
+        };
+        var itemRef = new MethodReference(itemDef.Name, itemDef.ReturnType, colorsListType)
+        {
+            HasThis = true,
+        };
+        foreach (var p in itemDef.Parameters)
+            itemRef.Parameters.Add(new ParameterDefinition(p.ParameterType));
+
+        var type = new TypeDefinition(
+            "PaintDotNet.Imaging", "CpuPalette",
+            TypeAttributes.Class | TypeAttributes.Public | TypeAttributes.Sealed,
+            module.TypeSystem.Object);
+        type.Interfaces.Add(new InterfaceImplementation(iface));
+        var colorsField = new FieldDefinition("_colors", FieldAttributes.Private, colorsListType);
+        var alphaField = new FieldDefinition("_hasAlpha", FieldAttributes.Private, module.TypeSystem.Boolean);
+        var bwField = new FieldDefinition("_isBlackWhite", FieldAttributes.Private, module.TypeSystem.Boolean);
+        var grayField = new FieldDefinition("_isGrayscale", FieldAttributes.Private, module.TypeSystem.Boolean);
+        type.Fields.Add(colorsField);
+        type.Fields.Add(alphaField);
+        type.Fields.Add(bwField);
+        type.Fields.Add(grayField);
+
+        MethodReference objectCtor =
+            module.ImportReference(typeof(object).GetConstructor(Type.EmptyTypes)!);
+        var ctor = new MethodDefinition(
+            ".ctor",
+            MethodAttributes.Public | MethodAttributes.HideBySig
+                | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName,
+            module.TypeSystem.Void);
+        ctor.Parameters.Add(new ParameterDefinition(colorsListType));
+        var cc = ctor.Body.GetILProcessor();
+        ctor.Body.InitLocals = true;
+        var nLoc = new VariableDefinition(module.TypeSystem.Int32);
+        var iLoc = new VariableDefinition(module.TypeSystem.Int32);
+        var bgraLoc = new VariableDefinition(module.TypeSystem.Int32);
+        var colorLoc = new VariableDefinition(colorBgra);
+        var aLoc = new VariableDefinition(module.TypeSystem.Int32);
+        var rLoc = new VariableDefinition(module.TypeSystem.Int32);
+        var gLoc = new VariableDefinition(module.TypeSystem.Int32);
+        var bLoc = new VariableDefinition(module.TypeSystem.Int32);
+        ctor.Body.Variables.Add(nLoc);
+        ctor.Body.Variables.Add(iLoc);
+        ctor.Body.Variables.Add(bgraLoc);
+        ctor.Body.Variables.Add(colorLoc);
+        ctor.Body.Variables.Add(aLoc);
+        ctor.Body.Variables.Add(rLoc);
+        ctor.Body.Variables.Add(gLoc);
+        ctor.Body.Variables.Add(bLoc);
+        cc.Emit(OpCodes.Ldarg_0);
+        cc.Emit(OpCodes.Call, objectCtor);
+        cc.Emit(OpCodes.Ldarg_0);
+        cc.Emit(OpCodes.Ldarg_1);
+        cc.Emit(OpCodes.Stfld, colorsField);
+        cc.Emit(OpCodes.Ldarg_0);
+        cc.Emit(OpCodes.Ldc_I4_0);
+        cc.Emit(OpCodes.Stfld, alphaField);
+        cc.Emit(OpCodes.Ldarg_0);
+        cc.Emit(OpCodes.Ldc_I4_1);
+        cc.Emit(OpCodes.Stfld, bwField);
+        cc.Emit(OpCodes.Ldarg_0);
+        cc.Emit(OpCodes.Ldc_I4_1);
+        cc.Emit(OpCodes.Stfld, grayField);
+        cc.Emit(OpCodes.Ldarg_1);
+        cc.Emit(OpCodes.Callvirt, countRef);
+        cc.Emit(OpCodes.Stloc, nLoc);
+        cc.Emit(OpCodes.Ldc_I4_0);
+        cc.Emit(OpCodes.Stloc, iLoc);
+        void Channel(VariableDefinition dst, int shift)
+        {
+            cc.Emit(OpCodes.Ldloc, bgraLoc);
+            if (shift > 0)
+            {
+                cc.Emit(OpCodes.Ldc_I4, shift);
+                cc.Emit(OpCodes.Shr_Un);
+            }
+            cc.Emit(OpCodes.Ldc_I4, 0xFF);
+            cc.Emit(OpCodes.And);
+            cc.Emit(OpCodes.Stloc, dst);
+        }
+        void BlackWhiteBit(VariableDefinition ch)
+        {
+            cc.Emit(OpCodes.Ldloc, ch);
+            cc.Emit(OpCodes.Ldc_I4_0);
+            cc.Emit(OpCodes.Ceq);
+            cc.Emit(OpCodes.Ldloc, ch);
+            cc.Emit(OpCodes.Ldc_I4, 255);
+            cc.Emit(OpCodes.Ceq);
+            cc.Emit(OpCodes.Or);
+        }
+        var palLoopHead = cc.Create(OpCodes.Nop);
+        var palLoopDone = cc.Create(OpCodes.Nop);
+        cc.Append(palLoopHead);
+        cc.Emit(OpCodes.Ldloc, iLoc);
+        cc.Emit(OpCodes.Ldloc, nLoc);
+        cc.Emit(OpCodes.Bge, palLoopDone);
+        cc.Emit(OpCodes.Ldarg_1);
+        cc.Emit(OpCodes.Ldloc, iLoc);
+        cc.Emit(OpCodes.Callvirt, itemRef);
+        cc.Emit(OpCodes.Stloc, colorLoc);
+        cc.Emit(OpCodes.Ldloca_S, colorLoc);
+        cc.Emit(OpCodes.Call, bgraGetterRef);
+        cc.Emit(OpCodes.Stloc, bgraLoc);
+        Channel(aLoc, 24);
+        Channel(rLoc, 16);
+        Channel(gLoc, 8);
+        Channel(bLoc, 0);
+        cc.Emit(OpCodes.Ldarg_0);
+        cc.Emit(OpCodes.Ldarg_0);
+        cc.Emit(OpCodes.Ldfld, alphaField);
+        cc.Emit(OpCodes.Ldloc, aLoc);
+        cc.Emit(OpCodes.Ldc_I4, 255);
+        cc.Emit(OpCodes.Ceq);
+        cc.Emit(OpCodes.Ldc_I4_0);
+        cc.Emit(OpCodes.Ceq);
+        cc.Emit(OpCodes.Or);
+        cc.Emit(OpCodes.Stfld, alphaField);
+        cc.Emit(OpCodes.Ldarg_0);
+        cc.Emit(OpCodes.Ldarg_0);
+        cc.Emit(OpCodes.Ldfld, grayField);
+        cc.Emit(OpCodes.Ldloc, rLoc);
+        cc.Emit(OpCodes.Ldloc, gLoc);
+        cc.Emit(OpCodes.Ceq);
+        cc.Emit(OpCodes.Ldloc, gLoc);
+        cc.Emit(OpCodes.Ldloc, bLoc);
+        cc.Emit(OpCodes.Ceq);
+        cc.Emit(OpCodes.And);
+        cc.Emit(OpCodes.And);
+        cc.Emit(OpCodes.Stfld, grayField);
+        cc.Emit(OpCodes.Ldarg_0);
+        cc.Emit(OpCodes.Ldarg_0);
+        cc.Emit(OpCodes.Ldfld, bwField);
+        BlackWhiteBit(rLoc);
+        BlackWhiteBit(gLoc);
+        BlackWhiteBit(bLoc);
+        cc.Emit(OpCodes.And);
+        cc.Emit(OpCodes.And);
+        cc.Emit(OpCodes.And);
+        cc.Emit(OpCodes.Stfld, bwField);
+        cc.Emit(OpCodes.Ldloc, iLoc);
+        cc.Emit(OpCodes.Ldc_I4_1);
+        cc.Emit(OpCodes.Add);
+        cc.Emit(OpCodes.Stloc, iLoc);
+        cc.Emit(OpCodes.Br, palLoopHead);
+        cc.Append(palLoopDone);
+        cc.Emit(OpCodes.Ret);
+        ctor.Body.MaxStackSize = 32;
+        type.Methods.Add(ctor);
+
+        foreach (MethodDefinition contract in InterfaceCpuMethods(ifaceDef))
+        {
+            var impl = new MethodDefinition(
+                contract.Name,
+                MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.Final
+                    | MethodAttributes.HideBySig | MethodAttributes.NewSlot,
+                MapCpuType(module, contract.ReturnType));
+            foreach (var p in contract.Parameters)
+                impl.Parameters.Add(new ParameterDefinition(MapCpuType(module, p.ParameterType)));
+            var body = impl.Body.GetILProcessor();
+            if (contract.Name == "get_Colors" && contract.Parameters.Count == 0)
+            {
+                body.Emit(OpCodes.Ldarg_0);
+                body.Emit(OpCodes.Ldfld, colorsField);
+                body.Emit(OpCodes.Ret);
+            }
+            else if (contract.Name == "get_PaletteType" && contract.Parameters.Count == 0)
+            {
+                body.Emit(OpCodes.Ldc_I4_0);
+                body.Emit(OpCodes.Ret);
+            }
+            else if ((contract.Name == "get_HasAlpha" || contract.Name == "get_IsBlackWhite"
+                || contract.Name == "get_IsGrayscale") && contract.Parameters.Count == 0)
+            {
+                FieldDefinition f = contract.Name == "get_HasAlpha" ? alphaField
+                    : contract.Name == "get_IsBlackWhite" ? bwField : grayField;
+                body.Emit(OpCodes.Ldarg_0);
+                body.Emit(OpCodes.Ldfld, f);
+                body.Emit(OpCodes.Ret);
+            }
+            else if (contract.Name == "get_IsDisposed" && contract.Parameters.Count == 0)
+            {
+                body.Emit(OpCodes.Ldc_I4_0);
+                body.Emit(OpCodes.Ret);
+            }
+            else if (contract.Name == "Dispose" && contract.Parameters.Count == 0)
+            {
+                body.Emit(OpCodes.Ret);
+            }
+            else
+            {
+                EmitThrowNotSupported(body, module);
+            }
+            impl.Body.MaxStackSize = 32;
+            type.Methods.Add(impl);
+        }
+
+        AddCpuObjectRef(type, module);
+        module.Types.Add(type);
+        return type;
+    }
+
+    private static void RewritePaletteCreateArm(ModuleDefinition module)
+    {
+        TypeDefinition? ext = module.GetType("PaintDotNet.Imaging.ImagingFactoryExtensions");
+        if (ext is null)
+            return;
+        TypeDefinition cpuPal = SynthesizeCpuPalette(module);
+        MethodDefinition cpuPalCtor = cpuPal.Methods
+            .First(m => m.Name == ".ctor" && m.Parameters.Count == 1);
+        MethodDefinition? create2 = ext.Methods.FirstOrDefault(m =>
+            m.Name == "CreatePalette" && m.Parameters.Count == 2 && m.HasBody);
+        MethodDefinition? create4 = ext.Methods.FirstOrDefault(m =>
+            m.Name == "CreatePalette" && m.Parameters.Count == 4 && m.HasBody);
+        if (create2 is null || create4 is null)
+            throw new InvalidOperationException("CpuPaint: CreatePalette overloads missing");
+        MethodReference argNullCtor = module.ImportReference(
+            typeof(ArgumentNullException).GetConstructor([typeof(string)])!);
+        MethodReference argRangeCtor = module.ImportReference(
+            typeof(ArgumentOutOfRangeException).GetConstructor([typeof(string)])!);
+        TypeReference colorBgra = module.GetTypeReferences()
+            .FirstOrDefault(t => t.FullName == "PaintDotNet.Imaging.ColorBgra32")
+            ?? throw new InvalidOperationException("CpuPaint: ColorBgra32 reference missing");
+        TypeReference listElem = module.GetTypeReferences()
+            .FirstOrDefault(t => t.FullName == "System.Collections.Generic.IReadOnlyList`1")
+            ?? throw new InvalidOperationException("CpuPaint: IReadOnlyList<> reference missing");
+        TypeDefinition listElemDef = listElem.Resolve()
+            ?? throw new InvalidOperationException("CpuPaint: IReadOnlyList<> definition missing");
+        var colorsListType = new GenericInstanceType(listElem);
+        colorsListType.GenericArguments.Add(colorBgra);
+        MethodDefinition? countDef = null;
+        MethodDefinition? itemDef = null;
+        foreach (MethodDefinition m in InterfaceCpuMethods(listElemDef))
+        {
+            if (countDef is null && m.Name == "get_Count" && m.Parameters.Count == 0 && !m.IsStatic)
+                countDef = m;
+            if (itemDef is null && m.Name == "get_Item" && m.Parameters.Count == 1 && !m.IsStatic)
+                itemDef = m;
+        }
+        if (countDef is null)
+            throw new InvalidOperationException("CpuPaint: IReadOnlyList<T>.get_Count missing");
+        if (itemDef is null)
+            throw new InvalidOperationException("CpuPaint: IReadOnlyList<T>.get_Item missing");
+        // Same closed-base declaration as the CpuPalette .ctor arm above:
+        // get_Count is owned by IReadOnlyCollection<T>, not IReadOnlyList<T>.
+        // Import: DeclaringType is a foreign typedef (see .ctor arm note).
+        var countDecl = new GenericInstanceType(module.ImportReference(countDef.DeclaringType));
+        countDecl.GenericArguments.Add(colorBgra);
+        var countRef = new MethodReference(countDef.Name, module.TypeSystem.Int32, countDecl)
+        {
+            HasThis = true,
+        };
+        var itemRef = new MethodReference(itemDef.Name, itemDef.ReturnType, colorsListType)
+        {
+            HasThis = true,
+        };
+        foreach (var p in itemDef.Parameters)
+            itemRef.Parameters.Add(new ParameterDefinition(p.ParameterType));
+
+        // pc=4 (factory, colors, startIndex, length): validate the range
+        // like GetSpanAdapter, snapshot the slice into an array, wrap it.
+        // The factory is ignored (dead headless).
+        {
+            var il = create4.Body.GetILProcessor();
+            create4.Body.ExceptionHandlers.Clear();
+            create4.Body.Variables.Clear();
+            create4.Body.Instructions.Clear();
+            create4.Body.InitLocals = true;
+            var arrLoc = new VariableDefinition(new ArrayType(colorBgra));
+            var nLoc = new VariableDefinition(module.TypeSystem.Int32);
+            var iLoc = new VariableDefinition(module.TypeSystem.Int32);
+            create4.Body.Variables.Add(arrLoc);
+            create4.Body.Variables.Add(nLoc);
+            create4.Body.Variables.Add(iLoc);
+            var rangeOk = il.Create(OpCodes.Nop);
+            void ThrowRange(string param)
+            {
+                il.Emit(OpCodes.Ldstr, param);
+                il.Emit(OpCodes.Newobj, argRangeCtor);
+                il.Emit(OpCodes.Throw);
+            }
+            il.Emit(OpCodes.Ldarg_1);
+            il.Emit(OpCodes.Callvirt, countRef);
+            il.Emit(OpCodes.Stloc, nLoc);
+            il.Emit(OpCodes.Ldarg_2);
+            il.Emit(OpCodes.Ldc_I4_0);
+            il.Emit(OpCodes.Blt, rangeOk);
+            il.Emit(OpCodes.Ldarg_3);
+            il.Emit(OpCodes.Ldc_I4_0);
+            il.Emit(OpCodes.Blt, rangeOk);
+            il.Emit(OpCodes.Ldarg_2);
+            il.Emit(OpCodes.Ldarg_3);
+            il.Emit(OpCodes.Add);
+            il.Emit(OpCodes.Ldloc, nLoc);
+            il.Emit(OpCodes.Bgt, rangeOk);
+            var validated = il.Create(OpCodes.Nop);
+            il.Emit(OpCodes.Br, validated);
+            il.Append(rangeOk);
+            ThrowRange("length");
+            il.Append(validated);
+            il.Emit(OpCodes.Ldarg_3);
+            il.Emit(OpCodes.Newarr, colorBgra);
+            il.Emit(OpCodes.Stloc, arrLoc);
+            il.Emit(OpCodes.Ldc_I4_0);
+            il.Emit(OpCodes.Stloc, iLoc);
+            var copyHead = il.Create(OpCodes.Nop);
+            var copyDone = il.Create(OpCodes.Nop);
+            il.Append(copyHead);
+            il.Emit(OpCodes.Ldloc, iLoc);
+            il.Emit(OpCodes.Ldarg_3);
+            il.Emit(OpCodes.Bge, copyDone);
+            il.Emit(OpCodes.Ldloc, arrLoc);
+            il.Emit(OpCodes.Ldloc, iLoc);
+            il.Emit(OpCodes.Ldarg_1);
+            il.Emit(OpCodes.Ldarg_2);
+            il.Emit(OpCodes.Ldloc, iLoc);
+            il.Emit(OpCodes.Add);
+            il.Emit(OpCodes.Callvirt, itemRef);
+            il.Emit(OpCodes.Stelem_Any, colorBgra);
+            il.Emit(OpCodes.Ldloc, iLoc);
+            il.Emit(OpCodes.Ldc_I4_1);
+            il.Emit(OpCodes.Add);
+            il.Emit(OpCodes.Stloc, iLoc);
+            il.Emit(OpCodes.Br, copyHead);
+            il.Append(copyDone);
+            il.Emit(OpCodes.Ldloc, arrLoc);
+            il.Emit(OpCodes.Newobj, cpuPalCtor);
+            il.Emit(OpCodes.Ret);
+            create4.Body.MaxStackSize = 32;
+        }
+
+        // pc=2 (factory, colors): keep the null-colors contract, then
+        // delegate to the pc=4 arm over the full range (mirrors the
+        // pristine shape, minus the factory).
+        {
+            var il = create2.Body.GetILProcessor();
+            create2.Body.ExceptionHandlers.Clear();
+            create2.Body.Variables.Clear();
+            create2.Body.Instructions.Clear();
+            create2.Body.InitLocals = true;
+            var colorsOk = il.Create(OpCodes.Nop);
+            il.Emit(OpCodes.Ldarg_1);
+            il.Emit(OpCodes.Brtrue, colorsOk);
+            il.Emit(OpCodes.Ldstr, "colors");
+            il.Emit(OpCodes.Newobj, argNullCtor);
+            il.Emit(OpCodes.Throw);
+            il.Append(colorsOk);
+            il.Emit(OpCodes.Ldarg_0);
+            il.Emit(OpCodes.Ldarg_1);
+            il.Emit(OpCodes.Ldc_I4_0);
+            il.Emit(OpCodes.Ldarg_1);
+            il.Emit(OpCodes.Callvirt, countRef);
+            il.Emit(OpCodes.Call, create4);
+            il.Emit(OpCodes.Ret);
+            create2.Body.MaxStackSize = 32;
         }
     }
 
@@ -16616,6 +19025,15 @@ private static int RetargetShadowCacheTryAdd(ModuleDefinition module, string? cp
                 ?? throw new InvalidOperationException($"CpuPaint: CpuPaint.{name}/{argc} missing");
             return module.ImportReference(def);
         }
+        MethodReference CpuProbe(string name, int argc)
+        {
+            TypeDefinition? probeType = cpuAsm.MainModule.GetType("WfWasm.PdnCpu.EffectConstructionProbe")
+                ?? throw new InvalidOperationException($"CpuPaint: WfWasm.PdnCpu.EffectConstructionProbe missing in {cpuPaintPath}");
+            MethodDefinition? probeDef = probeType.Methods
+                .FirstOrDefault(m => m.Name == name && m.Parameters.Count == argc && m.IsStatic)
+                ?? throw new InvalidOperationException($"CpuPaint: EffectConstructionProbe.{name}/{argc} missing");
+            return module.ImportReference(probeDef);
+        }
         MethodReference createTarget = Cpu("CreateTarget", 5);
         MethodReference freeContext = Cpu("FreeContext", 1);
         MethodReference setTransformCpu = Cpu("SetTransform", 7);
@@ -16654,6 +19072,7 @@ private static int RetargetShadowCacheTryAdd(ModuleDefinition module, string? cp
             Cpu("ConvertBgra32ToPrgba128Float", 6),
             Cpu("ConvertPbgra32ToPrgba128Float", 6),
             Cpu("ConvertPrgba128FloatToPbgra32", 6));
+        RewritePaletteCreateArm(module);
         RewriteHalfColorTransformer(
             module,
             Cpu("PremultiplyInPlace", 4),
@@ -17318,6 +19737,7 @@ private static int RetargetShadowCacheTryAdd(ModuleDefinition module, string? cp
         // loudly and names the provider type. Provider properties read
         // through corlib reflection so this module needs no reference to
         // the UI assembly that owns them.
+        MethodReference noteMissProbe = CpuProbe("NoteMiss", 2);
         MethodDefinition contractResCache = Contract("GetCachedOrCreateResource",
             m => m.Parameters.Count == 2
                 && m.Parameters[0].ParameterType.FullName == "PaintDotNet.ObjectModel.IResourceProvider"
@@ -17462,6 +19882,11 @@ private static int RetargetShadowCacheTryAdd(ModuleDefinition module, string? cp
             il.Emit(OpCodes.Ldarg_1);
             il.Emit(OpCodes.Callvirt, objGetType);
             il.Emit(OpCodes.Stloc, provTypeLoc);
+            il.Emit(OpCodes.Ldstr, "rescache-miss");
+            il.Emit(OpCodes.Ldloc, provTypeLoc);
+            il.Emit(OpCodes.Callvirt, typeFullName);
+            il.Emit(OpCodes.Call, noteMissProbe);
+            il.Emit(OpCodes.Pop);
             var tryBrush = il.Create(OpCodes.Nop);
             il.Emit(OpCodes.Ldloc, provTypeLoc);
             il.Emit(OpCodes.Callvirt, typeFullName);
@@ -17886,6 +20311,11 @@ private static int RetargetShadowCacheTryAdd(ModuleDefinition module, string? cp
             il.Emit(OpCodes.Stloc, resLoc);
             il.Emit(OpCodes.Br, stored);
             il.Append(unknown);
+            il.Emit(OpCodes.Ldstr, "rescache-unknown");
+            il.Emit(OpCodes.Ldloc, provTypeLoc);
+            il.Emit(OpCodes.Callvirt, typeFullName);
+            il.Emit(OpCodes.Call, noteMissProbe);
+            il.Emit(OpCodes.Pop);
             il.Emit(OpCodes.Ldstr, "CpuDrawingContext.GetCachedOrCreateResource has no headless backend for ");
             il.Emit(OpCodes.Ldloc, provTypeLoc);
             il.Emit(OpCodes.Callvirt, typeFullName);
@@ -19421,6 +21851,18 @@ private static int RetargetShadowCacheTryAdd(ModuleDefinition module, string? cp
                 il.Emit(OpCodes.Call, freeContext);
                 il.Emit(OpCodes.Ret);
             }
+            else if (contract.Name == "BeginDraw" && contract.Parameters.Count == 2
+                && contract.Parameters[0].ParameterType.FullName == "PaintDotNet.Rendering.RectInt32"
+                && contract.Parameters[1].ParameterType.FullName == "System.Boolean")
+            {
+                // Dialog-show chain: b__0 calls instance BeginDraw(Rect,Bool)
+                // on the context the static scan0 overload returns; answering
+                // `this` keeps a holder-provisioned CPU context flowing to b__1
+                // and the text-layout backend instead of a missing slot or a
+                // NotSupported throw (served ImageSizeDialog/effect-dialog wall).
+                il.Emit(OpCodes.Ldarg_0);
+                il.Emit(OpCodes.Ret);
+            }
             else if (contract.Name == "CreateEffect" && contract.Parameters.Count == 1)
             {
                 // Headless effect backend: auto-registration (TryCreateEffect)
@@ -19463,6 +21905,30 @@ private static int RetargetShadowCacheTryAdd(ModuleDefinition module, string? cp
             ctx.Methods.Add(impl);
         }
 
+        // -- Dialog-show instance chain: ensure BeginDraw(RectInt32,Bool)
+        // answers `this` even when the contract walk did not surface it
+        // (union shape drift); b__0's callvirt must land on a context,
+        // not a missing slot. (The fallback-loop special-case above covers
+        // the union-included shape; this covers the missing one. Exactly
+        // one body wins: this block skips when the method already exists.)
+        if (!ctx.Methods.Any(m => m.Name == "BeginDraw" && m.Parameters.Count == 2
+            && m.Parameters[0].ParameterType.FullName == "PaintDotNet.Rendering.RectInt32"
+            && m.Parameters[1].ParameterType.FullName == "System.Boolean"))
+        {
+            var instBegin = new MethodDefinition(
+                "BeginDraw",
+                MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.Final
+                    | MethodAttributes.HideBySig | MethodAttributes.NewSlot,
+                idrawingRef);
+            instBegin.Parameters.Add(new ParameterDefinition(
+                LocalOrOwnedCpuRef(module, "PaintDotNet.Rendering.RectInt32")));
+            instBegin.Parameters.Add(new ParameterDefinition(module.TypeSystem.Boolean));
+            var ibil = instBegin.Body.GetILProcessor();
+            ibil.Emit(OpCodes.Ldarg_0);
+            ibil.Emit(OpCodes.Ret);
+            instBegin.Body.MaxStackSize = 32;
+            ctx.Methods.Add(instBegin);
+        }
         module.Types.Add(ctx);
 
         // -- FromBitmap/BeginDraw CPU bodies: the factory is null headless,
@@ -19532,6 +21998,95 @@ private static int RetargetShadowCacheTryAdd(ModuleDefinition module, string? cp
                 // else: generic surface/region overloads + BeginDrawNull keep
                 // their neutered shape (status quo ante).
                 bd.Body.MaxStackSize = 32;
+            }
+        }
+        // -- Dialog-show scan0 backend: DrawingContextUtil.BeginDraw routes
+        // through static DrawingContext.BeginDraw(factory, scan0, size,
+        // stride, in pxfmt) (+ the factory-less sibling), which the neuter
+        // pass reduces to null — the served ImageSizeDialog/effect-dialog
+        // NRE (null dc into b__0/b__1, text layout never reached). Reroute
+        // the scan0 overloads to a holder-provisioned CpuDrawingContext over
+        // the caller's buffer so GetCachedOrCreateResource<ITextLayout>
+        // resolves via the synthesized backend. Other overloads keep the
+        // neutered shape (narrow grant: dialog-show only).
+        {
+            TypeDefinition? drawingCtx = module.GetType("PaintDotNet.Direct2D1.DrawingContext");
+            if (drawingCtx is not null)
+            {
+                MethodDefinition cpuDrawCtor = ctx.Methods
+                    .First(m => m.Name == ".ctor" && m.Parameters.Count == 1);
+                MethodDefinition holderTrySet = ctx.Methods
+                    .First(m => m.Name == "TrySetResourceCache" && m.Parameters.Count == 1);
+                foreach (MethodDefinition sb in drawingCtx.Methods
+                    .Where(m => m.IsStatic && m.Name == "BeginDraw" && m.HasBody
+                        && m.Parameters.Any(p => p.ParameterType.FullName == "System.Void*"))
+                    .ToList())
+                {
+                    int scanIdx = -1;
+                    for (int i = 0; i < sb.Parameters.Count; i++)
+                    {
+                        if (sb.Parameters[i].ParameterType.FullName == "System.Void*")
+                            scanIdx = i;
+                    }
+                    if (scanIdx < 0)
+                        continue;
+                    sb.Body.ExceptionHandlers.Clear();
+                    sb.Body.Variables.Clear();
+                    sb.Body.Instructions.Clear();
+                    var sil = sb.Body.GetILProcessor();
+                    sil.Emit(OpCodes.Ldarg_S, sb.Parameters[scanIdx]);
+                    sil.Emit(OpCodes.Conv_I8);
+                    sil.Emit(OpCodes.Newobj, cpuDrawCtor);
+                    sil.Emit(OpCodes.Dup);
+                    sil.Emit(OpCodes.Callvirt, holderTrySet);
+                    sil.Emit(OpCodes.Pop);
+                    sil.Emit(OpCodes.Castclass, idrawingRef);
+                    sil.Emit(OpCodes.Ret);
+                    sb.Body.MaxStackSize = 32;
+                }
+            }
+        }
+        // -- Dialog-show HWND backend: the dialog measure/paint chain
+        // (PdnRadioButton.MeasureAndDraw.b__0 ->
+        // DrawingContextUtil.BeginDraw(IDeviceContext,Rect,Bool) ->
+        // factory/IntPtr overloads -> DCDeviceContextPool/BindDC)
+        // terminates in static DrawingContext.WrapImpl(IDeviceContext),
+        // which the neuter pass reduces to null — the served New-image
+        // dialog NRE (null dc into b__1, text layout never reached).
+        // WrapImpl's only live callers are dialog/control-show paths
+        // (the Util HWND chain + control OnRender/CallbackDrawer via
+        // Wrap; BeginDrawImpl is itself neutered), never the effect
+        // worker pipeline, so this reroute is dialog-show-scoped:
+        // answer a holder-provisioned CpuDrawingContext over no buffer
+        // (the .ctor stores only, zero-safe; measure resolves metrics
+        // via the holder backend). No other overload is touched.
+        {
+            TypeDefinition? wrapOwner = module.GetType("PaintDotNet.Direct2D1.DrawingContext");
+            if (wrapOwner is not null)
+            {
+                MethodDefinition cpuDrawCtorWrap = ctx.Methods
+                    .First(m => m.Name == ".ctor" && m.Parameters.Count == 1);
+                MethodDefinition holderTrySetWrap = ctx.Methods
+                    .First(m => m.Name == "TrySetResourceCache" && m.Parameters.Count == 1);
+                MethodDefinition wrapImpl = wrapOwner.Methods
+                    .FirstOrDefault(m => m.IsStatic && m.Name == "WrapImpl" && m.HasBody
+                        && m.Parameters.Count == 1
+                        && m.Parameters[0].ParameterType.FullName == "PaintDotNet.Direct2D1.IDeviceContext")
+                    ?? throw new InvalidOperationException("CpuPaint: DrawingContext.WrapImpl(IDeviceContext) missing");
+                if (wrapImpl.ReturnType.FullName != "PaintDotNet.Direct2D1.DrawingContext")
+                    throw new InvalidOperationException("CpuPaint: DrawingContext.WrapImpl return drifted");
+                wrapImpl.Body.ExceptionHandlers.Clear();
+                wrapImpl.Body.Variables.Clear();
+                wrapImpl.Body.Instructions.Clear();
+                var wil = wrapImpl.Body.GetILProcessor();
+                wil.Emit(OpCodes.Ldc_I8, 0L);
+                wil.Emit(OpCodes.Newobj, cpuDrawCtorWrap);
+                wil.Emit(OpCodes.Dup);
+                wil.Emit(OpCodes.Callvirt, holderTrySetWrap);
+                wil.Emit(OpCodes.Pop);
+                wil.Emit(OpCodes.Castclass, idrawingRef);
+                wil.Emit(OpCodes.Ret);
+                wrapImpl.Body.MaxStackSize = 32;
             }
         }
         // -- Static Draw(RegionPtr<TPixel>, Action<IDrawingContext>) [+ the
@@ -21023,7 +23578,7 @@ private static int RetargetShadowCacheTryAdd(ModuleDefinition module, string? cp
         StubModulePInvokes(module, null);
     }
 
-    public static void StubModulePInvokes(Mono.Cecil.ModuleDefinition module, string? cpuPaintPath)
+    public static void StubModulePInvokes(Mono.Cecil.ModuleDefinition module, string? cpuPaintPath, string? forkPath = null)
     {
             MethodReference? allocZeroedRef = null;
             MethodReference? freeRef = null;
@@ -21067,6 +23622,42 @@ private static int RetargetShadowCacheTryAdd(ModuleDefinition module, string? cp
                 {
                     if (!method.IsPInvokeImpl)
                         continue;
+                    // RVW3293-VEN9: route user32.SendMessage P/Invokes
+                    // back into the fork emulation (VEN1 WM_SETTEXT arm
+                    // and friends) when a fork path is supplied. Without
+                    // it the stub below severs vendor display-text pushes
+                    // (Syncfusion mask SetTextBoxText: fake-success
+                    // no-op). Exact vendor shape only; other overloads
+                    // keep the stub. Fail-closed: any miss falls through
+                    // to the stub.
+                    if (forkPath != null && method.Name == "SendMessage" && method.Parameters.Count == 4
+                        && method.Parameters[0].ParameterType.FullName == "System.IntPtr"
+                        && method.Parameters[1].ParameterType.FullName == "System.Int32"
+                        && method.Parameters[2].ParameterType.FullName == "System.IntPtr"
+                        && method.Parameters[3].ParameterType.FullName == "System.IntPtr"
+                        && method.ReturnType.FullName == "System.IntPtr")
+                    {
+                        try
+                        {
+                            MethodReference forward = ImportForkMethod(module, forkPath);
+                            method.IsPInvokeImpl = false;
+                            method.PInvokeInfo = null;
+                            method.Attributes &= ~MethodAttributes.PInvokeImpl;
+                            method.Body = new Mono.Cecil.Cil.MethodBody(method);
+                            var fil = method.Body.GetILProcessor();
+                            fil.Emit(Mono.Cecil.Cil.OpCodes.Ldarg_0);
+                            fil.Emit(Mono.Cecil.Cil.OpCodes.Ldarg_1);
+                            fil.Emit(Mono.Cecil.Cil.OpCodes.Ldarg_2);
+                            fil.Emit(Mono.Cecil.Cil.OpCodes.Ldarg_3);
+                            fil.Emit(Mono.Cecil.Cil.OpCodes.Call, forward);
+                            fil.Emit(Mono.Cecil.Cil.OpCodes.Ret);
+                            method.Body.MaxStackSize = 4;
+                            continue;
+                        }
+                        catch (Exception ex) when (ex is InvalidOperationException || ex is Mono.Cecil.ResolutionException || ex is ArgumentException)
+                        {
+                        }
+                    }
 
                     method.IsPInvokeImpl = false;
                     method.PInvokeInfo = null;
@@ -22346,7 +24937,7 @@ private static int RetargetShadowCacheTryAdd(ModuleDefinition module, string? cp
     {
         var keys = new HashSet<string>(methodKeys, StringComparer.Ordinal);
         string? dir = Path.GetDirectoryName(assemblyPath);
-        using var resolver = new FrameworkResolver(dir, [@"E:\tmp\rewritten-small", @"E:\tmp\rewritten-paint"]);
+        using var resolver = new FrameworkResolver(dir, RewriteDeps());
         var bytes = File.ReadAllBytes(assemblyPath);
         var readerParams = new ReaderParameters { AssemblyResolver = resolver };
         using var stream = new MemoryStream(bytes);
@@ -22393,7 +24984,7 @@ private static int RetargetShadowCacheTryAdd(ModuleDefinition module, string? cp
     {
         var keys = new HashSet<string>(methodKeys, StringComparer.Ordinal);
         string? dir = Path.GetDirectoryName(assemblyPath);
-        using var resolver = new FrameworkResolver(dir, [@"E:\tmp\rewritten-small", @"E:\tmp\rewritten-paint"]);
+        using var resolver = new FrameworkResolver(dir, RewriteDeps());
         var bytes = File.ReadAllBytes(assemblyPath);
         var readerParams = new ReaderParameters { AssemblyResolver = resolver };
         using var stream = new MemoryStream(bytes);
@@ -22440,7 +25031,7 @@ private static int RetargetShadowCacheTryAdd(ModuleDefinition module, string? cp
         // lives in the scratch staging dirs (see rewrite-*.ps1), not next
         // to the app DLLs: metadata resolution needs them on the path.
         string? probeDir = Path.GetDirectoryName(assemblyPath);
-        using var resolver = new FrameworkResolver(probeDir, [@"E:\tmp\rewritten-small", @"E:\tmp\rewritten-paint"]);
+        using var resolver = new FrameworkResolver(probeDir, RewriteDeps());
         var bytes = File.ReadAllBytes(assemblyPath);
         var readerParams = new ReaderParameters { AssemblyResolver = resolver };
         using var stream = new MemoryStream(bytes);

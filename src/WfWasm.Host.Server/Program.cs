@@ -20,6 +20,34 @@ app.UseResponseCompression();
 
 string logDir = Path.Combine(app.Environment.ContentRootPath, "logs");
 
+// Served-generation stamp (shell stamp-adoption (b)): the deployed CanvasHost
+// page reads window.wfwasmRuntime.generation, but runtime-context.js freezes
+// the object without it. The shell stamps the value at serve time so no
+// CanvasHost source changes are needed; the id is emitted at deploy time in
+// generation.txt next to deployment.json (deployment.json "generation" is
+// the fallback, "unknown" the last resort — startup never fails here).
+string servedGeneration = GenerationStamp.ResolveGeneration(app.Environment.WebRootPath);
+
+app.Use(async (context, next) =>
+{
+    if ((HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method))
+        && context.Request.Path.Equals("/runtime-context.js", StringComparison.OrdinalIgnoreCase))
+    {
+        string file = Path.Combine(app.Environment.WebRootPath, "runtime-context.js");
+        if (File.Exists(file))
+        {
+            string stamped = GenerationStamp.StampRuntimeContext(await File.ReadAllTextAsync(file), servedGeneration);
+            context.Response.ContentType = "application/javascript; charset=utf-8";
+            context.Response.Headers.CacheControl = "no-cache";
+            if (!HttpMethods.IsHead(context.Request.Method))
+                await context.Response.WriteAsync(stamped);
+            return;
+        }
+    }
+
+    await next(context);
+});
+
 app.MapGet("/api/preview-config", (HttpContext context) =>
 {
     context.Response.Headers.CacheControl = "no-cache";
@@ -39,18 +67,25 @@ app.MapGet("/api/preview-config", (HttpContext context) =>
     });
 });
 
-app.MapPost("/api/client-errors", (List<ErrorReport>? batch) =>
+app.MapPost("/api/client-errors", (List<ErrorReport>? batch, HttpContext context) =>
 {
     if (batch is null || batch.Count == 0)
         return Results.BadRequest("empty batch");
     if (batch.Count > 50)
         return Results.BadRequest("batch too large");
+    // Server-side stamp adoption (SHELL-STAMP-1301-p5r3): repeats often
+    // arrive without backend+generation (live store rows are unattributed),
+    // so the receiving backend stamps its own identity + served generation
+    // for fields the client omitted. Client-sent values always win.
+    string localIp = context.Connection.LocalIpAddress?.MapToIPv4().ToString() ?? "unknown";
+    string serverBackend = $"{localIp}:{context.Connection.LocalPort}";
+    string? serverGeneration = servedGeneration == "unknown" ? null : servedGeneration;
     int logged = 0;
     foreach (var report in batch)
     {
         if (report is null)
             continue;
-        ErrorLog.Log(logDir, report);
+        ErrorLog.Log(logDir, ErrorLog.WithServerAttribution(report, serverBackend, serverGeneration));
         logged++;
     }
 
@@ -65,6 +100,17 @@ app.MapPost("/api/errors/mark-fixed", (MarkFixedRequest req) =>
         return Results.BadRequest("signature required");
     return ErrorLog.MarkFixed(logDir, req.Signature, req.Note ?? "")
         ? Results.Ok(new { signature = req.Signature, status = ErrorLog.StatusFixed })
+        : Results.NotFound("unknown signature");
+});
+
+app.MapPost("/api/errors/mark-open", (MarkOpenRequest req) =>
+{
+    if (string.IsNullOrWhiteSpace(req.Signature))
+        return Results.BadRequest("signature required");
+    if (string.IsNullOrWhiteSpace(req.Reason))
+        return Results.BadRequest("reason required");
+    return ErrorLog.MarkOpen(logDir, req.Signature, req.Reason)
+        ? Results.Ok(new { signature = req.Signature, status = ErrorLog.StatusOpen })
         : Results.NotFound("unknown signature");
 });
 
@@ -232,3 +278,53 @@ static IResult CachedAsset(HttpContext context, byte[] bytes, string mime)
 }
 
 public sealed record MarkFixedRequest(string Signature, string? Note);
+
+public sealed record MarkOpenRequest(string Signature, string? Reason);
+
+/// <summary>
+/// Served-generation stamp helpers (shell stamp-adoption (b)). Pure and
+/// unit-tested; the middleware above is the only caller.
+/// </summary>
+public static class GenerationStamp
+{
+    private const string Anchor = "Object.freeze({app, session, label,";
+
+    public static string ResolveGeneration(string webRootPath)
+    {
+        try
+        {
+            string genRoot = Path.GetDirectoryName(Path.GetFullPath(webRootPath)) ?? webRootPath;
+            string stampFile = Path.Combine(genRoot, "generation.txt");
+            if (File.Exists(stampFile))
+            {
+                string stamped = File.ReadAllText(stampFile).Trim();
+                if (stamped.Length > 0)
+                    return stamped;
+            }
+
+            string manifest = Path.Combine(genRoot, "deployment.json");
+            if (File.Exists(manifest))
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(manifest));
+                if (doc.RootElement.TryGetProperty("generation", out var gen)
+                    && gen.ValueKind == System.Text.Json.JsonValueKind.String
+                    && gen.GetString() is string id && id.Trim().Length > 0)
+                    return id.Trim();
+            }
+        }
+        catch
+        {
+            // Fall through to "unknown": attribution must never break startup.
+        }
+
+        return "unknown";
+    }
+
+    public static string StampRuntimeContext(string javaScript, string generation)
+    {
+        if (string.IsNullOrEmpty(javaScript) || !javaScript.Contains(Anchor, StringComparison.Ordinal))
+            return javaScript;
+        string literal = System.Text.Json.JsonSerializer.Serialize(generation ?? "unknown");
+        return javaScript.Replace(Anchor, $"Object.freeze({{app, session, label, generation: {literal},", StringComparison.Ordinal);
+    }
+}

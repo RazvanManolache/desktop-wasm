@@ -2270,6 +2270,43 @@ public sealed unsafe class CpuPaintTests
     {
     }
 
+    private sealed class FakeInvertAlphaGpuEffect : FakeEffectBase
+    {
+    }
+
+    [Fact]
+    public void TryRenderGpuTileCpu_InvertAlpha_Flips_Alpha_Preserves_RGB()
+    {
+        // Genuine InvertAlphaGpuEffect inverts the alpha channel only
+        // (pristine PaintDotNet.Windows.Framework InvertAlphaEffect docs +
+        // Straight/Straight alpha modes; no property collection, immediate).
+        // Served symptom: silent no-op (0 RGB + 0 alpha change, no History)
+        // because dispatch had no InvertAlpha arm and declined the tiles.
+        var effect = new FakeInvertAlphaGpuEffect();
+        // 2x1 BGRA: P0 A=255->0, P1 A=128->127, RGB unchanged.
+        byte[] src = new byte[] { 0, 50, 100, 255, 255, 200, 0, 128 };
+        CpuPaint.NoteTileSourceBytes(effect, src, 2, 1, 8);
+        byte[] dstBytes = new byte[8];
+        var pin = System.Runtime.InteropServices.GCHandle.Alloc(dstBytes, System.Runtime.InteropServices.GCHandleType.Pinned);
+        try
+        {
+            var tile = new FakeTile { Ptr = pin.AddrOfPinnedObject(), Width = 2, Height = 1, Stride = 8 };
+            Assert.True(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(effect), tile, new FakePoint()));
+            Assert.Equal(0, (int)dstBytes[0]);
+            Assert.Equal(50, (int)dstBytes[1]);
+            Assert.Equal(100, (int)dstBytes[2]);
+            Assert.Equal(0, (int)dstBytes[3]);
+            Assert.Equal(255, (int)dstBytes[4]);
+            Assert.Equal(200, (int)dstBytes[5]);
+            Assert.Equal(0, (int)dstBytes[6]);
+            Assert.Equal(127, (int)dstBytes[7]);
+        }
+        finally
+        {
+            pin.Free();
+        }
+    }
+
     private sealed class FakeDesaturateGpuEffect : FakeEffectBase
     {
     }

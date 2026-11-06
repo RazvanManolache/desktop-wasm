@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using System.ComponentModel;
 
 namespace DesktopWasm.Wpf;
 
@@ -320,3 +321,107 @@ public class DataGridSortingEventArgs : DataGridColumnEventArgs
 /// HandyControl.dll).
 /// </summary>
 public delegate void DataGridSortingEventHandler(object sender, DataGridSortingEventArgs e);
+
+/// <summary>Edit scope (matches System.Windows.Controls.DataGridEditingUnit;
+/// member values verified against the .NET 9 WindowsDesktop reference
+/// assemblies: Cell = 0, Row = 1).</summary>
+public enum DataGridEditingUnit
+{
+    Cell = 0,
+    Row = 1,
+}
+
+/// <summary>Edit outcome (matches System.Windows.Controls.DataGridEditAction;
+/// member values verified against the .NET 9 WindowsDesktop reference
+/// assemblies: Commit = 0, Cancel = 1).</summary>
+public enum DataGridEditAction
+{
+    Commit = 0,
+    Cancel = 1,
+}
+
+/// <summary>
+/// Edit-start payload (matches
+/// System.Windows.Controls.DataGridBeginningEditEventArgs): cancellable.
+/// A handler that sets <see cref="CancelEventArgs.Cancel"/> keeps the cell
+/// in display mode (the grid reports false from <c>BeginEdit</c>).
+/// </summary>
+public class DataGridBeginningEditEventArgs : CancelEventArgs
+{
+    public DataGridBeginningEditEventArgs(DataGridColumn column, DataGridRow row, FrameworkElement editingElement)
+    {
+        Column = column ?? throw new ArgumentNullException(nameof(column));
+        Row = row ?? throw new ArgumentNullException(nameof(row));
+        EditingElement = editingElement ?? throw new ArgumentNullException(nameof(editingElement));
+    }
+
+    /// <summary>Column entering edit mode.</summary>
+    public DataGridColumn Column { get; }
+
+    /// <summary>Row entering edit mode.</summary>
+    public DataGridRow Row { get; }
+
+    /// <summary>Editor that would replace the display element.</summary>
+    public FrameworkElement EditingElement { get; }
+}
+
+/// <summary>
+/// Cell edit-end payload (matches
+/// System.Windows.Controls.DataGridCellEditEndingEventArgs): cancellable.
+/// Cancelling a commit aborts the model push and keeps the editor open;
+/// cancelling a cancel keeps the editor open with the typed text intact.
+/// </summary>
+public class DataGridCellEditEndingEventArgs : CancelEventArgs
+{
+    public DataGridCellEditEndingEventArgs(DataGridColumn column, DataGridRow row, FrameworkElement editingElement, DataGridEditAction editAction)
+    {
+        Column = column ?? throw new ArgumentNullException(nameof(column));
+        Row = row ?? throw new ArgumentNullException(nameof(row));
+        EditingElement = editingElement ?? throw new ArgumentNullException(nameof(editingElement));
+        EditAction = editAction;
+    }
+
+    /// <summary>Column leaving edit mode.</summary>
+    public DataGridColumn Column { get; }
+
+    /// <summary>Row leaving edit mode.</summary>
+    public DataGridRow Row { get; }
+
+    /// <summary>Editor being committed or discarded.</summary>
+    public FrameworkElement EditingElement { get; }
+
+    /// <summary>Whether the edit is committed or discarded.</summary>
+    public DataGridEditAction EditAction { get; }
+}
+
+/// <summary>
+/// Row edit-end payload (matches
+/// System.Windows.Controls.DataGridRowEditEndingEventArgs): cancellable.
+/// Raised after the cell push on commit and after the restore on cancel.
+/// </summary>
+public class DataGridRowEditEndingEventArgs : CancelEventArgs
+{
+    public DataGridRowEditEndingEventArgs(DataGridRow row, DataGridEditAction editAction)
+    {
+        Row = row ?? throw new ArgumentNullException(nameof(row));
+        EditAction = editAction;
+    }
+
+    /// <summary>Row leaving edit mode.</summary>
+    public DataGridRow Row { get; }
+
+    /// <summary>Whether the edit is committed or discarded.</summary>
+    public DataGridEditAction EditAction { get; }
+}
+
+/// <summary>Edit-start handler shape (matches
+/// System.Windows.Controls.DataGridBeginningEditEventHandler).</summary>
+public delegate void DataGridBeginningEditEventHandler(object sender, DataGridBeginningEditEventArgs e);
+
+/// <summary>Cell edit-end handler shape (matches
+/// System.Windows.Controls.DataGridCellEditEndingEventHandler).</summary>
+public delegate void DataGridCellEditEndingEventHandler(object sender, DataGridCellEditEndingEventArgs e);
+
+/// <summary>Row edit-end handler shape (matches
+/// System.Windows.Controls.DataGridRowEditEndingEventHandler).</summary>
+public delegate void DataGridRowEditEndingEventHandler(object sender, DataGridRowEditEndingEventArgs e);

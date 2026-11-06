@@ -3,8 +3,11 @@ using System.Collections.ObjectModel;
 namespace DesktopWasm.Wpf.Tests;
 
 /// <summary>DataGrid ItemsSource: the converted gallery DataGrid page binds
-/// ItemsSource="{Binding ...}" but DataGrid exposes no bindable property,
-/// so the loader throws "'DataGrid' has no bindable property 'ItemsSource'".
+/// ItemsSource="{Binding ...}". The engine DataGrid exposes a public
+/// ItemsSource CLR property and the markup transfer works (pinned below,
+/// including the served TwoWay + dotted-path shape). A served
+/// "'DataGrid' has no bindable property 'ItemsSource'" failure therefore
+/// points at the served hydration ambient, not this transfer.
 /// The source collection mints plain data rows (the grid's v1 row model),
 /// tracks live INCC edits, and guards direct-row mixing like WPF.</summary>
 [ResetAmbientState]
@@ -112,5 +115,26 @@ public sealed class DataGridItemsSourceTests
         Assert.Equal(2, grid.Items.Count);
         store.People.Add(new Person { Name = "Hopper", Age = 41 });
         Assert.Equal(3, grid.Items.Count);
+    }
+
+    [Fact]
+    public void Xaml_attribute_binding_ItemsSource_twoway_dotted_path_loads()
+    {
+        // Served gallery pattern (DataGridPage.xaml line 59):
+        // ItemsSource="{Binding ViewModel.ProductsCollection, Mode=TwoWay}".
+        // Pins the engine markup contract for the TwoWay + dotted-path shape
+        // (leaf name is irrelevant to the machinery) so a served hydration
+        // failure points at ambient, not this call.
+        var root = (Window)XamlLoader.Load("""
+            <Window><DataGrid ItemsSource="{Binding ViewModel.People, Mode=TwoWay}"><DataGrid.Columns><DataGridTextColumn Header="Name" BindingPath="Name" Width="120"/></DataGrid.Columns></DataGrid></Window>
+            """).Root;
+        var grid = Assert.IsType<DataGrid>(root.Content);
+        root.DataContext = new ViewModelStore();
+        Assert.Equal(2, grid.Items.Count);
+    }
+
+    private sealed class ViewModelStore
+    {
+        public Store ViewModel { get; } = new();
     }
 }

@@ -59,7 +59,7 @@ public static class ApplicationPackager
                     references = converted.MainModule.AssemblyReferences.Select(r => r.Name).ToArray();
                     var bytes = File.ReadAllBytes(convertedPath);
                     var hash = System.Convert.ToHexStringLower(SHA256.HashData(bytes));
-                    var file = Uri.EscapeDataString(name) + "." + hash + ".bin";
+                    var file = PackageAssembly.AssetFileName(name, hash);
                     File.WriteAllBytes(Path.Combine(outputDirectory, file), bytes);
                     assemblies.Add(new PackageAssembly(name, file, hash, references, result.Receipt!.InputSha256));
                 }

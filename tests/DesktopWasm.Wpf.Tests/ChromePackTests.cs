@@ -325,7 +325,9 @@ public sealed class ChromePackTests : IDisposable
             return reader.ReadToEnd();
         }
 
-        var uri = new Uri("pack://application:,,,/Views/BasicInput/ButtonPage.xaml");
+        // A real Gallery package can already be loaded by another test.
+        // Use an absent fixture resource rather than its actual embedded page.
+        var uri = new Uri("pack://application:,,,/__fixture__/Views/BasicInput/ButtonPage.xaml");
         Assert.Equal(string.Empty, LoadResource(uri));
         Application.Current!.RegisterPackResource(uri.AbsoluteUri, "<Page>Buttons</Page>");
         Assert.Equal("<Page>Buttons</Page>", LoadResource(uri));

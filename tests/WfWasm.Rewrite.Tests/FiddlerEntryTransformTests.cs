@@ -3,6 +3,15 @@ using WfWasm.Rewrite;
 
 public sealed class FiddlerEntryTransformTests
 {
+    private static string RewrittenSmall
+    {
+        get
+        {
+            var canon = Path.Combine(RepoRoot(), ".artifacts", "tmp", "retained", "rewritten-small");
+            return canon;
+        }
+    }
+
     private static string RepoRoot() => Path.GetFullPath(Path.Combine(
         AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
 
@@ -20,8 +29,8 @@ public sealed class FiddlerEntryTransformTests
         string input = Path.Combine(folder, "Fiddler.exe");
         Assert.True(File.Exists(input),
             "benchmark input not prepared (run prepare-desktop-benchmarks.ps1): " + input);
-        string fork = @"E:\tmp\rewritten-small\WfWasm.WinForms.dll";
-        Assert.True(File.Exists(fork), "migrated fork not built (run rewrite-small.ps1): " + fork);
+        string fork = Path.Combine(RewrittenSmall, "WfWasm.WinForms.dll");
+        Assert.True(File.Exists(fork), "missing rewritten fixture (expected at retained/rewritten-small): " + fork);
         string drawing = Path.Combine(RepoRoot(), "src", "WfWasm.Drawing", "bin", "Debug", "net9.0", "WfWasm.Drawing.dll");
         Assert.True(File.Exists(drawing), "drawing not built: " + drawing);
 

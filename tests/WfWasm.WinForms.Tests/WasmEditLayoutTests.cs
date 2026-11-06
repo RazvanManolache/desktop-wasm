@@ -16,12 +16,14 @@ using ForkForms = Fork::System.Windows.Forms;
 
 namespace WfWasm.WinForms.Tests;
 
+[Collection("WasmRepaintGate")]
 public sealed class WasmEditLayoutTests : IDisposable
 {
     private readonly ForkForms::TextBox _box;
 
     public WasmEditLayoutTests()
     {
+        ForkForms::WasmRepaintGate.DrainDirty(out _);
         _box = new ForkForms::TextBox
         {
             Text = "Hello world",
@@ -33,7 +35,11 @@ public sealed class WasmEditLayoutTests : IDisposable
         _ = _box.Handle;
     }
 
-    public void Dispose() => _box.Dispose();
+    public void Dispose()
+    {
+        _box.Dispose();
+        ForkForms::WasmRepaintGate.DrainDirty(out _);
+    }
 
     [Fact]
     public void PositionFromChar_FirstChar_SitsAtLeftInset()

@@ -9,10 +9,22 @@ using Xunit;
 // recovery (TempTileLayoutResolve). Must stay green as documentation.
 public sealed class TempTileLayoutSplit
 {
+    // TMPMOVE canonical-only: fixture under retained/.
+    private static string FixturePath
+    {
+        get
+        {
+            var canon = System.IO.Path.Combine(
+                System.IO.Path.GetFullPath(System.IO.Path.Combine(System.AppContext.BaseDirectory, "..", "..", "..", "..", "..")),
+                ".artifacts", "tmp", "retained", "tl-entry1-blob.bin");
+            return canon;
+        }
+    }
+
     [Fact]
     public void Temp_TileLayout_Envelope_Strips_But_Not_MSIm()
     {
-        byte[] blob = System.IO.File.ReadAllBytes(@"E:\tmp\tl-entry1-blob.bin");
+        byte[] blob = System.IO.File.ReadAllBytes(FixturePath);
         Assert.Equal(366, blob.Length);
         Assert.True(WfDraw::WfWasm.Drawing.ResourceHelper.TryStripSerializationEnvelope(blob, out byte[]? inner));
         Assert.NotNull(inner);

@@ -1,6 +1,6 @@
 {
   "name": "wpf-demos",
-  "source": "<wpf-root>\\src\\DesktopWasm.BrowserHost\\Demos.cs",
+  "source": "E:\\AI\\Code\\WPF-wasm\\src\\DesktopWasm.BrowserHost\\Demos.cs",
   "sourceSha256": "0E36F058D9F47601EC40C7EDD73AA0005793AEB2556D6AB757506795CE70D25A",
   "extractedUtc": "2026-10-30T12:03:16Z",
   "data": {

@@ -158,6 +158,61 @@ public static class JointTestAppPackager
     }
 
     /// <summary>
+    /// The joint packager's copy of the converter's inert-assembly-attribute
+    /// rule (AssemblyConverter.AssemblyAttributeIsInert): XAML namespace
+    /// markers (System.Windows.Markup XmlnsDefinition/XmlnsPrefix/
+    /// XmlnsCompatibleWith), the loose-content marker
+    /// (System.Windows.Resources AssemblyAssociatedContentFileAttribute) and
+    /// the theme-location marker (System.Windows ThemeInfoAttribute). The
+    /// engine never reads assembly attributes by any API, converted code
+    /// cannot name these types (any live reference gaps), and the wasm Mono
+    /// loader asserts on the undecodable rows instead of skipping them
+    /// (served joint entry: custom-attrs.c:1980 + assembly.c:1673, exit 1).
+    /// </summary>
+    private static bool IsInertWpfAssemblyAttribute(string ns, string name) =>
+        (ns.Equals("System.Windows.Markup", StringComparison.Ordinal) &&
+            (name.Equals("XmlnsDefinitionAttribute", StringComparison.Ordinal) ||
+                name.Equals("XmlnsPrefixAttribute", StringComparison.Ordinal) ||
+                name.Equals("XmlnsCompatibleWithAttribute", StringComparison.Ordinal))) ||
+        (ns.Equals("System.Windows.Resources", StringComparison.Ordinal) &&
+            name.Equals("AssemblyAssociatedContentFileAttribute", StringComparison.Ordinal)) ||
+        (ns.Equals("System.Windows", StringComparison.Ordinal) &&
+            name.Equals("ThemeInfoAttribute", StringComparison.Ordinal));
+
+    /// <summary>
+    /// Removes inert WPF assembly/module attribute rows (see
+    /// <see cref="IsInertWpfAssemblyAttribute"/>) whose type scope is a
+    /// joint convertible source assembly. Only exact-named inert markers
+    /// are removed; anything else keeps today's retarget/gap behavior.
+    /// Returns stripped rows. Idempotent: a converted module has no such
+    /// rows left, so a re-run strips nothing.
+    /// </summary>
+    public static int StripInertWpfAssemblyAttributes(Mono.Cecil.ModuleDefinition module)
+    {
+        ArgumentNullException.ThrowIfNull(module);
+        int stripped = 0;
+        foreach (var owner in new[] { module.Assembly.CustomAttributes, module.CustomAttributes })
+        {
+            foreach (var attr in owner.ToList())
+            {
+                var attributeType = attr.AttributeType;
+                while (attributeType is Mono.Cecil.TypeSpecification spec)
+                    attributeType = spec.ElementType;
+                if (attributeType is null || attributeType.Scope is not Mono.Cecil.AssemblyNameReference scope)
+                    continue;
+                if (!JointMap.WpfSourceAssemblies.Contains(scope.Name) &&
+                    !JointMap.WinFormsSourceAssemblies.Contains(scope.Name))
+                    continue;
+                if (!IsInertWpfAssemblyAttribute(attributeType.Namespace, attributeType.Name))
+                    continue;
+                owner.Remove(attr);
+                stripped++;
+            }
+        }
+        return stripped;
+    }
+
+    /// <summary>
     /// Lowers one module through the composed joint policy: WinForms fork
     /// pass first, WPF pass second (see <see cref="JointPipeline"/> order),
     /// the WindowsFormsIntegration joint interface untouched. WPF-routed
@@ -172,7 +227,8 @@ public static class JointTestAppPackager
         AssemblyNameReference forkScope,
         AssemblyNameReference engineScope,
         AssemblyNameReference drawingScope,
-        IReadOnlyDictionary<string, IReadOnlySet<string>>? providerTypeSets = null)
+        IReadOnlyDictionary<string, IReadOnlySet<string>>? providerTypeSets = null,
+        IReadOnlySet<string>? keepScopes = null)
     {
         ArgumentNullException.ThrowIfNull(module);
         ArgumentNullException.ThrowIfNull(forkScope);
@@ -188,6 +244,11 @@ public static class JointTestAppPackager
             if (typeRef.Scope is not AssemblyNameReference scope) continue;
             if (!JointMap.WpfSourceAssemblies.Contains(scope.Name) &&
                 !JointMap.WinFormsSourceAssemblies.Contains(scope.Name)) continue;
+            // Bundle-side keep (CREDIT1300-IMP4): scopes the runtime bundle
+            // (or a packaged private member) resolves stay untouched — never
+            // re-scoped to an engine, never existence-checked against one.
+            // Null keeps joint behavior byte-identical.
+            if (keepScopes?.Contains(scope.Name) == true) continue;
             var fullName = typeRef.FullName;
             var dot = fullName.LastIndexOf('.');
             if (dot <= 0) continue;
@@ -251,6 +312,21 @@ public static class JointTestAppPackager
                     }
                     break;
                 case JointTargetKind.Collision or JointTargetKind.Gap:
+                    // Bridge-aware collision resolution (CREDIT1300-IMP5):
+                    // the SystemEventsBridgeAdapter subscribes the real
+                    // broadcast and forwards the overlap surface into the
+                    // engine adapter, so refs to the bridge surface bind the
+                    // engine — but ONLY when the engine actually declares
+                    // the exact type (fail closed: otherwise the collision
+                    // gap stands, never a silent re-scope).
+                    if (route.Kind == JointTargetKind.Collision &&
+                        JointMap.WpfSystemEventsShimTypes.Contains(fullName) &&
+                        TypeExists(providerTypeSets, engineScope.Name, fullName))
+                    {
+                        typeRef.Scope = engineScope;
+                        wpf++;
+                        break;
+                    }
                     var key = route.Kind + "|" + scope.Name + "|" + fullName;
                     if (seenGap.Add(key))
                         gaps.Add(new JointGap(scope.Name,
@@ -287,7 +363,7 @@ public static class JointTestAppPackager
         }
     }
 
-    private static bool HasRoutedRefs(string path)
+    internal static bool HasRoutedRefs(string path)
     {
         using var assembly = AssemblyDefinition.ReadAssembly(path);
         foreach (var typeRef in CollectAllTypeRefs(assembly.MainModule))
@@ -304,7 +380,7 @@ public static class JointTestAppPackager
     /// Removes provider scopes no type reference uses: a pure-WPF node
     /// must not carry an unused fork reference (and symmetrical cases).
     /// </summary>
-    private static void PruneUnusedProviderScopes(
+    internal static void PruneUnusedProviderScopes(
         ModuleDefinition module,
         AssemblyNameReference forkScope,
         AssemblyNameReference engineScope,
@@ -328,7 +404,7 @@ public static class JointTestAppPackager
     /// The joint-interface scope is always kept: the runtime bridge (not a
     /// packaged file) resolves it.
     /// </summary>
-    private static void PruneDrainedSourceScopes(ModuleDefinition module)
+    internal static void PruneDrainedSourceScopes(ModuleDefinition module)
     {
         var live = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var typeRef in CollectAllTypeRefs(module))
@@ -443,12 +519,23 @@ public static class JointTestAppPackager
                 {
                     using var assembly = AssemblyDefinition.ReadAssembly(node.Path);
                     var module = assembly.MainModule;
+                    // RVW3293-RT5: strip wasm-undecodable WPF metadata rows
+                    // before routing (see StripInertWpfAssemblyAttributes):
+                    // served joint entry dies in the Mono loader on these
+                    // blobs (custom-attrs.c:1980 + assembly.c:1673, exit 1).
+                    int stripped = StripInertWpfAssemblyAttributes(module);
                     var capabilities = JointCapabilities.Detect(module);
                     var forkScope = EnsureScope(module, ForkAssembly, providerAssemblyPaths);
                     var engineScope = EnsureScope(module, EngineAssembly, providerAssemblyPaths);
                     var drawingScope = EnsureScope(module, DrawingAssembly, providerAssemblyPaths);
                     (fork, wpf, drawing, nodeGaps) = RetargetModule(
                         module, capabilities, forkScope, engineScope, drawingScope, typeSets);
+                    // Stripped inert WPF metadata rows count as WPF lowering
+                    // work: a markers-only node (no code refs left) converts
+                    // with changed bytes, and must never report a zero-work
+                    // conversion (see the ConvertedBytes idempotency
+                    // invariant). Re-runs strip nothing, so idempotency holds.
+                    wpf += stripped;
                     PruneUnusedProviderScopes(module, forkScope, engineScope, drawingScope);
                     if (node.Name.Equals(EntryAssembly, StringComparison.OrdinalIgnoreCase))
                     {
@@ -471,7 +558,7 @@ public static class JointTestAppPackager
                     break;
                 }
                 var outputSha = JointClosure.HashOf(tempPath);
-                var file = Uri.EscapeDataString(node.Name) + "." + outputSha + ".bin";
+                var file = PackageAssembly.AssetFileName(node.Name, outputSha);
                 File.Move(tempPath, Path.Combine(outputDirectory, file));
                 foreach (var (reference, version) in refVersions)
                 {
@@ -538,7 +625,7 @@ public static class JointTestAppPackager
     private static string ProviderOf(string name) =>
         name == "WindowsFormsIntegration" ? "interop-bridge" : "browser-bundle";
 
-    private static AssemblyNameReference EnsureScope(
+    internal static AssemblyNameReference EnsureScope(
         ModuleDefinition module, string name, IReadOnlyDictionary<string, string> providerAssemblyPaths)
     {
         var existing = module.AssemblyReferences.FirstOrDefault(
@@ -727,6 +814,12 @@ public static class JointTestAppPackager
                 foreach (var attribute in method.CustomAttributes) roots.Add(attribute.AttributeType);
         }
         foreach (var attribute in module.CustomAttributes) roots.Add(attribute.AttributeType);
+        // Assembly-level attributes participate in routing too: unwalked
+        // rows used to slip through (the joint entry's ThemeInfo poison).
+        // Inert WPF markers are stripped before routing (see
+        // StripInertWpfAssemblyAttributes); anything left here routes or
+        // gaps honestly instead of shipping unscoped.
+        foreach (var attribute in module.Assembly.CustomAttributes) roots.Add(attribute.AttributeType);
 
         var seen = new HashSet<TypeReference>();
         foreach (var root in roots)

@@ -36,6 +36,18 @@ public sealed class SyncfusionWin11RedirectTests
         }
     }
 
+    // TMPMOVE canonical-only: fixtures under retained/.
+    private static string RepoRoot =>
+        Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+    private static string SyncfusionApps
+    {
+        get
+        {
+            var canon = Path.Combine(RepoRoot, ".artifacts", "tmp", "retained", "wfwasm-syncfusion-apps");
+            return canon;
+        }
+    }
+
     [Fact]
     public void Redirect_Synthetic_Win11Check_Answers_False()
     {
@@ -64,7 +76,7 @@ public sealed class SyncfusionWin11RedirectTests
     [Fact]
     public void Redirect_Real_Win11Check_Answers_False()
     {
-        string src = @"E:\tmp\wfwasm-syncfusion-apps\syncfusion-calendar\Syncfusion.Shared.Base.dll";
+        string src = Path.Combine(SyncfusionApps, "syncfusion-calendar", "Syncfusion.Shared.Base.dll");
         string tmp = Path.Combine(Path.GetTempPath(), $"SfReal_{Guid.NewGuid()}.dll");
         File.Copy(src, tmp);
         try

@@ -3,7 +3,7 @@ using System.Diagnostics;
 namespace DesktopWasm.Core.Tests;
 
 /// <summary>
-/// Mechanism tests for scripts/Ensure-FullAssembly.ps1: staging copies the
+/// Mechanism tests for scripts/wpf/Ensure-FullAssembly.ps1: staging copies the
 /// source assembly byte-identical with a hash sidecar, skips when up to date,
 /// hard-errors on an explicit missing source, and soft-skips when nothing is
 /// discoverable. The fixture stages our own built Core assembly, so the test
@@ -11,6 +11,9 @@ namespace DesktopWasm.Core.Tests;
 /// </summary>
 public sealed class StagingScriptTests
 {
+    private static DirectoryInfo CreateWorkDirectory() => Directory.CreateDirectory(
+        Path.Combine(RepoRoot(), ".artifacts", "tmp", "tests", "core-staging", Guid.NewGuid().ToString("N")));
+
     private static string RepoRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
@@ -65,7 +68,7 @@ public sealed class StagingScriptTests
         var shell = FindShell();
         if (shell is null) return; // No PowerShell on this machine; mechanism covered by host build gate.
         var root = RepoRoot();
-        var work = Directory.CreateTempSubdirectory("fullasm-test-");
+        var work = CreateWorkDirectory();
         try
         {
             var srcDir = Directory.CreateDirectory(Path.Combine(work.FullName, "src")).FullName;
@@ -73,7 +76,7 @@ public sealed class StagingScriptTests
             var pristine = typeof(WasmDispatcherPump).Assembly.Location;
             File.Copy(pristine, Path.Combine(srcDir, "FixtureLib.dll"));
 
-            var (exit, first) = RunScript(shell, Path.Combine(root, "scripts", "Ensure-FullAssembly.ps1"),
+            var (exit, first) = RunScript(shell, Path.Combine(root, "scripts", "wpf", "Ensure-FullAssembly.ps1"),
                 "-AssemblyName FixtureLib -SourceDir \"" + srcDir + "\" -IntermediateDir \"" + objDir + "\"", root);
             Assert.Equal(0, exit);
             var staged = Path.Combine(objDir, "full-assembly", "FixtureLib.dll");
@@ -81,7 +84,7 @@ public sealed class StagingScriptTests
             Assert.True(File.Exists(staged + ".pristine.sha256"));
             Assert.Equal(File.ReadAllBytes(Path.Combine(srcDir, "FixtureLib.dll")), File.ReadAllBytes(staged));
 
-            var (exit2, second) = RunScript(shell, Path.Combine(root, "scripts", "Ensure-FullAssembly.ps1"),
+            var (exit2, second) = RunScript(shell, Path.Combine(root, "scripts", "wpf", "Ensure-FullAssembly.ps1"),
                 "-AssemblyName FixtureLib -SourceDir \"" + srcDir + "\" -IntermediateDir \"" + objDir + "\"", root);
             Assert.Equal(0, exit2);
             Assert.Contains("up to date", second, StringComparison.OrdinalIgnoreCase);
@@ -98,10 +101,10 @@ public sealed class StagingScriptTests
         var shell = FindShell();
         if (shell is null) return;
         var root = RepoRoot();
-        var work = Directory.CreateTempSubdirectory("fullasm-err-");
+        var work = CreateWorkDirectory();
         try
         {
-            var (exit, _) = RunScript(shell, Path.Combine(root, "scripts", "Ensure-FullAssembly.ps1"),
+            var (exit, _) = RunScript(shell, Path.Combine(root, "scripts", "wpf", "Ensure-FullAssembly.ps1"),
                 "-AssemblyName FixtureLib -SourceDir \"" + Path.Combine(work.FullName, "nope") + "\" -IntermediateDir \"" + work.FullName + "\"", root);
             Assert.NotEqual(0, exit);
         }
@@ -117,10 +120,10 @@ public sealed class StagingScriptTests
         var shell = FindShell();
         if (shell is null) return;
         var root = RepoRoot();
-        var work = Directory.CreateTempSubdirectory("fullasm-skip-");
+        var work = CreateWorkDirectory();
         try
         {
-            var (exit, output) = RunScript(shell, Path.Combine(root, "scripts", "Ensure-FullAssembly.ps1"),
+            var (exit, output) = RunScript(shell, Path.Combine(root, "scripts", "wpf", "Ensure-FullAssembly.ps1"),
                 "-AssemblyName NoSuchAssemblyXYZ -IntermediateDir \"" + work.FullName + "\"", root);
             Assert.Equal(0, exit);
             Assert.Contains("skipping", output, StringComparison.OrdinalIgnoreCase);

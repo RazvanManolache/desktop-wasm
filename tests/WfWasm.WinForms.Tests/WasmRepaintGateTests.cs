@@ -11,8 +11,13 @@ namespace WfWasm.WinForms.Tests;
 // layer per repaint made photo drag lag seconds behind the cursor).
 // Region pass: rect overloads union per control (null = whole control)
 // so the host re-rasters only the dirty region of self-painted layers.
-public sealed class WasmRepaintGateTests
+[Collection("WasmRepaintGate")]
+public sealed class WasmRepaintGateTests : IDisposable
 {
+    public WasmRepaintGateTests() => System.Windows.Forms.WasmRepaintGate.DrainDirty(out _);
+
+    public void Dispose() => System.Windows.Forms.WasmRepaintGate.DrainDirty(out _);
+
     [Fact]
     public void RequestRepaint_Marks_Control_Drain_Returns_It()
     {

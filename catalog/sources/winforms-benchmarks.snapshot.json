@@ -1,6 +1,6 @@
 {
   "name": "winforms-benchmarks",
-  "source": "<winforms-root>\\src\\WfWasm.CanvasHost\\DesktopBenchmarks.json",
+  "source": "E:\\AI\\Code\\WindowsForms\\src\\WfWasm.CanvasHost\\DesktopBenchmarks.json",
   "sourceSha256": "6879E925958B5F5F84E33EC92AB83C945A9AA7B7B701E08E230C5ACB2B1AAE75",
   "extractedUtc": "2026-10-30T12:03:16Z",
   "data": {

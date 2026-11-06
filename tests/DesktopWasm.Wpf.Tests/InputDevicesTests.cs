@@ -164,6 +164,18 @@ public sealed class InputDevicesTests : IDisposable
     }
 
     [Fact]
+    public void Keyboard_focused_element_matches_genuine_wpf_contract()
+    {
+        // Converted binaries (TestApp/AvalonDock joint closure) bind
+        // Keyboard.get_FocusedElement with the genuine-WPF IInputElement
+        // return contract. A narrower engine type resolves no method and
+        // surfaces as MissingMethodException once the joint package loads
+        // in-process during full runs.
+        Assert.Equal(typeof(IInputElement), typeof(Keyboard).GetProperty("FocusedElement")!.PropertyType);
+        Assert.Equal(typeof(IInputElement), typeof(KeyboardDevice).GetProperty("FocusedElement")!.PropertyType);
+    }
+
+    [Fact]
     public void Gestures_match_convert_and_display()
     {
         var save = new KeyGesture(Key.N, ModifierKeys.Control);

@@ -15,12 +15,22 @@ using FormsForm = System.Windows.Forms.Form;
 /// </summary>
 public sealed class EvalScaleTests
 {
-    private const string SmallDir = @"E:\tmp\rewritten-small";
+    // TMPMOVE canonical-only: rewritten fixtures under retained/.
+    private static string RepoRoot =>
+        Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+    private static string SmallDir
+    {
+        get
+        {
+            var canon = Path.Combine(RepoRoot, ".artifacts", "tmp", "retained", "rewritten-small");
+            return canon;
+        }
+    }
 
     private static Assembly LoadSmallApp(string file, string expectName)
     {
         string path = Path.Combine(SmallDir, file);
-        Assert.True(File.Exists(path), $"regenerate via E:/tmp/rewrite-small.ps1: {path}");
+        Assert.True(File.Exists(path), $"missing rewritten fixture (expected at retained/rewritten-small): {path}");
         var app = Assembly.LoadFrom(path);
         Assert.Equal(expectName, app.GetName().Name);
         return app;

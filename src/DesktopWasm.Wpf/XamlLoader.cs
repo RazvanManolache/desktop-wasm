@@ -703,6 +703,16 @@ public static partial class XamlLoader
                 ReadElementItemContainerStyle(reader, lineInfo, itemsStyle);
                 return;
             }
+            if (element is DataGrid gridHeaderStyle && parts[1] == "ColumnHeaderStyle")
+            {
+                ReadElementColumnHeaderStyle(reader, lineInfo, gridHeaderStyle);
+                return;
+            }
+            if (element is ListView listView && parts[1] == "View")
+            {
+                ReadElementListViewView(reader, lineInfo, listView);
+                return;
+            }
             if (element is ListBox legacyList && parts[1] is "ItemTemplate" or "ItemsPanel")
             {
                 if (parts[1] == "ItemTemplate") ReadListBoxItemTemplate(reader, lineInfo, legacyList, scope);
@@ -1694,6 +1704,118 @@ public static partial class XamlLoader
         if (reader.NodeType != XmlNodeType.EndElement)
             throw Fail(lineInfo, "Malformed <ItemsControl.ItemContainerStyle> (one Style only).");
         reader.Read(); // past the property end tag
+    }
+
+    /// <summary>
+    /// Reads a DataGrid.ColumnHeaderStyle property (positioned on the
+    /// property start tag): a single nested Style retained on the grid, like
+    /// WPF (applying it to the rendered header band stays a follow-up).
+    /// </summary>
+    private static void ReadElementColumnHeaderStyle(XmlReader reader, IXmlLineInfo lineInfo, DataGrid target)
+    {
+        if (reader.IsEmptyElement)
+            throw Fail(lineInfo, "<DataGrid.ColumnHeaderStyle/> is empty (a <Style> is required).");
+        reader.Read(); // past the property start tag
+        SkipWhitespace(reader);
+        if (reader.NodeType != XmlNodeType.Element || reader.LocalName != "Style")
+            throw Fail(lineInfo, "<DataGrid.ColumnHeaderStyle> needs a nested <Style>.");
+        target.ColumnHeaderStyle = ReadStyleElement(reader, lineInfo);
+        SkipWhitespace(reader);
+        if (reader.NodeType != XmlNodeType.EndElement)
+            throw Fail(lineInfo, "Malformed <DataGrid.ColumnHeaderStyle> (one Style only).");
+        reader.Read(); // past the property end tag
+    }
+
+    /// <summary>
+    /// Reads a ListView.View property (positioned on the property start
+    /// tag): a single nested GridView retained on the list, like WPF.
+    /// Columns keep Header/Width/DisplayMemberBinding; rendering the
+    /// grid view stays a follow-up.
+    /// </summary>
+    private static void ReadElementListViewView(XmlReader reader, IXmlLineInfo lineInfo, ListView target)
+    {
+        if (reader.IsEmptyElement)
+            throw Fail(lineInfo, "<ListView.View/> is empty (a <GridView> is required).");
+        reader.Read(); // past the property start tag
+        SkipWhitespace(reader);
+        if (reader.NodeType != XmlNodeType.Element || reader.LocalName != "GridView")
+            throw Fail(lineInfo, $"<{reader.LocalName}> is not a view (a <GridView> is required).");
+        target.View = ReadGridViewElement(reader, lineInfo);
+        SkipWhitespace(reader);
+        if (reader.NodeType != XmlNodeType.EndElement)
+            throw Fail(lineInfo, "Malformed <ListView.View> (one GridView only).");
+        reader.Read(); // past the property end tag
+    }
+
+    /// <summary>
+    /// Reads a GridView element (positioned on its start tag): GridViewColumn
+    /// children land in order with Header/Width/DisplayMemberBinding. Other
+    /// attributes stay loud; non-column children stay loud.
+    /// </summary>
+    private static GridView ReadGridViewElement(XmlReader reader, IXmlLineInfo lineInfo)
+    {
+        var view = new GridView();
+        if (reader.HasAttributes)
+        {
+            while (reader.MoveToNextAttribute())
+            {
+                if (reader.Prefix == "xmlns" || reader.Name == "xmlns") continue;
+                throw Fail(lineInfo, $"'{reader.LocalName}' is not valid on <GridView> (columns only).");
+            }
+            reader.MoveToElement();
+        }
+        var wasEmpty = reader.IsEmptyElement;
+        reader.Read(); // past the GridView start tag
+        if (wasEmpty) return view;
+        while (true)
+        {
+            SkipWhitespace(reader);
+            if (reader.NodeType == XmlNodeType.EndElement) break;
+            if (reader.EOF) throw Fail(lineInfo, "Unterminated <GridView>.");
+            if (reader.NodeType != XmlNodeType.Element || reader.LocalName != "GridViewColumn")
+                throw Fail(lineInfo, $"Expected <GridViewColumn> inside <GridView> (found <{reader.LocalName}>).");
+            var column = new GridViewColumn();
+            if (reader.HasAttributes)
+            {
+                while (reader.MoveToNextAttribute())
+                {
+                    if (reader.Prefix == "xmlns" || reader.Name == "xmlns") continue;
+                    switch (reader.LocalName)
+                    {
+                        case "Header": column.Header = reader.Value; break;
+                        case "Width":
+                            if (!double.TryParse(reader.Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var width))
+                                throw Fail(lineInfo, $"'{reader.Value}' is not a width for <GridViewColumn> (pixels).");
+                            column.Width = width;
+                            break;
+                        case "DisplayMemberBinding":
+                            {
+                                var text = reader.Value.Trim();
+                                if (!text.StartsWith("{Binding", StringComparison.Ordinal) || !text.EndsWith('}'))
+                                    throw Fail(lineInfo, $"'{text}' is not a Binding for <GridViewColumn> (use DisplayMemberBinding=\"{{Binding Path}}\").");
+                                column.DisplayMemberBinding = ParseBinding(text["{Binding".Length..^1], text, lineInfo);
+                            }
+                            break;
+                        default: throw Fail(lineInfo, $"'{reader.LocalName}' is not valid on <GridViewColumn> (Header/Width/DisplayMemberBinding).");
+                    }
+                }
+                reader.MoveToElement();
+            }
+            var columnEmpty = reader.IsEmptyElement;
+            reader.Read(); // past the column start tag
+            if (!columnEmpty)
+            {
+                while (reader.NodeType != XmlNodeType.EndElement)
+                {
+                    if (reader.EOF) throw Fail(lineInfo, "Unterminated <GridViewColumn>.");
+                    reader.Read();
+                }
+                reader.Read(); // past the column end tag
+            }
+            view.Columns.Add(column);
+        }
+        reader.Read(); // past </GridView>
+        return view;
     }
 
     /// <summary>
@@ -3006,6 +3128,14 @@ public static partial class XamlLoader
         PackUri.ResolvedPackUri parsed;
         try { parsed = PackUri.Parse(source); }
         catch (FormatException ex) { throw Fail(lineInfo, $"'{source}' is not a valid pack URI ({ex.Message})."); }
+        ResourceDictionary InSourceScope(Func<ResourceDictionary> read)
+        {
+            var previous = CustomElementSource;
+            if (parsed.Assembly is not null && WpfAppBoot.PreferredAssembly(parsed.Assembly) is { } owner)
+                CustomElementSource = owner;
+            try { return read(); }
+            finally { CustomElementSource = previous; }
+        }
         // The WPF Fluent theme assembly never ships to the browser: the
         // engine carries the theme keys converted Fluent-era apps merge.
         if (PackUri.KeyFor(parsed) == PackUri.KeyFor(FluentTheme.PackUri))
@@ -3032,7 +3162,7 @@ public static partial class XamlLoader
             var baml = WpfAppBoot.FindPackBytes(System.IO.Path.ChangeExtension(parsed.Path, ".baml")!, parsed.Assembly);
             if (baml is null)
                 throw Fail(lineInfo, $"No pack resource registered for '{source}' (Application.RegisterPackResource).");
-            try { dict.MergedDictionaries.Add(LoadBamlDictionary(baml, lineInfo, depth)); }
+            try { dict.MergedDictionaries.Add(InSourceScope(() => LoadBamlDictionary(baml, lineInfo, depth))); }
             catch (XamlLoadException ex)
             {
                 // Name the merge Source like the loose path names its file:
@@ -3042,7 +3172,7 @@ public static partial class XamlLoader
             dict.Source = new Uri(source, UriKind.RelativeOrAbsolute);
             return;
         }
-        try { dict.MergedDictionaries.Add(LoadResourceDictionary(xaml, depth)); }
+        try { dict.MergedDictionaries.Add(InSourceScope(() => LoadResourceDictionary(xaml, depth))); }
         catch (XamlLoadException ex)
         {
             // Name the merge Source like the BAML path names its file:

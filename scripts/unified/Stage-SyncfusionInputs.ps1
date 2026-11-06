@@ -1,7 +1,7 @@
 ﻿# Stages prepared Syncfusion WinForms app inputs byte-exact into the unified root.
 #
 # Read-only on sources: the prepared build outputs under WF_SYNCFUSION_APPS_ROOT
-# (default E:/tmp/wfwasm-syncfusion-apps) and the upstream Flags content are
+# (canonical retained/wfwasm-syncfusion-apps) and the upstream Flags content are
 # never modified, never rebuilt, never downloaded. This script copies required
 # managed-assembly inputs + loose content into
 # inputs/winforms/syncfusion-staging/<slug>/ with deterministic SHA-256 hashes,
@@ -28,7 +28,7 @@ param(
     'syncfusion-rating', 'syncfusion-font-combo'
   ),
   [string]$SourceAppsRoot = $env:WF_SYNCFUSION_APPS_ROOT,
-  [string]$SourceFlagsDir = 'E:/tmp/wfwasm-inputs/syncfusion-winforms-demos/autocomplete/GettingStarted/CS/Flags',
+  [string]$SourceFlagsDir = '',
   [string]$DestRoot = '',
   [string]$ReceiptPath = '',
   [switch]$NegativeCheck
@@ -38,7 +38,11 @@ $ErrorActionPreference = 'Stop'
 # Normalize: `-File` CLI invocation flattens arrays to one comma-joined string.
 $AppSlugs = @($AppSlugs | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 $repoRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-if ([string]::IsNullOrWhiteSpace($SourceAppsRoot)) { $SourceAppsRoot = 'E:/tmp/wfwasm-syncfusion-apps' }
+# TMPMOVE canonical-only: retained/<name>. Env override WF_SYNCFUSION_APPS_ROOT
+# still wins when set; no legacy fallback.
+if ([string]::IsNullOrWhiteSpace($SourceAppsRoot)) { $SourceAppsRoot = $env:WF_SYNCFUSION_APPS_ROOT }
+if ([string]::IsNullOrWhiteSpace($SourceAppsRoot)) { $SourceAppsRoot = Join-Path $repoRoot '.artifacts/tmp/retained/wfwasm-syncfusion-apps' }
+if ([string]::IsNullOrWhiteSpace($SourceFlagsDir)) { $SourceFlagsDir = Join-Path $repoRoot '.artifacts/tmp/retained/wfwasm-inputs/syncfusion-winforms-demos/autocomplete/GettingStarted/CS/Flags' }
 if ([string]::IsNullOrWhiteSpace($DestRoot)) { $DestRoot = Join-Path $repoRoot 'inputs/winforms/syncfusion-staging' }
 if ([string]::IsNullOrWhiteSpace($ReceiptPath)) { $ReceiptPath = Join-Path $repoRoot 'provenance/receipts/rvw0900-syncfusion-input.json' }
 

@@ -152,8 +152,8 @@ public sealed class ApplicationPackageLoaderTests
         var text = WpfAppBoot.FindPackText("Themes/xamldisplayer.xaml", "ShowMeTheXAML.AvalonEdit");
         Assert.NotNull(text);
         var dict = XamlLoader.LoadResourceDictionary(text);
-        var editorAssembly = AppDomain.CurrentDomain.GetAssemblies()
-            .First(a => string.Equals(a.GetName().Name, "ICSharpCode.AvalonEdit", StringComparison.OrdinalIgnoreCase));
+        var editorAssembly = WpfAppBoot.PreferredAssembly("ICSharpCode.AvalonEdit");
+        Assert.NotNull(editorAssembly);
         var editorType = editorAssembly.GetType("ICSharpCode.AvalonEdit.TextEditor");
         Assert.NotNull(editorType);
         Assert.True(dict.TryGetValue("AvalonTextEditorXamlDisplay", out var style));

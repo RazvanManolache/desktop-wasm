@@ -15,7 +15,11 @@ public sealed class BamlInlineResourcesTests
 {
     private const short TWindow = -739;
     private const short TGrid = -254;
-    private const short TBorder = -72;
+    // Genuine net10.0-windows oracle (E:/tmp/fwborder, built 2026-11-04):
+    // a real <Border> in Window/Grid content emits ElementStart id -50,
+    // the same id the staged template visuals use (KnownBorder). -72 was
+    // a fabricated input id the engine never knew, not a real Border.
+    private const short TBorder = -50;
     private const short TTextBlock = -638;
     private const short TStyle = -620;
     private const short TResourceDictionary = -524;

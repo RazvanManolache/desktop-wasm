@@ -1,5 +1,5 @@
-using System.Collections.Concurrent;
 using System.Reflection;
+using System.Runtime.Loader;
 using System.Security.Cryptography;
 using DesktopWasm.Core;
 
@@ -11,14 +11,14 @@ public sealed class ApplicationPackageLoader : IDisposable
     private readonly ApplicationPackage _package;
     private readonly Dictionary<string, byte[]> _images = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Assembly> _loaded = new(StringComparer.OrdinalIgnoreCase);
-    private readonly ResolveEventHandler _resolve;
+    private readonly PackageLoadContext _context;
     private readonly Func<string, Assembly?> _packResolver;
     private bool _disposed;
 
     private ApplicationPackageLoader(ApplicationPackage package)
     {
         _package = package;
-        _resolve = (_, args) => Load(new AssemblyName(args.Name).Name!);
+        _context = new PackageLoadContext(this);
         _packResolver = Load;
     }
 
@@ -55,7 +55,6 @@ public sealed class ApplicationPackageLoader : IDisposable
             return (assembly.Name, Bytes: bytes);
         }));
         foreach (var item in images) loader._images.Add(item.Name, item.Bytes);
-        AppDomain.CurrentDomain.AssemblyResolve += loader._resolve;
         WpfAppBoot.PackAssemblyResolver = loader._packResolver;
         return loader;
     }
@@ -69,27 +68,23 @@ public sealed class ApplicationPackageLoader : IDisposable
         return WpfAppBoot.Boot(entry, report);
     }
 
-    // Identities shared across loaders in one process (the test AppDomain
-    // boots several staged packages): byte-identical images resolve to one
-    // Assembly so converted-type lookup never sees phantom duplicates.
-    // Different bytes keep separate identities (a real conflict still throws
-    // at resolution). Assemblies cannot unload, so entries live as long as
-    // the process, like the images themselves.
-    private static readonly ConcurrentDictionary<string, (string Sha256, Assembly Assembly)> _sharedImages = new();
+    // Resolve the verified private closure before process-wide handlers or
+    // another session's images. Engine/framework assemblies fall through to
+    // the default context so every converted control shares the host contracts.
+    private sealed class PackageLoadContext(ApplicationPackageLoader owner)
+        : AssemblyLoadContext(isCollectible: false)
+    {
+        protected override Assembly? Load(AssemblyName name) =>
+            name.Name is { } simple ? owner.Load(simple) : null;
+    }
 
     private Assembly? Load(string name)
     {
         if (_loaded.TryGetValue(name, out var assembly)) return assembly;
         if (!_images.TryGetValue(name, out var image)) return null;
-        var sha = _package.Assemblies.FirstOrDefault(a => a.Name == name)?.Sha256;
-        if (sha is not null && _sharedImages.TryGetValue(name, out var shared) && shared.Sha256 == sha)
-        {
-            _loaded.Add(name, shared.Assembly);
-            return shared.Assembly;
-        }
-        assembly = Assembly.Load(image);
+        using var stream = new MemoryStream(image, writable: false);
+        assembly = _context.LoadFromStream(stream);
         if (assembly.GetName().Name != name) throw new InvalidDataException($"Package image identity does not match '{name}'.");
-        if (sha is not null) _sharedImages.TryAdd(name, (sha, assembly));
         _loaded.Add(name, assembly);
         return assembly;
     }
@@ -98,7 +93,6 @@ public sealed class ApplicationPackageLoader : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        AppDomain.CurrentDomain.AssemblyResolve -= _resolve;
         if (ReferenceEquals(WpfAppBoot.PackAssemblyResolver, _packResolver))
             WpfAppBoot.PackAssemblyResolver = null;
         _images.Clear(); _loaded.Clear();

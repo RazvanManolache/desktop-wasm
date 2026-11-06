@@ -1,4 +1,4 @@
-import {AppSessions, channel, runtimeOriginFor} from './shell-core.mjs';
+import {AppSessions, channel, runtimeOriginFor, sessionUrl} from './shell-core.mjs';
 
 const $ = id => document.getElementById(id);
 const time = ms => (ms / 1000).toFixed(2) + ' s';
@@ -73,7 +73,7 @@ function select(app, push = true) {
         return;
     }
     diagnosticsOn = false; renderDiagnostics();
-    try { sessions.select(app); } catch (error) { status('App could not start', error.message, 'error', true); }
+    try { const live = sessions.select(app); history.replaceState(null, '', sessionUrl(app, live.id)); } catch (error) { status('App could not start', error.message, 'error', true); }
 }
 function fromUrl() {
     const raw = /^\/app\/([^/]+)/.exec(location.pathname)?.[1];
@@ -144,6 +144,10 @@ if (['/dashboard','/fxlab'].includes(location.pathname)) {
                 frame.referrerPolicy = 'origin';
                 // Separate runtime/storage; top-level navigation and popups stay disabled.
                 frame.setAttribute('sandbox','allow-scripts allow-same-origin allow-downloads');
+                // Paste needs clipboard-read: without it the guest frame's
+                // navigator.clipboard.readText() is denied by permissions policy
+                // and Ctrl+V commits nothing (observed empty field).
+                frame.setAttribute('allow','clipboard-read');
                 frame.src = url; $('runtime-host').replaceChildren(frame); return frame;
             }, unmount: frame => frame.remove(), changed: renderSession});
         fromUrl();

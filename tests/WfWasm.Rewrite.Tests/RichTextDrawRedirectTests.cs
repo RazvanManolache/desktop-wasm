@@ -13,6 +13,26 @@ using Xunit;
 // survive headless).
 public sealed class RichTextDrawRedirectTests
 {
+    // TMPMOVE canonical-only: fixtures under retained/.
+    private static string RepoRoot =>
+        Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+    private static string RewrittenSmall
+    {
+        get
+        {
+            var canon = Path.Combine(RepoRoot, ".artifacts", "tmp", "retained", "rewritten-small");
+            return canon;
+        }
+    }
+    private static string SyncfusionApps
+    {
+        get
+        {
+            var canon = Path.Combine(RepoRoot, ".artifacts", "tmp", "retained", "wfwasm-syncfusion-apps");
+            return canon;
+        }
+    }
+
     private static void BuildSynthetic(string tempOut)
     {
         var asmName = new AssemblyNameDefinition("RtfDrawSynth", new Version(1, 0, 0, 0));
@@ -196,13 +216,13 @@ public sealed class RichTextDrawRedirectTests
         // runtime (MissingMethod on desktop, TypeLoad in wasm) even though
         // the metadata looks right. Runs the rules over pristine vendor
         // bytes and JITs the result with the real fork on the load path.
-        string src = @"E:\tmp\wfwasm-syncfusion-apps\syncfusion-diagram\Syncfusion.Diagram.Base.dll";
+        string src = Path.Combine(SyncfusionApps, "syncfusion-diagram", "Syncfusion.Diagram.Base.dll");
         string tmp = Path.Combine(Path.GetTempPath(), $"RtfDrawReal_{Guid.NewGuid()}.dll");
         try
         {
             byte[] bytes = File.ReadAllBytes(src);
             using var resolver = new FrameworkResolver(Path.GetDirectoryName(src),
-                [@"E:\tmp\rewritten-small", @"E:\tmp\wfwasm-syncfusion-apps\syncfusion-diagram"]);
+                [RewrittenSmall, Path.Combine(SyncfusionApps, "syncfusion-diagram")]);
             var readerParams = new ReaderParameters { AssemblyResolver = resolver };
             using (var ms = new MemoryStream(bytes))
             using (var read = AssemblyDefinition.ReadAssembly(ms, readerParams))
@@ -219,8 +239,8 @@ public sealed class RichTextDrawRedirectTests
                 {
                     foreach (string dir in new[]
                     {
-                        @"E:\tmp\rewritten-small",
-                        @"E:\tmp\wfwasm-syncfusion-apps\syncfusion-diagram",
+                        RewrittenSmall,
+                        Path.Combine(SyncfusionApps, "syncfusion-diagram"),
                     })
                     {
                         string p = Path.Combine(dir, name.Name + ".dll");

@@ -1,9 +1,10 @@
 // PNG decode: minimal spec reader for Image.FromStream/FromFile.
-// Supports non-interlaced PNG (color types 0/2/3/4/6, 1/2/4/8/16-bit) via
-// DeflateStream + all five filters, mapped to 32bpp ARGB. Interlaced
-// (Adam7) files and formats other than PNG/BMP/GIF/JPEG throw
-// NotSupportedException; corrupt data throws OutOfMemoryException
-// (the documented GDI+ quirk). BMP/GIF/JPEG route to BmpCodec/GifCodec/JpegCodec.
+// Supports PNG (color types 0/2/3/4/6, 1/2/4/8/16-bit), plain and
+// Adam7-interlaced (PngAdam7 pass scatter), via DeflateStream + all
+// five filters, mapped to 32bpp ARGB. Formats other than
+// PNG/BMP/GIF/JPEG throw NotSupportedException; corrupt data throws
+// OutOfMemoryException (the documented GDI+ quirk).
+// BMP/GIF/JPEG route to BmpCodec/GifCodec/JpegCodec.
 
 namespace System.Drawing;
 
@@ -103,6 +104,7 @@ internal static class PngCodec
         int bitDepth = 0;
         int colorType = 0;
         bool haveHeader = false;
+        bool interlaced = false;
         byte[] palette = [];
         byte[] transparency = [];
         var idat = new MemoryStream();
@@ -132,8 +134,9 @@ internal static class PngCodec
                     colorType = data[9];
                     if (data[10] != 0 || data[11] != 0)
                         throw new NotSupportedException("Unsupported PNG compression or filter method.");
-                    if (data[12] != 0)
-                        throw new NotSupportedException("Interlaced PNG arrives with the codec milestone.");
+                    if (data[12] > 1)
+                        throw new OutOfMemoryException("Invalid image data.");
+                    interlaced = data[12] == 1;
                     if (width <= 0 || height <= 0 || width > 32768 || height > 32768)
                         throw new OutOfMemoryException("Invalid image data.");
                     if (bitDepth is not (1 or 2 or 4 or 8 or 16))
@@ -158,7 +161,7 @@ internal static class PngCodec
                 case "IEND":
                     if (!haveHeader)
                         throw new OutOfMemoryException("Invalid image data.");
-                    return Assemble(width, height, bitDepth, colorType, palette, transparency, idat.ToArray());
+                    return Assemble(width, height, bitDepth, colorType, palette, transparency, idat.ToArray(), interlaced);
                 default:
                     break;
             }
@@ -167,7 +170,7 @@ internal static class PngCodec
 
     private static Bitmap Assemble(
         int width, int height, int bitDepth, int colorType,
-        byte[] palette, byte[] transparency, byte[] compressed)
+        byte[] palette, byte[] transparency, byte[] compressed, bool interlaced)
     {
         int channels = colorType switch
         {
@@ -187,15 +190,23 @@ internal static class PngCodec
             inflate.CopyTo(plain);
             raw = plain.ToArray();
         }
+        VerifyAdler32(raw, compressed);
+
+        var bitmap = new Bitmap(width, height);
+        int[] dest = bitmap.Pixels;
+        if (interlaced)
+        {
+            if (raw.Length != PngAdam7.ExpectedLength(width, height, bitDepth, channels))
+                throw new OutOfMemoryException("Invalid image data.");
+            PngAdam7.Decode(raw, width, height, bitDepth, colorType, channels, palette, transparency, dest);
+            return bitmap;
+        }
         if (raw.Length != (stride + 1) * height)
             throw new OutOfMemoryException("Invalid image data.");
-        VerifyAdler32(raw, compressed);
 
         int unit = Math.Max(1, (bitDepth * channels + 7) / 8);
         byte[] previous = new byte[stride];
         byte[] current = new byte[stride];
-        var bitmap = new Bitmap(width, height);
-        int[] dest = bitmap.Pixels;
         int offset = 0;
         for (int y = 0; y < height; y++)
         {
@@ -241,7 +252,8 @@ internal static class PngCodec
             throw new OutOfMemoryException("Invalid image data.");
     }
 
-    private static void Unfilter(int filter, byte[] current, byte[] previous, int unit)
+    /// <summary>Shared with PngAdam7 (pass-local rows use the same filters).</summary>
+    internal static void Unfilter(int filter, byte[] current, byte[] previous, int unit)
     {
         switch (filter)
         {
@@ -287,7 +299,8 @@ internal static class PngCodec
         return du <= dul ? up : upperLeft;
     }
 
-    private static Color Sample(
+    /// <summary>Shared with PngAdam7 (pass rows sample in pass coordinates).</summary>
+    internal static Color Sample(
         byte[] row, int x, int width, int bitDepth, int colorType,
         byte[] palette, byte[] transparency)
     {

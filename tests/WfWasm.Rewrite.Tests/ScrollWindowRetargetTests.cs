@@ -13,7 +13,25 @@ namespace WfWasm.Rewrite.Tests;
 // sentinel stub.
 public sealed class ScrollWindowRetargetTests
 {
-    private const string VendorDir = @"E:/tmp/wfwasm-syncfusion-apps/syncfusion-datagrid";
+    // TMPMOVE canonical-only: fixtures under retained/.
+    private static string RepoRoot =>
+        Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+    private static string RewrittenSmall
+    {
+        get
+        {
+            var canon = Path.Combine(RepoRoot, ".artifacts", "tmp", "retained", "rewritten-small");
+            return canon;
+        }
+    }
+    private static string VendorDir
+    {
+        get
+        {
+            var canon = Path.Combine(RepoRoot, ".artifacts", "tmp", "retained", "wfwasm-syncfusion-apps", "syncfusion-datagrid");
+            return canon;
+        }
+    }
 
     private static AssemblyDefinition? LoadVendor(string file)
     {
@@ -52,7 +70,7 @@ public sealed class ScrollWindowRetargetTests
         // Guards emitter/shim drift (a 12-arg emit against the 11-arg
         // shim dies at call time inside the vendor try/catch, showing
         // the old silent no-op). Reads the staged fork in place.
-        string staged = @"E:/tmp/rewritten-small/WfWasm.WinForms.dll";
+        string staged = Path.Combine(RewrittenSmall, "WfWasm.WinForms.dll");
         if (!File.Exists(staged)) return;
         using var fork = AssemblyDefinition.ReadAssembly(staged);
         var shim = fork.MainModule.GetType("System.Windows.Forms.WasmScrollWindow");

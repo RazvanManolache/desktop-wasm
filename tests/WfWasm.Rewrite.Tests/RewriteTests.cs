@@ -1,8 +1,28 @@
-﻿using System.Reflection;
+﻿﻿using System.Reflection;
 using WfWasm.Rewrite;
 
 public sealed class RewriteTests
 {
+    // TMPMOVE canonical-only: rewritten fixtures under retained/.
+    private static string RepoRoot =>
+        Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+    private static string RewrittenSmall
+    {
+        get
+        {
+            var canon = Path.Combine(RepoRoot, ".artifacts", "tmp", "retained", "rewritten-small");
+            return canon;
+        }
+    }
+    private static string RewrittenPaint
+    {
+        get
+        {
+            var canon = Path.Combine(RepoRoot, ".artifacts", "tmp", "retained", "rewritten-paint");
+            return canon;
+        }
+    }
+
     private static string FixtureDll()
     {
         // Fixture builds to its own output dir (net9.0-windows).
@@ -1159,12 +1179,19 @@ public sealed class RewriteTests
             Assert.NotNull(ctx);
             var resCache = Assert.Single(ctx.Methods,
                 m => m.Name == "GetCachedOrCreateResource" && m.IsVirtual);
-            // Version-keyed Hashtable cache with a churn cap.
-            foreach (string htOp in new[] { "get_Item", "set_Item", "get_Count", "Clear" })
+            // Version-keyed Hashtable cache with a churn cap. The store
+            // routes through the CpuPaint helper (which also disposes a
+            // replaced resource instead of leaking it); the raw set_Item
+            // shape is superseded, not dropped.
+            foreach (string htOp in new[] { "get_Item", "get_Count", "Clear" })
                 Assert.Contains(resCache.Body.Instructions, i =>
                     i.Operand is Mono.Cecil.MethodReference mr
                     && mr.DeclaringType.FullName == "System.Collections.Hashtable"
                     && mr.Name == htOp);
+            Assert.Contains(resCache.Body.Instructions, i =>
+                i.Operand is Mono.Cecil.MethodReference mr
+                && mr.DeclaringType.FullName == "WfWasm.PdnCpu.CpuPaint"
+                && mr.Name == "SetCpuCacheEntry");
             // Provider dispatch names both brush providers; anything
             // else throws loudly and names its type.
             Assert.Contains(resCache.Body.Instructions, i =>
@@ -3703,8 +3730,8 @@ public sealed class RewriteTests
         // the server with StackOverflowException at write time.
         string input = @"E:\AI\Code\WindowsForms\telerik\Telerik UI for WinForms demos\Bin\Release\Microsoft.AnalysisServices.AdomdClient.dll";
         if (!File.Exists(input)) return;
-        string forms = @"E:\tmp\rewritten-small\WfWasm.WinForms.dll";
-        Assert.True(File.Exists(forms), "regenerate via E:/tmp/rewrite-small.ps1");
+        string forms = Path.Combine(RewrittenSmall, "WfWasm.WinForms.dll");
+        Assert.True(File.Exists(forms), "missing rewritten fixture (expected at retained/rewritten-small): " + forms);
         string drawing = ShimDll("WfWasm.Drawing", "WfWasm.Drawing");
         var assemblyMap = new Dictionary<string, string>(StringComparer.Ordinal)
         {
@@ -3732,8 +3759,8 @@ public sealed class RewriteTests
         string input = @"E:\AI\Code\WindowsForms\telerik\Telerik UI for WinForms demos\ExamplesProjects\Diagram\DiagramFirstLook\bin\Telerik.WinControls.RadDiagram.dll";
         string pool = @"E:\AI\Code\WindowsForms\telerik\Telerik UI for WinForms demos\Bin\Release";
         if (!File.Exists(input) || !Directory.Exists(pool)) return;
-        string forms = @"E:\tmp\rewritten-small\WfWasm.WinForms.dll";
-        Assert.True(File.Exists(forms), "regenerate via E:/tmp/rewrite-small.ps1");
+        string forms = Path.Combine(RewrittenSmall, "WfWasm.WinForms.dll");
+        Assert.True(File.Exists(forms), "missing rewritten fixture (expected at retained/rewritten-small): " + forms);
         string drawing = ShimDll("WfWasm.Drawing", "WfWasm.Drawing");
         var assemblyMap = new Dictionary<string, string>(StringComparer.Ordinal)
         {
@@ -5271,7 +5298,7 @@ public sealed class RewriteTests
             var ctrlField = compositor.Fields.First(f => f.Name == "compositorController");
             Assert.Equal("System.Object", ctrlField.FieldType.FullName);
 
-            string pdnDir = @"E:\tmp\rewritten-paint";
+            string pdnDir = RewrittenPaint;
             if (Directory.Exists(pdnDir))
             {
                 File.Copy(tempOut, Path.Combine(pdnDir, "PaintDotNet.Framework.dll"), overwrite: true);
@@ -5313,7 +5340,7 @@ public sealed class RewriteTests
             Assert.Contains(preRenderPump.Body.Instructions, i => i.OpCode == Mono.Cecil.Cil.OpCodes.Ret);
             Assert.DoesNotContain(preRenderPump.Body.Instructions, i => i.Operand?.ToString()?.Contains("BeginModalUIFrame") == true);
 
-            string pdnDir = @"E:\tmp\rewritten-paint";
+            string pdnDir = RewrittenPaint;
             if (Directory.Exists(pdnDir))
             {
                 File.Copy(tempOut, Path.Combine(pdnDir, "paintdotnet.dll"), overwrite: true);
@@ -5350,7 +5377,7 @@ public sealed class RewriteTests
             var createF7 = dxgi.Methods.First(m => m.Name == "CreateFactory7" && m.ReturnType.FullName == "PaintDotNet.Dxgi.IDxgiFactory7");
             Assert.Contains(createF7.Body.Instructions, i => i.OpCode == Mono.Cecil.Cil.OpCodes.Ldnull);
 
-            string pdnDir = @"E:\tmp\rewritten-paint";
+            string pdnDir = RewrittenPaint;
             if (Directory.Exists(pdnDir))
             {
                 File.Copy(tempOut, Path.Combine(pdnDir, "PaintDotNet.Windows.dll"), overwrite: true);
@@ -5402,7 +5429,7 @@ public sealed class RewriteTests
                 ["Analysis", "Color", "Composite", "Filter", "Photo", "Source", "Stylize", "Transform", "Transparency"],
                 literals);
 
-            string pdnDir = @"E:\tmp\rewritten-paint";
+            string pdnDir = RewrittenPaint;
             if (Directory.Exists(pdnDir))
             {
                 File.Copy(tempOut, Path.Combine(pdnDir, "PaintDotNet.Windows.Framework.dll"), overwrite: true);
@@ -5442,7 +5469,7 @@ public sealed class RewriteTests
             var mr = (Mono.Cecil.MethodReference)gvodCall.Operand;
             Assert.True(mr.ReturnType.IsGenericParameter, "ReturnType must be generic parameter !0");
 
-            string pdnDir = @"E:\tmp\rewritten-paint";
+            string pdnDir = RewrittenPaint;
             if (Directory.Exists(pdnDir))
             {
                 File.Copy(tempOut, Path.Combine(pdnDir, "PaintDotNet.Core.dll"), overwrite: true);
@@ -5457,7 +5484,7 @@ public sealed class RewriteTests
     [Fact]
     public void PresentationCore_ModuleInitializer_Is_Nooped()
     {
-        string corePath = @"E:\tmp\rewritten-paint\PresentationCore.dll";
+        string corePath = Path.Combine(RewrittenPaint, "PresentationCore.dll");
         if (File.Exists(corePath))
         {
             string tempCoreOut = Path.Combine(Path.GetTempPath(), $"PresentationCore_Test_{Guid.NewGuid()}.dll");
@@ -5496,7 +5523,7 @@ public sealed class RewriteTests
                 Assert.DoesNotContain(helper.Body.Instructions, i => i.Operand?.ToString()?.Contains("LoadCursor") == true);
             }
 
-            string pdnDir = @"E:\tmp\rewritten-paint";
+            string pdnDir = RewrittenPaint;
             if (Directory.Exists(pdnDir))
             {
                 File.Copy(tempOut, Path.Combine(pdnDir, "PresentationCore.dll"), overwrite: true);
@@ -5514,7 +5541,7 @@ public sealed class RewriteTests
         string fwPath = @"C:\Program Files\dotnet\shared\Microsoft.WindowsDesktop.App\9.0.20\PresentationFramework.dll";
         if (!File.Exists(fwPath))
         {
-            fwPath = @"E:\tmp\rewritten-paint\PresentationFramework.dll";
+            fwPath = Path.Combine(RewrittenPaint, "PresentationFramework.dll");
             if (!File.Exists(fwPath)) return;
         }
 
@@ -5546,7 +5573,7 @@ public sealed class RewriteTests
                 Assert.DoesNotContain(getNcm.Body.Instructions, i => i.Operand?.ToString()?.Contains("SystemParametersInfo") == true);
             }
 
-            string pdnDir = @"E:\tmp\rewritten-paint";
+            string pdnDir = RewrittenPaint;
             if (Directory.Exists(pdnDir))
             {
                 File.Copy(tempOut, Path.Combine(pdnDir, "PresentationFramework.dll"), overwrite: true);
@@ -5589,7 +5616,7 @@ public sealed class RewriteTests
             var beginModalCore = uiHelpers.Methods.First(m => m.Name == "BeginModalUIFrameCore");
             Assert.Contains(beginModalCore.Body.Instructions, i => i.OpCode == Mono.Cecil.Cil.OpCodes.Ret);
 
-            string pdnDir = @"E:\tmp\rewritten-paint";
+            string pdnDir = RewrittenPaint;
             if (Directory.Exists(pdnDir))
             {
                 File.Copy(tempOut, Path.Combine(pdnDir, "PaintDotNet.SystemLayer.dll"), overwrite: true);
@@ -5626,7 +5653,7 @@ public sealed class RewriteTests
             var cctor = wic.Methods.First(m => m.Name == ".cctor");
             Assert.DoesNotContain(cctor.Body.Instructions, i => i.Operand?.ToString()?.Contains("windowscodecs") == true);
 
-            string pdnDir = @"E:\tmp\rewritten-paint";
+            string pdnDir = RewrittenPaint;
             if (Directory.Exists(pdnDir))
             {
                 File.Copy(tempOut, Path.Combine(pdnDir, "PaintDotNet.Windows.dll"), overwrite: true);
@@ -5684,7 +5711,7 @@ public sealed class RewriteTests
             Assert.Single(trpcCctor.Body.Instructions);
             Assert.Equal(Mono.Cecil.Cil.OpCodes.Ret, trpcCctor.Body.Instructions[0].OpCode);
 
-            string pdnDir = @"E:\tmp\rewritten-paint";
+            string pdnDir = RewrittenPaint;
             if (Directory.Exists(pdnDir))
             {
                 File.Copy(tempOut, Path.Combine(pdnDir, "PaintDotNet.Windows.Core.dll"), overwrite: true);
@@ -5725,7 +5752,7 @@ public sealed class RewriteTests
             var getBounds = geom.Methods.First(m => m.Name == "get_Bounds");
             Assert.Contains(getBounds.Body.Instructions, i => i.OpCode == Mono.Cecil.Cil.OpCodes.Ret);
 
-            string pdnDir = @"E:\tmp\rewritten-paint";
+            string pdnDir = RewrittenPaint;
             if (Directory.Exists(pdnDir))
             {
                 File.Copy(tempOut, Path.Combine(pdnDir, "PaintDotNet.UI.dll"), overwrite: true);
@@ -5788,7 +5815,7 @@ public sealed class RewriteTests
             var getScale = sp.Methods.First(m => m.Name == "GetCursorScale");
             Assert.Contains(getScale.Body.Instructions, i => i.OpCode == Mono.Cecil.Cil.OpCodes.Ldc_R8);
 
-            string pdnDir = @"E:\tmp\rewritten-paint";
+            string pdnDir = RewrittenPaint;
             if (Directory.Exists(pdnDir))
             {
                 File.Copy(tempOut, Path.Combine(pdnDir, "PaintDotNet.Windows.Framework.dll"), overwrite: true);
@@ -5837,7 +5864,7 @@ public sealed class RewriteTests
             var msi = bsbr.Methods.First(m => m.Name == "MeasureSpriteImage");
             Assert.DoesNotContain(msi.Body.Instructions, i => i.Operand?.ToString()?.Contains("DrawNull") == true);
 
-            string pdnDir = @"E:\tmp\rewritten-paint";
+            string pdnDir = RewrittenPaint;
             if (Directory.Exists(pdnDir))
             {
                 File.Copy(tempOut, Path.Combine(pdnDir, "paintdotnet.dll"), overwrite: true);
@@ -5881,7 +5908,7 @@ public sealed class RewriteTests
             var ensureEnqueued = ct.Methods.First(m => m.Name == "EnsureEnqueued");
             Assert.Contains(ensureEnqueued.Body.Instructions, i => i.OpCode == Mono.Cecil.Cil.OpCodes.Ldc_I4_0);
 
-            string pdnDir = @"E:\tmp\rewritten-paint";
+            string pdnDir = RewrittenPaint;
             if (Directory.Exists(pdnDir))
             {
                 File.Copy(tempOut, Path.Combine(pdnDir, "PaintDotNet.Runtime.dll"), overwrite: true);
@@ -5924,7 +5951,7 @@ public sealed class RewriteTests
             Assert.Contains(cloneCore.Body.Instructions, i => i.Operand?.ToString()?.Contains("MemberwiseClone") == true);
             Assert.DoesNotContain(cloneCore.Body.Instructions, i => i.Operand?.ToString()?.Contains("BinaryFormatter") == true);
 
-            string pdnDir = @"E:\tmp\rewritten-paint";
+            string pdnDir = RewrittenPaint;
             if (Directory.Exists(pdnDir))
             {
                 File.Copy(tempOut, Path.Combine(pdnDir, "PaintDotNet.Base.dll"), overwrite: true);
@@ -6761,7 +6788,7 @@ public sealed class RewriteTests
         // allocate, wrap in a ref, reinterpret, and report its size.
         // Regression: NRE | BitmapExtensions.LockFast.
         string paintDir = @"E:\AI\Code\WindowsForms\targets\paint.net";
-        string forkDll = @"E:\tmp\rewritten-small\WfWasm.WinForms.dll";
+        string forkDll = Path.Combine(RewrittenSmall, "WfWasm.WinForms.dll");
         string drawingDll = ShimBinDll("WfWasm.Drawing");
         string cpuDll = ShimBinDll("WfWasm.PdnCpu");
         string handmap = @"E:\AI\Code\WindowsForms\src\WfWasm.Rewrite.Tool\handmap.paint.net.txt";
@@ -6988,7 +7015,7 @@ public sealed class RewriteTests
         // ever reaching the DrawImage core. Regression anchor for
         // NotSupported | GetCachedOrCreateResource (blank Colors wheel).
         string paintDir = @"E:\AI\Code\WindowsForms\targets\paint.net";
-        string forkDll = @"E:\tmp\rewritten-small\WfWasm.WinForms.dll";
+        string forkDll = Path.Combine(RewrittenSmall, "WfWasm.WinForms.dll");
         string drawingDll = ShimBinDll("WfWasm.Drawing");
         string cpuDll = ShimBinDll("WfWasm.PdnCpu");
         string handmap = @"E:\AI\Code\WindowsForms\src\WfWasm.Rewrite.Tool\handmap.paint.net.txt";
@@ -7100,7 +7127,7 @@ public sealed class RewriteTests
         // anchor for the live blank wheel (render ran, ~200/88804 bytes
         // nonzero: image blit empty, only the selector nub painted).
         string paintDir = @"E:\AI\Code\WindowsForms\targets\paint.net";
-        string forkDll = @"E:\tmp\rewritten-small\WfWasm.WinForms.dll";
+        string forkDll = Path.Combine(RewrittenSmall, "WfWasm.WinForms.dll");
         string drawingDll = ShimBinDll("WfWasm.Drawing");
         string cpuDll = ShimBinDll("WfWasm.PdnCpu");
         string handmap = @"E:\AI\Code\WindowsForms\src\WfWasm.Rewrite.Tool\handmap.paint.net.txt";

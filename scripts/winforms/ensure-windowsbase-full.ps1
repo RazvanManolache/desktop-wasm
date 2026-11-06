@@ -58,7 +58,12 @@ $tool = Join-Path $ws 'src/WfWasm.Rewrite.Tool/bin/Debug/net9.0/WfWasm.Rewrite.T
 # AppTransform.StubbedCopy: the stub resolver searches the file's own
 # directory, and the file itself is a byte copy (never a link — the passes
 # overwrite it in place, which through a link would corrupt pristine).
-$tmpDir = Join-Path 'E:/tmp/wasm-cache/tmp' ('stub-build-' + [Guid]::NewGuid().ToString('N'))
+# TMPMOVE: transient stub dir lives under the canonical repo runs tree on E:
+# (same volume as the pristine tree for hardlinks, no E:/tmp output).
+# Cleaned in finally below.
+$runsRoot = Join-Path $repoRoot '.artifacts/tmp/runs/ensure-windowsbase'
+if (!(Test-Path -LiteralPath $runsRoot -PathType Container)) { New-Item -ItemType Directory -Path $runsRoot | Out-Null }
+$tmpDir = Join-Path $runsRoot ('stub-build-' + [Guid]::NewGuid().ToString('N'))
 try {
     New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null
     foreach ($sib in Get-ChildItem (Join-Path $pristineDir '*.dll')) {

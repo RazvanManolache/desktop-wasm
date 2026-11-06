@@ -2185,7 +2185,10 @@ public class ComboBox : Selector
     /// Item text with path support (mirrors the ListBox resolver: a set
     /// DisplayMemberPath reads through generated Label content and data
     /// items alike; containers without a resolvable path keep their
-    /// Content/Header contract).
+    /// Content/Header contract). Template-inflated TextBlock rows (the
+    /// gallery font combos bind Text to the item) paint their own text;
+    /// without this they fall into the UIElement type-name branch and the
+    /// drop shows "TextBlock" per row.
     /// </summary>
     private string ResolveItemText(object? item)
     {
@@ -2198,6 +2201,7 @@ public class ComboBox : Selector
         }
         if (item is ComboBoxItem ci) return ci.Content ?? ci.Header?.ToString() ?? string.Empty;
         if (item is ContentControl cc2) return cc2.Content?.ToString() ?? string.Empty;
+        if (item is TextBlock tb && !string.IsNullOrEmpty(tb.Text)) return tb.Text;
         if (item is UIElement) return item.GetType().Name;
         return item.ToString() ?? string.Empty;
     }
@@ -2424,6 +2428,12 @@ public class ComboBox : Selector
         base.OnSelectionChanged(e);
         _trackedItem = SelectedItem;
         ScrollDropToSelection();
+        // Editable parity: the text box follows the selection. Every path
+        // converges here (keyboard, pointer, programmatic, bound, Escape
+        // restore, item-mutation reseat), so one sync covers commit and
+        // cancel alike; the Text setter pushes TwoWay bindings, and its
+        // equality guard makes repeats a no-op.
+        if (IsEditable) Text = DisplayText();
     }
 
     /// <summary>Last effectively selected item (reseats selection across
@@ -2520,6 +2530,63 @@ public class ListView : Selector
             lvi.IsSelected = false;
         }
     }
+
+    /// <summary>Selects a row by hit position over realized containers;
+    /// disabled rows never select (native parity, mirrors the ListBox gate);
+    /// false when no enabled realized row covers it. Unrealized
+    /// (virtualized-away) rows are never force-realized by a press.</summary>
+    public bool SelectAt(double x, double y)
+    {
+        var point = new WpfPoint(x, y);
+        var generator = ItemContainerGenerator;
+        for (var i = 0; i < Items.Count; i++)
+        {
+            if (!generator.IsRealized(i)) continue;
+            if (generator.ContainerFromIndex(i) is not UIElement row) continue;
+            if (row.IsEffectivelyEnabled && row.HitTest(point)) { SelectedIndex = i; return true; }
+        }
+        return false;
+    }
+
+    public override void OnRoutedEvent(WasmRoutedEvent e)
+    {
+        // Selector press-to-select: a left press on a row selects it (WPF
+        // selects on press, not release; the ListBox branch carries the
+        // same gate). Disabled lists ignore all input.
+        if (e.Handled || e.Phase != WasmRoutedPhase.Bubbling || !IsEffectivelyEnabled) return;
+        if (e.Source is not Core.WasmInputEvent ev) return;
+        switch (ev)
+        {
+            case Core.WasmInputEvent.Pointer pd when pd.Args.Kind == Core.WasmPointerKind.Down && e.IsLeftButtonDown:
+                if (SelectAt(pd.Args.X, pd.Args.Y)) e.Handled = true;
+                break;
+            // Native parity: arrows/Home/End move selection while keyboard
+            // focus sits on the list or a realized row (the press focuses
+            // the row itself, like ListBox, so arrows navigate right after
+            // a click). Native starts Down from empty at 0, Up at last, and
+            // clamps at the ends.
+            case Core.WasmInputEvent.Key k when k.Args.IsDown && HasKeyboardContext():
+                var count = Items.Count;
+                if (count == 0) break;
+                switch (k.Args.Key)
+                {
+                    case "ArrowDown": SelectedIndex = SelectedIndex < 0 ? 0 : Math.Min(count - 1, SelectedIndex + 1); e.Handled = true; break;
+                    case "ArrowUp": SelectedIndex = SelectedIndex < 0 ? count - 1 : Math.Max(0, SelectedIndex - 1); e.Handled = true; break;
+                    case "Home": SelectedIndex = 0; e.Handled = true; break;
+                    case "End": SelectedIndex = count - 1; e.Handled = true; break;
+                }
+                break;
+        }
+    }
+
+    /// <summary>True while keyboard focus sits on the list or a row it
+    /// realized (the press focuses the row, not the list itself).</summary>
+    private bool HasKeyboardContext()
+    {
+        for (var node = WpfInputManager.Current?.Focused; node is not null; node = node.Parent)
+            if (ReferenceEquals(node, this)) return true;
+        return false;
+    }
 }
 
 /// <summary>ListView row (same v1 surface as <see cref="ComboBoxItem"/>).</summary>
@@ -2543,7 +2610,10 @@ public class ListViewItem : HeaderedItemsControl, IRowTemplateTarget
 
     /// <summary>
     /// Selection flag (two-way with the owning ListView: setting true selects
-    /// this row when already parented; the owner syncs it on selection change).
+    /// this row's data item when already parented; the owner syncs it on
+    /// selection change. Propagating the container itself mis-resolves
+    /// (generated wrappers are not members of Items, so the lookup misses
+    /// and the selection resets); the generator maps back to the item.
     /// </summary>
     public bool IsSelected
     {
@@ -2554,7 +2624,7 @@ public class ListViewItem : HeaderedItemsControl, IRowTemplateTarget
             _isSelected = value;
             InvalidateVisual();
             if (value && Parent is Selector selector && !ReferenceEquals(selector.SelectedItem, this))
-                selector.SelectedItem = this;
+                selector.SelectedItem = selector.ItemContainerGenerator.ItemFromContainer(this) ?? (object)this;
         }
     }
 

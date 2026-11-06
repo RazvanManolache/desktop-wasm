@@ -1460,7 +1460,26 @@ public static unsafe partial class CpuPaint
     public static object NewEffectLazyResult(object func, System.Type lazyType)
     {
         TraceBridgeSite("V:NewEffectLazyResult");
-        return System.Activator.CreateInstance(lazyType, new object?[] { func })!;
+        // lazyType is LazyResult1<T>: ABSTRACT with only a famandassem
+        // .ctor, so it can never be instantiated directly (CreateInstance
+        // on it threw MissingMethodException live - the trim wall was
+        // never a missing member; the ctor is present in every served
+        // copy). Pristine LazyResult.New<T>(Func<T>) builds the concrete
+        // LazyResult2<T,int>; route through that same static factory via
+        // the cached resolver for exact desktop semantics.
+        if (func is null)
+            throw new System.InvalidOperationException("CpuPaint: null factory for lazy result");
+        if (lazyType is null)
+            throw new System.InvalidOperationException("CpuPaint: null lazy result type");
+        System.Type[] args = lazyType.IsGenericType ? lazyType.GetGenericArguments()
+            : System.Type.EmptyTypes;
+        if (args.Length != 1)
+            throw new System.InvalidOperationException(
+                "CpuPaint: lazy result type is not LazyResult1<T>: " + lazyType.FullName);
+        System.Reflection.MethodInfo factory = ResolveEffectStaticGeneric(
+            "PaintDotNet.Functional.LazyResult", "New",
+            new System.Type[] { args[0] }, new System.Type[] { func.GetType() });
+        return InvokeEffectMember(factory, null, new object?[] { func })!;
     }
 
     // QUANTIZE-RESIDUAL-SLICE2: generic unwrapper for bridge post-ops whose
@@ -1613,6 +1632,207 @@ public static unsafe partial class CpuPaint
         if (System.Threading.Interlocked.Increment(ref s_bridgeSiteCount) <= 20000)
             System.Console.WriteLine("CpuFx-site: " + key);
     }
+    // VEN7 worker-side first-chance logging: records the faulting site
+    // for the Quantize post-palette worker stall. Fires rarely (terminal
+    // faults only), NEVER throws, consumes no shared cap. The rewriter
+    // wraps worker-phase methods with log-then-rethrow so propagation is
+    // bit-identical; only this line is added to the console.
+    public static void TraceWorkerFault(System.Exception? ex)
+    {
+        try
+        {
+            string site;
+            try { site = ex?.TargetSite?.ToString() ?? "null-site"; }
+            catch { site = "site-unreadable"; }
+            System.Console.WriteLine("CpuFx-worker-fault: " + (ex?.GetType().FullName ?? "null-ex") + " @ " + site);
+        }
+        catch { }
+    }
+
+    // TEMP-DIAG UNDOLOG-0338 (strip after the undo converter wall is
+    // localized): operand logging for CreateFormatConverter bridge calls.
+    // Runtime handed back exact evidence -- native zero-page write right
+    // after the "ok call" line, zero managed frames -- and the host cannot
+    // see vendor locals. These lines carry what the host cannot: per-arg
+    // runtime type, identity hash (links transfer -> converter call),
+    // dims/format/disposed/buffer facts via fail-safe reflection, and a
+    // first-seen label. NEVER throws, NEVER changes call behavior, capped
+    // separately from the 120-line bridge cap. Identity hashes can
+    // theoretically collide; the type travels with the hash for analysts.
+    private static int s_operandTraceCount;
+    private static int s_transferOperandCount;
+    private static readonly System.Collections.Generic.Dictionary<int, string> s_operandSeen = new();
+    private static readonly object s_operandSeenLock = new();
+
+    private static void TraceBridgeOperands(string key, string methodName, object?[] args)
+    {
+        if (methodName.IndexOf("CreateFormatConverter", System.StringComparison.Ordinal) < 0)
+            return;
+        if (System.Threading.Interlocked.Increment(ref s_operandTraceCount) > 40)
+            return;
+        try
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.Append("CpuFx-bridge-operands: ").Append(key);
+            for (int i = 0; i < args.Length; i++)
+                AppendOperandFact(sb, i, args[i]);
+            string line = sb.ToString();
+            System.Console.WriteLine(line.Length <= 800 ? line : line.Substring(0, 800));
+        }
+        catch { }
+    }
+
+    private static void AppendOperandFact(System.Text.StringBuilder sb, int index, object? arg)
+    {
+        try
+        {
+            if (arg is null) { sb.Append(" arg").Append(index).Append("=null"); return; }
+            System.Type t = arg.GetType();
+            string tname = t.FullName ?? t.Name;
+            if (tname.Length > 160) tname = tname.Substring(0, 160);
+            int hash = System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(arg);
+            sb.Append(" arg").Append(index).Append('=').Append(tname).Append('#').Append(hash.ToString("X8")).Append('[');
+            var facts = new System.Collections.Generic.List<string>();
+            if (arg is System.Array arr) facts.Add("len=" + arr.Length);
+            TryIntFact(arg, facts, "W", "Width", "PixelWidth");
+            TryIntFact(arg, facts, "H", "Height", "PixelHeight");
+            TryStringFact(arg, facts, "Fmt", "PixelFormat", "Format");
+            TryDisposedFact(arg, facts);
+            TryBufferFact(arg, facts);
+            string? seen = null;
+            lock (s_operandSeenLock)
+            {
+                if (s_operandSeen.TryGetValue(hash, out string? label)) seen = label;
+                else if (s_operandSeen.Count < 200) s_operandSeen[hash] = "converter-arg" + index;
+            }
+            if (seen is not null) facts.Add("seen=" + seen);
+            sb.Append(string.Join(";", facts)).Append(']');
+        }
+        catch { sb.Append(" arg").Append(index).Append("=?"); }
+    }
+
+    private static string OperandThrowName(System.Exception ex)
+    {
+        // Reflection wraps member throws: name the real cause, not the wrapper.
+        if (ex is System.Reflection.TargetInvocationException tie && tie.InnerException is not null)
+            return tie.InnerException.GetType().Name;
+        return ex.GetType().Name;
+    }
+
+    private static void TryIntFact(object arg, System.Collections.Generic.List<string> facts, string label, string first, string second)
+    {
+        const System.Reflection.BindingFlags flags =
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public;
+        try
+        {
+            System.Type t = arg.GetType();
+            string attempted = first;
+            System.Reflection.PropertyInfo? p = t.GetProperty(first, flags);
+            if (p is null) { p = t.GetProperty(second, flags); attempted = second; }
+            if (p is null || !p.CanRead) return;
+            object? v = p.GetValue(arg);
+            if (v is int i) facts.Add(label + "=" + i);
+            else if (v is long l) facts.Add(label + "=" + l);
+            else if (v is uint u) facts.Add(label + "=" + u);
+        }
+        catch (System.Exception ex) { facts.Add(label + "=throw:" + OperandThrowName(ex)); }
+    }
+
+    private static void TryStringFact(object arg, System.Collections.Generic.List<string> facts, string label, string first, string second)
+    {
+        const System.Reflection.BindingFlags flags =
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public;
+        try
+        {
+            System.Type t = arg.GetType();
+            System.Reflection.PropertyInfo? p = t.GetProperty(first, flags) ?? t.GetProperty(second, flags);
+            if (p is null || !p.CanRead) return;
+            string s = p.GetValue(arg)?.ToString() ?? "null";
+            if (s.Length > 32) s = s.Substring(0, 32);
+            facts.Add(label + "=" + s);
+        }
+        catch (System.Exception ex) { facts.Add(label + "=throw:" + OperandThrowName(ex)); }
+    }
+
+    private static void TryDisposedFact(object arg, System.Collections.Generic.List<string> facts)
+    {
+        const System.Reflection.BindingFlags flags =
+            System.Reflection.BindingFlags.Instance
+            | System.Reflection.BindingFlags.Public
+            | System.Reflection.BindingFlags.NonPublic;
+        try
+        {
+            System.Type t = arg.GetType();
+            System.Reflection.PropertyInfo? p = t.GetProperty("IsDisposed", flags);
+            if (p is not null && p.CanRead && p.PropertyType == typeof(bool))
+            { facts.Add("disposed=" + p.GetValue(arg)); return; }
+            p = t.GetProperty("IsValid", flags);
+            if (p is not null && p.CanRead && p.PropertyType == typeof(bool))
+            { facts.Add("valid=" + p.GetValue(arg)); return; }
+            foreach (string fn in new[] { "_disposed", "_isDisposed", "disposed" })
+            {
+                System.Reflection.FieldInfo? f = t.GetField(fn, flags);
+                if (f is not null && f.FieldType == typeof(bool))
+                { facts.Add("disposed=" + f.GetValue(arg)); return; }
+            }
+        }
+        catch (System.Exception ex) { facts.Add("disposed=throw:" + OperandThrowName(ex)); }
+    }
+
+    private static void TryBufferFact(object arg, System.Collections.Generic.List<string> facts)
+    {
+        const System.Reflection.BindingFlags flags =
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public;
+        try
+        {
+            System.Type t = arg.GetType();
+            foreach (string n in new[] { "Buffer", "Pointer", "Scan0", "Data", "Handle" })
+            {
+                System.Reflection.PropertyInfo? p = t.GetProperty(n, flags);
+                if (p is null || !p.CanRead) continue;
+                object? v = p.GetValue(arg);
+                if (v is System.IntPtr ip)
+                {
+                    facts.Add("buf=" + (ip == System.IntPtr.Zero ? "zero" : "0x" + ip.ToInt64().ToString("X")));
+                    return;
+                }
+            }
+        }
+        catch (System.Exception ex) { facts.Add("buf=throw:" + OperandThrowName(ex)); }
+    }
+
+    private static void TraceTransferOperands(string tname, object? refObj, object? moved)
+    {
+        try
+        {
+            string tn = tname ?? "?";
+            System.StringComparison cmp = System.StringComparison.OrdinalIgnoreCase;
+            if (tn.IndexOf("Bitmap", cmp) < 0 && tn.IndexOf("Lock", cmp) < 0
+                && tn.IndexOf("Imaging", cmp) < 0 && tn.IndexOf("Pixel", cmp) < 0)
+                return;
+            if (System.Threading.Interlocked.Increment(ref s_transferOperandCount) > 30)
+                return;
+            int srcHash = refObj is null ? 0
+                : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(refObj);
+            string srcT = refObj?.GetType().FullName ?? "null";
+            string dst = System.Object.ReferenceEquals(refObj, moved) ? "same"
+                : (moved?.GetType().FullName ?? "null") + "#"
+                    + System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(moved!).ToString("X8");
+            if (moved is not null)
+            {
+                int dstHash = System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(moved);
+                lock (s_operandSeenLock)
+                {
+                    if (!s_operandSeen.ContainsKey(dstHash) && s_operandSeen.Count < 200)
+                        s_operandSeen[dstHash] = "transfer";
+                }
+            }
+            System.Console.WriteLine(
+                "CpuFx-bridge-operands: transfer " + tn
+                + " src=" + srcT + "#" + srcHash.ToString("X8") + " -> " + dst);
+        }
+        catch { }
+    }
 
     public static object InvokeClosedGenericStatic(
         string typeName, string asmName, string methodName, string[] typeArgNames, string[] paramTypeNames, object?[] args)
@@ -1628,6 +1848,7 @@ public static unsafe partial class CpuPaint
         {
             if (s_effectStaticCache.TryGetValue(key, out var cached))
             {
+                TraceBridgeOperands(key, methodName, args);
                 var cachedResult = InvokeEffectMember(cached, null, args);
                 TraceBridge(key, true);
                 return cachedResult;
@@ -1671,6 +1892,7 @@ public static unsafe partial class CpuPaint
                 lock (s_effectStaticCache)
                     s_effectStaticCache[key] = closed;
                 TraceBridge("call " + key, true);
+                TraceBridgeOperands(key, methodName, args);
                 object? freshResult;
                 try { freshResult = InvokeEffectMember(closed, null, args); }
                 catch (System.Exception exInvoke)
@@ -1693,6 +1915,7 @@ public static unsafe partial class CpuPaint
         if (refObj is not null && closedTarget.IsInstanceOfType(refObj))
         {
             TraceBridge("CastOrTransferRefRuntime<" + tname + ">", true);
+            TraceTransferOperands(tname, refObj, refObj);
             return refObj;
         }
         System.Reflection.MethodInfo transfer;
@@ -1768,6 +1991,7 @@ public static unsafe partial class CpuPaint
         if (moved is not null)
         {
             TraceBridge("CastOrTransferRefRuntime<" + tname + ">", true);
+            TraceTransferOperands(tname, refObj, moved);
             return moved;
         }
         System.Type errType;
@@ -2194,26 +2418,34 @@ public static unsafe partial class CpuPaint
         {
             return;
         }
-        var d = TargetOf(dst);
-        var s = TargetOf(src);
-        if (d == null || s == null)
-            return;
-        if (d.Bpp != 4 || s.Bpp != 4)
+        // WC1835 finalizer hardening: resolve+blit hold the slot lock so a
+        // concurrent finalizer/consume free cannot unpin+free either surface
+        // mid-blit (stale Ptr writes corrupt the GC heap: ExecutionEngine /
+        // AV elsewhere under forced-GC composition). Same lock as the free
+        // path; short pixel loops only, no nesting, no callouts.
+        lock (s_cmdListLock)
         {
-            return;
-        }
-        int w = Math.Min(d.Width, s.Width);
-        int h = Math.Min(d.Height, s.Height);
-        for (int y = 0; y < h; y++)
-        {
-            uint* srow = (uint*)(s.Ptr + (nint)y * s.Stride);
-            for (int x = 0; x < w; x++)
+            var d = TargetOf(dst);
+            var s = TargetOf(src);
+            if (d == null || s == null)
+                return;
+            if (d.Bpp != 4 || s.Bpp != 4)
             {
-                uint p = srow[x];
-                float sa = ((p >> 24) & 0xFF) / 255f;
-                if (sa <= 0f)
-                    continue;
-                BlendPixelBgra(d, x, y, p, sa);
+                return;
+            }
+            int w = Math.Min(d.Width, s.Width);
+            int h = Math.Min(d.Height, s.Height);
+            for (int y = 0; y < h; y++)
+            {
+                uint* srow = (uint*)(s.Ptr + (nint)y * s.Stride);
+                for (int x = 0; x < w; x++)
+                {
+                    uint p = srow[x];
+                    float sa = ((p >> 24) & 0xFF) / 255f;
+                    if (sa <= 0f)
+                        continue;
+                    BlendPixelBgra(d, x, y, p, sa);
+                }
             }
         }
     }
@@ -2223,19 +2455,33 @@ public static unsafe partial class CpuPaint
         // Fail-closed (planter hunt Hole B, 2026-10-28): a stale/recycled
         // handle must never throw on the finalizer thread (fatal exit 255).
         // A skipped free leaks one slot; a throw kills the session.
+        // WC1835 finalizer hardening: the take/use/free of a scratch raw
+        // is serialized on the slot lock, and a raw that is still owned
+        // by the ID table is never freed (a claimer's late free landing
+        // on a recycled number would otherwise unpin+free a live foreign
+        // surface: use-after-free, observed as ExecutionEngineException /
+        // AV in unrelated reads under forced-GC composition).
         try
         {
             if (scratch == 0)
                 return;
-            var t = TargetOf(scratch);
-            if (t == null)
-                return;
-            if (t.IsPinned)
+            lock (s_cmdListLock)
             {
-                try { t.Pin.Free(); } catch { }
-                t.IsPinned = false;
+                foreach (long owned in s_scratchMap.Values)
+                {
+                    if (owned == scratch)
+                        return;
+                }
+                var t = TargetOf(scratch);
+                if (t == null)
+                    return;
+                if (t.IsPinned)
+                {
+                    try { t.Pin.Free(); } catch { }
+                    t.IsPinned = false;
+                }
+                FreeHandle(scratch);
             }
-            FreeHandle(scratch);
         }
         catch (System.Exception fx)
         {
@@ -4321,6 +4567,60 @@ public static unsafe partial class CpuPaint
         }
     }
 
+    private static bool RenderInvertAlphaTileCpu(object owner, object dst, object src)
+    {
+        // Portable alpha-invert fallback for InvertAlphaGpuEffect
+        // (Adjustments > Invert Alpha, immediate, no dialog). Genuine
+        // semantics per pristine PaintDotNet.Windows.Framework
+        // InvertAlphaEffect docs: straight-alpha in/out, alpha channel
+        // inverted, RGB preserved (A' = 255 - A). Same tile-shape
+        // contract as RenderInvertTileCpu, fail-closed false.
+        try
+        {
+            TileSource? ts;
+            lock (s_tileSources)
+            {
+                if (!s_tileSources.TryGetValue(owner, out ts) || ts is null)
+                    return false;
+            }
+            System.Type dt = dst.GetType();
+            int tw = System.Convert.ToInt32(dt.GetProperty("Width")?.GetValue(dst));
+            int th = System.Convert.ToInt32(dt.GetProperty("Height")?.GetValue(dst));
+            int tstride = System.Convert.ToInt32(dt.GetProperty("Stride")?.GetValue(dst));
+            IntPtr dptr = UnboxPointer(dt.GetProperty("Ptr")?.GetValue(dst));
+            System.Type pt = src.GetType();
+            int tx = System.Convert.ToInt32(pt.GetProperty("X")?.GetValue(src));
+            int ty = System.Convert.ToInt32(pt.GetProperty("Y")?.GetValue(src));
+            if (tw <= 0 || th <= 0 || tstride <= 0 || dptr == IntPtr.Zero)
+                return false;
+            if (tx < 0 || ty < 0 || tx + tw > ts.Width || ty + th > ts.Height)
+                return false;
+            byte[] srow = new byte[tw * 4];
+            unsafe
+            {
+                byte* dp = (byte*)dptr.ToPointer();
+                for (int y = 0; y < th; y++)
+                {
+                    System.Buffer.BlockCopy(ts.Pixels, (ty + y) * ts.Stride + tx * 4, srow, 0, srow.Length);
+                    byte* row = dp + (nint)y * (nint)tstride;
+                    for (int x = 0; x < tw; x++)
+                    {
+                        int so = x * 4;
+                        row[so] = srow[so];                 // B preserved
+                        row[so + 1] = srow[so + 1];         // G preserved
+                        row[so + 2] = srow[so + 2];         // R preserved
+                        row[so + 3] = (byte)(255 - srow[so + 3]); // A inverted
+                    }
+                }
+            }
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private static bool RenderDesaturateTileCpu(object owner, object dst, object src)
     {
         try
@@ -4703,13 +5003,15 @@ public static unsafe partial class CpuPaint
                 && ownerName.Contains("AutoLevelGpuEffect", System.StringComparison.Ordinal);
             bool isInvert = !isLevels && !isAutoLevel
                 && ownerName.Contains("InvertColors", System.StringComparison.Ordinal);
-            bool isDesaturate = !isLevels && !isAutoLevel && !isInvert
+            bool isInvertAlpha = !isLevels && !isAutoLevel && !isInvert
+                && ownerName.Contains("InvertAlpha", System.StringComparison.Ordinal);
+            bool isDesaturate = !isLevels && !isAutoLevel && !isInvert && !isInvertAlpha
                 && ownerName.Contains("Desaturate", System.StringComparison.Ordinal);
-            bool isBrightnessContrast = !isLevels && !isAutoLevel && !isInvert && !isDesaturate
+            bool isBrightnessContrast = !isLevels && !isAutoLevel && !isInvert && !isInvertAlpha && !isDesaturate
                 && ownerName.Contains("BrightnessContrast", System.StringComparison.Ordinal);
-            bool isHueSaturation = !isLevels && !isAutoLevel && !isInvert && !isDesaturate && !isBrightnessContrast
+            bool isHueSaturation = !isLevels && !isAutoLevel && !isInvert && !isInvertAlpha && !isDesaturate && !isBrightnessContrast
                 && ownerName.Contains("HueSaturation", System.StringComparison.Ordinal);
-            if (!isLevels && !isAutoLevel && !isInvert && !isDesaturate && !isBrightnessContrast && !isHueSaturation && !isBulge && !isTwist && !isClouds)
+            if (!isLevels && !isAutoLevel && !isInvert && !isInvertAlpha && !isDesaturate && !isBrightnessContrast && !isHueSaturation && !isBulge && !isTwist && !isClouds)
                 return false;
             if (isBulge)
                 return RenderBulgeTileCpu(owner, dst, src);
@@ -4721,6 +5023,8 @@ public static unsafe partial class CpuPaint
                 return RenderAutoLevelTileCpu(owner, dst, src);
             if (isInvert)
                 return RenderInvertTileCpu(owner, dst, src);
+            if (isInvertAlpha)
+                return RenderInvertAlphaTileCpu(owner, dst, src);
             if (isDesaturate)
                 return RenderDesaturateTileCpu(owner, dst, src);
             if (isBrightnessContrast)

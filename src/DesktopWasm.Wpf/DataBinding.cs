@@ -488,8 +488,9 @@ public sealed class BindingExpression : BindingExpressionBase
     private BindingMode EffectiveMode => Binding.Mode == BindingMode.Default
         ? _target is TextBox && TargetProperty == "Text" ? BindingMode.TwoWay
         : _target is DatePicker && (TargetProperty == "SelectedDate" || TargetProperty == "Text") ? BindingMode.TwoWay
-        : _target is ListBox && (TargetProperty == "SelectedItem" || TargetProperty == "SelectedIndex") ? BindingMode.TwoWay
-        : _target is Selector && (TargetProperty == "SelectedItem" || TargetProperty == "SelectedIndex") ? BindingMode.TwoWay
+        : _target is ListBox && (TargetProperty == "SelectedItem" || TargetProperty == "SelectedIndex" || TargetProperty == "SelectedValue") ? BindingMode.TwoWay
+        : _target is Selector && (TargetProperty == "SelectedItem" || TargetProperty == "SelectedIndex" || TargetProperty == "SelectedValue") ? BindingMode.TwoWay
+        : _target is ComboBox && TargetProperty == "Text" ? BindingMode.TwoWay
         : BindingMode.OneWay
         : Binding.Mode;
 

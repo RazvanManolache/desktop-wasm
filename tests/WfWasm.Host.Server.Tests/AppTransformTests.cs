@@ -121,6 +121,200 @@ public sealed class AppTransformTests
     }
 
     [Fact]
+    public void Adgv_Content_Map_Resolves_App_Base_Assets_By_Tail()
+    {
+        // RVW-1104-2100 JobB: app-relative resources (flag-green_24.png,
+        // lang*.json) must package from the application base folder, keyed
+        // by tail name for the VFS walk — never from the browser FS root.
+        // The enumerator map must include the loose assets and keep the
+        // exclusion list (preparation/deps/runtimeconfig/dll.config) out.
+        const string app = "benchmark-advanceddatagridview";
+        Assert.True(AppTransform.TryGetSpec(app, out AppTransform.AppSpec? maybe));
+        Assert.True(maybe is not null);
+        var files = maybe!.ContentFiles;
+        foreach (string tail in new[] { "flag-green_24.png", "flag-red_24.png", "lang.json" })
+        {
+            Assert.True(files.TryGetValue(tail, out string? mapped), tail);
+            Assert.True(File.Exists(mapped), mapped);
+            Assert.Equal(
+                Path.Combine(AppTransform.AppFolders[app], tail),
+                mapped);
+        }
+        foreach (string lang in Directory.GetFiles(AppTransform.AppFolders[app], "lang*.json"))
+            Assert.True(files.ContainsKey(Path.GetFileName(lang)), lang);
+        byte[] pngMagic = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+        foreach (string tail in new[] { "flag-green_24.png", "flag-red_24.png" })
+            Assert.Equal(pngMagic, File.ReadAllBytes(files[tail])[..8]);
+        Assert.DoesNotContain(files.Keys, k =>
+            k.Equals("preparation.json", StringComparison.OrdinalIgnoreCase) ||
+            k.EndsWith(".deps.json", StringComparison.OrdinalIgnoreCase) ||
+            k.EndsWith(".runtimeconfig.json", StringComparison.OrdinalIgnoreCase) ||
+            k.EndsWith(".dll.config", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Theory]
+    [InlineData("benchmark-openpdn", "PaintDotNet.exe", "PaintDotNet")]
+    [InlineData("benchmark-pkhex", "PKHeX.dll", "PKHeX")]
+    [InlineData("benchmark-keepass", "KeePass.exe", "KeePass")]
+    [InlineData("benchmark-linqpad5", "LINQPad.exe", "LINQPad")]
+    [InlineData("benchmark-advanceddatagridview", "AdvancedDataGridViewSample.dll", "AdvancedDataGridViewSample")]
+    [InlineData("benchmark-external-calculator", "Calculator.exe", "Calculator")]
+    [InlineData("benchmark-openpdn", "PaintDotNet.SystemLayer.dll", "PaintDotNet.SystemLayer")]
+    public void Benchmark_Entry_Assembly_Transforms_To_Loadable_Output(
+        string app, string entryFile, string assemblyName)
+    {
+        // RVW-1104-2100 JobA: transform proof per staged benchmark app. The
+        // entry assembly must resolve from the staged folder and rewrite to
+        // completion; the output must parse as the same assembly. This is
+        // conversion proof only — browser boot stays verifier-owned, and the
+        // catalog keeps a runtime-unverified note after the receipt flip.
+        Assert.True(AppTransform.TryGetSpec(app, out AppTransform.AppSpec? maybe));
+        Assert.True(maybe is not null);
+        Assert.True(AppTransform.TryResolveAssembly(app, entryFile, out string? resolved));
+        Assert.Equal(entryFile, resolved);
+        byte[] served = AppTransform.TransformOrCached(app, entryFile);
+        Assert.NotEmpty(served);
+        using var asm = Mono.Cecil.AssemblyDefinition.ReadAssembly(new MemoryStream(served));
+        Assert.Equal(assemblyName, asm.Name.Name);
+    }
+
+    [Fact]
+    public void Calculator_Entry_Resolves_From_Prepared_Staging()
+    {
+        // PUSH1106-shell-w23: prepared calculator input (retained/calculator).
+        // The entry must resolve from the staged folder and rewrite to a
+        // loadable assembly; a missing input fails closed at resolve time.
+        const string app = "calculator";
+        const string entryFile = "Calculator.dll";
+        Assert.True(AppTransform.TryGetSpec(app, out AppTransform.AppSpec? maybe));
+        Assert.True(maybe is not null);
+        Assert.True(AppTransform.TryResolveAssembly(app, entryFile, out string? resolved));
+        Assert.Equal(entryFile, resolved);
+        byte[] served = AppTransform.TransformOrCached(app, entryFile);
+        Assert.NotEmpty(served);
+        using var asm = Mono.Cecil.AssemblyDefinition.ReadAssembly(new MemoryStream(served));
+        Assert.Equal("Calculator", asm.Name.Name);
+    }
+
+    [Fact]
+    public void Linqpad_Dependency_Closure_Transforms_To_Loadable_Output()
+    {
+        // DIRECT-1105 Priority1: LINQPad5 asset 500. Every dependency in the
+        // staged dll/ closure is served through the rewriter via appresolve;
+        // a single throwing file is a user-visible 500 at boot. Each must
+        // resolve and rewrite to completion, and the output must parse as the
+        // same assembly. Real retained originals only, no synthetic inputs.
+        const string app = "benchmark-linqpad5";
+        Assert.True(AppTransform.TryGetSpec(app, out AppTransform.AppSpec? maybe));
+        Assert.True(maybe is not null);
+        string closure = Path.Combine(AppTransform.AppFolders[app], "dll");
+        Assert.True(Directory.Exists(closure), $"closure missing: {closure}");
+        string[] deps = Directory.GetFiles(closure, "*.dll", SearchOption.TopDirectoryOnly);
+        Assert.NotEmpty(deps);
+        var failures = new System.Collections.Generic.List<string>();
+        foreach (string dep in deps)
+        {
+            string tail = Path.GetFileName(dep);
+            try
+            {
+                Assert.True(AppTransform.TryResolveAssembly(app, tail, out string? resolved), tail);
+                byte[] served = AppTransform.TransformOrCached(app, resolved!);
+                Assert.NotEmpty(served);
+                using var asm = Mono.Cecil.AssemblyDefinition.ReadAssembly(new MemoryStream(served));
+                Assert.Equal(Path.GetFileNameWithoutExtension(tail), asm.Name.Name);
+            }
+            catch (Exception ex) when (ex is not Xunit.Sdk.XunitException)
+            {
+                failures.Add(tail + ": " + ex.GetType().Name + ": " + ex.Message.Split('\n')[0]);
+            }
+        }
+        Assert.True(failures.Count == 0, "transform failures:\n" + string.Join("\n", failures));
+    }
+
+    [Fact]
+    public void Linqpad_Startup_Adapter_Adds_Parameterless_MainForm_Ctor()
+    {
+        // DIRECT-1105 Priority1: served boot fails at DesktopBenchmarkForms.Create
+        // because LINQPad.UI.MainForm has no public parameterless ctor
+        // (NotSupportedException: startup adapter needed). The experimental
+        // adapter must add exactly that (delegating to the original
+        // (string, bool) ctor); disabled must leave bytes untouched. Real
+        // retained original input, no synthetic assemblies.
+        const string app = "benchmark-linqpad5";
+        Assert.True(AppTransform.TryGetSpec(app, out AppTransform.AppSpec? maybe));
+        Assert.True(maybe is not null);
+        string entry = Path.Combine(AppTransform.AppFolders[app], "LINQPad.exe");
+        Assert.True(File.Exists(entry), $"entry missing: {entry}");
+        byte[] pristine = File.ReadAllBytes(entry);
+        byte[] adapted = BenchmarkStartupCompatibility.Rewrite(pristine, app,
+            [Path.GetDirectoryName(entry)!], enabled: true);
+        Assert.NotEqual(pristine, adapted);
+        using (var asm = Mono.Cecil.AssemblyDefinition.ReadAssembly(new MemoryStream(adapted)))
+        {
+            Assert.Equal("LINQPad", asm.Name.Name);
+            var mainForm = asm.MainModule.GetType("LINQPad.UI.MainForm");
+            Assert.True(mainForm is not null);
+            Assert.Contains(mainForm.Methods, m => m.IsConstructor && m.IsPublic && !m.IsStatic && m.Parameters.Count == 0);
+        }
+        byte[] untouched = BenchmarkStartupCompatibility.Rewrite(pristine, app,
+            [Path.GetDirectoryName(entry)!], enabled: false);
+        Assert.Equal(pristine, untouched);
+    }
+
+    [Fact]
+    public void Keepass_App_Config_Aliases_Staged_Entry_Config()
+    {
+        // FP-1935: KeePass boot requests VFS tail "app.config" (non-fatal
+        // notice on miss). The map must serve the staged KeePass.exe.config
+        // bytes under that name: alias to the real file, never a copy or
+        // placeholder. Other benchmark maps must not gain the key (scope).
+        const string app = "benchmark-keepass";
+        Assert.True(AppTransform.TryGetSpec(app, out AppTransform.AppSpec? maybe));
+        Assert.True(maybe is not null);
+        var files = maybe!.ContentFiles;
+        Assert.True(files.TryGetValue("app.config", out string? mapped), "app.config");
+        Assert.True(File.Exists(mapped), mapped);
+        string staged = Path.Combine(AppTransform.AppFolders[app], "KeePass.exe.config");
+        Assert.Equal(staged, mapped);
+        Assert.Equal(File.ReadAllBytes(staged), File.ReadAllBytes(mapped));
+        // DIRECT-1105: the rooted "/vfs/app.config" read bypasses the
+        // tail-matching registry (unrewritten framework reader), so the same
+        // staged bytes are also served under the "vfs/app.config" key whose
+        // MEMFS mirror lands exactly on the requested path.
+        Assert.True(files.TryGetValue("vfs/app.config", out string? rooted), "vfs/app.config");
+        Assert.Equal(staged, rooted);
+        Assert.Equal(File.ReadAllBytes(staged), File.ReadAllBytes(rooted));
+        Assert.True(AppTransform.TryGetSpec("benchmark-advanceddatagridview", out AppTransform.AppSpec? adgv));
+        Assert.True(adgv is not null);
+        Assert.DoesNotContain("app.config", adgv!.ContentFiles.Keys);
+        Assert.DoesNotContain("vfs/app.config", adgv!.ContentFiles.Keys);
+    }
+
+    [Fact]
+    public void Minesweeper_Config_Alias_Serves_Staged_Dll_Config()
+    {
+        // apprev-g5-shell-config (RT-G5A-1927 item 10): Minesweeper settings
+        // fault on ClientConfigurationHost::OpenStreamForWrite '' — the
+        // staged entry config was never served (*.dll.config excluded from
+        // loose content). The map must serve the staged
+        // Minesweeper.dll.config bytes under its desktop exe-config name:
+        // alias to the real file, never a copy or placeholder. Other
+        // benchmark maps must not gain the key (scope).
+        const string app = "benchmark-minesweeper";
+        Assert.True(AppTransform.TryGetSpec(app, out AppTransform.AppSpec? maybe));
+        Assert.True(maybe is not null);
+        var files = maybe!.ContentFiles;
+        Assert.True(files.TryGetValue("Minesweeper.dll.config", out string? mapped), "Minesweeper.dll.config");
+        Assert.True(File.Exists(mapped), mapped);
+        string staged = Path.Combine(AppTransform.AppFolders[app], "Minesweeper.dll.config");
+        Assert.Equal(staged, mapped);
+        Assert.Equal(File.ReadAllBytes(staged), File.ReadAllBytes(mapped));
+        Assert.True(AppTransform.TryGetSpec("benchmark-advanceddatagridview", out AppTransform.AppSpec? adgv));
+        Assert.True(adgv is not null);
+        Assert.DoesNotContain("Minesweeper.dll.config", adgv!.ContentFiles.Keys);
+    }
+
+    [Fact]
     public void Word_Spec_Carries_PdnCpu()
     {
         // MEMBERREF-RESTAGE: the IsWindow forwarder only fires when the

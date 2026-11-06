@@ -1,6 +1,6 @@
 {
   "name": "wpf-manifests",
-  "source": "<wpf-root>\\src\\DesktopWasm.BrowserHost\\wwwroot\\apps",
+  "source": "E:\\AI\\Code\\WPF-wasm\\src\\DesktopWasm.BrowserHost\\wwwroot\\apps",
   "sourceSha256": "",
   "extractedUtc": "2026-10-30T12:03:16Z",
   "data": {

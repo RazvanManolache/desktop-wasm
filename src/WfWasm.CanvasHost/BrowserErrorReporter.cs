@@ -31,6 +31,40 @@ public static class BrowserErrorReporter
     public static Func<string?>? AppLabelProvider { get; set; }
     public static Func<string?>? SessionProvider { get; set; }
 
+    // Serving-identity attribution: triage must tell which backend
+    // generation produced a crash (public vs staging vs stale). Backend
+    // defaults to the reporting HttpClient's authority (no server change
+    // needed); generation has no client-side source yet and stays
+    // provider-fed until the server stamps it (seam: shell serves the
+    // generation id, e.g. alongside deployment.json).
+    public static Func<string?>? BackendProvider { get; set; }
+    public static Func<string?>? GenerationProvider { get; set; }
+
+    // GAP-genprov-0836-k7d2: stamped generation cache. The shell stamps
+    // window.wfwasmRuntime.generation; Home reads it once via JS interop
+    // at init and caches it here, and GenerationProvider resolves the
+    // cached value (mirroring BackendProvider's per-report evaluation).
+    // Null = unstamped/unknown. Fail-closed, trimmed, length-capped.
+    private static string? s_cachedGeneration;
+
+    internal static string? CachedGeneration() => s_cachedGeneration;
+
+    internal static void NoteGeneration(string? generation)
+    {
+        try
+        {
+            string? trimmed = (generation ?? "").Trim();
+            if (trimmed.Length == 0)
+                trimmed = null;
+            else if (trimmed.Length > 120)
+                trimmed = trimmed.Substring(0, 120);
+            s_cachedGeneration = trimmed;
+        }
+        catch
+        {
+        }
+    }
+
     public static string ComputeSignature(Exception ex)
     {
         string type = ex.GetType().Name;
@@ -137,6 +171,8 @@ public static class BrowserErrorReporter
         string? reportApp = Capture(AppProvider);
         string? reportLabel = Capture(AppLabelProvider);
         string? reportSession = Capture(SessionProvider);
+        string? reportBackend = Capture(BackendProvider) ?? s_http?.BaseAddress?.Authority;
+        string? reportGeneration = Capture(GenerationProvider);
         string rateKey = reportApp + "\n" + reportSession + "\n" + signature;
         lock (s_rateGate)
         {
@@ -150,9 +186,7 @@ public static class BrowserErrorReporter
             s_sentCounts[rateKey] = sent + 1;
         }
 
-        Console.WriteLine(reportApp == null
-            ? $"[report:{source}] {signature}"
-            : $"[report:{source}] app={reportApp} {signature}");
+        Console.WriteLine(FormatReportHead(source, signature, reportApp, reportBackend, reportGeneration));
         string chain = BuildInnerChainText(ex, out string[] innerLines);
         foreach (string innerLine in innerLines)
             Console.WriteLine($"[report:{source}] inner: {innerLine}");
@@ -172,7 +206,7 @@ public static class BrowserErrorReporter
             ? "/api/client-errors"
             : new Uri(http.BaseAddress, "api/client-errors").ToString();
         string json = BuildReportJson(signature, ex.Message, chain, source, DateTimeOffset.UtcNow,
-            inputContext, reportApp, reportLabel, reportSession);
+            inputContext, reportApp, reportLabel, reportSession, reportBackend, reportGeneration);
         // JS-first: the bridge fetch returns nothing to managed code, so no
         // Task ever crosses the interop boundary here (see the seam note).
         if (TryDispatchJs(url, json))
@@ -251,6 +285,8 @@ public static class BrowserErrorReporter
         // capped once no matter which entry point reports it.
         string? reportApp = Capture(AppProvider);
         string? reportSession = Capture(SessionProvider);
+        string? reportBackend = Capture(BackendProvider) ?? s_http?.BaseAddress?.Authority;
+        string? reportGeneration = Capture(GenerationProvider);
         string rateKey = reportApp + "\n" + reportSession + "\n" + signature;
         lock (s_rateGate)
         {
@@ -264,9 +300,7 @@ public static class BrowserErrorReporter
             s_sentCounts[rateKey] = sent + 1;
         }
 
-        Console.WriteLine(reportApp == null
-            ? $"[report:{source}] {signature}"
-            : $"[report:{source}] app={reportApp} {signature}");
+        Console.WriteLine(FormatReportHead(source, signature, reportApp, reportBackend, reportGeneration));
         BuildInnerChainText(ex, out string[] innerLines);
         foreach (string innerLine in innerLines)
             Console.WriteLine($"[report:{source}] inner: {innerLine}");
@@ -287,7 +321,8 @@ public static class BrowserErrorReporter
     // Single-batch report payload, shared by the JS and HTTP transports so
     // both post byte-identical bodies (same field order, Web JSON defaults).
     public static string BuildReportJson(string signature, string? message, string stack, string source,
-        DateTimeOffset time, string? context, string? app, string? appLabel, string? sessionId)
+        DateTimeOffset time, string? context, string? app, string? appLabel, string? sessionId,
+        string? backend = null, string? generation = null)
     {
         return System.Text.Json.JsonSerializer.Serialize(new[]
         {
@@ -302,8 +337,28 @@ public static class BrowserErrorReporter
                 app,
                 appLabel,
                 sessionId,
+                backend,
+                generation,
             },
         }, s_payloadJson);
+    }
+
+    // One head-line shape for both transports: app/backend/generation
+    // attribution travels in the fixed prefix so console-only triage
+    // (first-chance storms) carries the same identity as posted rows.
+    // Null/blank segments are omitted; the signature is always last.
+    public static string FormatReportHead(string source, string signature,
+        string? app, string? backend, string? generation)
+    {
+        var sb = new StringBuilder($"[report:{source}]");
+        if (!string.IsNullOrWhiteSpace(app))
+            sb.Append($" app={app.Trim()}");
+        if (!string.IsNullOrWhiteSpace(backend))
+            sb.Append($" backend={backend.Trim()}");
+        if (!string.IsNullOrWhiteSpace(generation))
+            sb.Append($" gen={generation.Trim()}");
+        sb.Append($" {signature}");
+        return sb.ToString();
     }
 
     private static bool TryDispatchJs(string url, string json)

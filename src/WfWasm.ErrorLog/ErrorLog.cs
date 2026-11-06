@@ -15,7 +15,9 @@ public sealed record ErrorReport(
     string? Context = null,
     string? App = null,
     string? SessionId = null,
-    string? AppLabel = null);
+    string? AppLabel = null,
+    string? Backend = null,
+    string? Generation = null);
 
 /// <summary>
 /// Aggregated inventory entry per error signature.
@@ -30,7 +32,17 @@ public sealed record ErrorIndexEntry(
     string Status,
     string? FixedNote,
     int PostFixCount,
-    string[]? Apps = null);
+    string[]? Apps = null,
+    string[]? Backends = null,
+    string[]? Generations = null,
+    ReopenRecord[]? ReopenHistory = null);
+
+/// <summary>
+/// One reopen event: a fixed signature returned to open with a reason.
+/// The original <see cref="ErrorIndexEntry.FixedNote"/> is preserved as
+/// the fix evidence; history records why it was reopened.
+/// </summary>
+public sealed record ReopenRecord(DateTimeOffset AtUtc, string Reason);
 
 /// <summary>
 /// File-backed browser error sink. Appends every report to
@@ -79,6 +91,8 @@ public static class ErrorLog
         string? context = report.Context == null ? null : Truncate(report.Context, 8000);
         string source = Truncate(report.Source.Trim(), 120);
         string? app = string.IsNullOrWhiteSpace(report.App) ? null : Truncate(report.App.Trim(), 120);
+        string? backend = string.IsNullOrWhiteSpace(report.Backend) ? null : Truncate(report.Backend.Trim(), 120);
+        string? generation = string.IsNullOrWhiteSpace(report.Generation) ? null : Truncate(report.Generation.Trim(), 120);
         var stamped = report with
         {
             Signature = signature,
@@ -89,6 +103,8 @@ public static class ErrorLog
             App = app,
             SessionId = report.SessionId == null ? null : Truncate(report.SessionId.Trim(), 120),
             AppLabel = report.AppLabel == null ? null : Truncate(report.AppLabel.Trim(), 200),
+            Backend = backend,
+            Generation = generation,
         };
 
         lock (s_gate)
@@ -99,7 +115,10 @@ public static class ErrorLog
             ErrorIndexEntry updated;
             if (at < 0)
             {
-                updated = new ErrorIndexEntry(signature, message, source, stamped.Time, stamped.Time, 1, StatusOpen, null, 0, app == null ? [] : [app]);
+                updated = new ErrorIndexEntry(signature, message, source, stamped.Time, stamped.Time, 1, StatusOpen, null, 0,
+                    app == null ? [] : [app],
+                    backend == null ? [] : [backend],
+                    generation == null ? [] : [generation]);
                 entries.Add(updated);
             }
             else
@@ -111,7 +130,9 @@ public static class ErrorLog
                     LastSeen = stamped.Time,
                     Count = cur.Count + 1,
                     PostFixCount = cur.PostFixCount + (fixedNow ? 1 : 0),
-                    Apps = MergeApp(cur.Apps, app),
+                    Apps = MergeToken(cur.Apps, app),
+                    Backends = MergeToken(cur.Backends, backend),
+                    Generations = MergeToken(cur.Generations, generation),
                 };
                 entries[at] = updated;
             }
@@ -150,6 +171,53 @@ public static class ErrorLog
         }
     }
 
+    /// <summary>
+    /// Reopens a fixed signature: status returns to open with the reason
+    /// recorded in history. Count, FirstSeen, LastSeen, PostFixCount,
+    /// FixedNote and attribution are preserved; the original fixed-note
+    /// stays as the fix evidence. Unknown signatures return false.
+    /// </summary>
+    public static bool MarkOpen(string logDir, string signature, string reason)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(logDir);
+        ArgumentException.ThrowIfNullOrWhiteSpace(signature);
+        lock (s_gate)
+        {
+            var entries = ReadIndexCore(logDir);
+            int at = entries.FindIndex(e => e.Signature == signature);
+            if (at < 0)
+                return false;
+            var history = new List<ReopenRecord>(entries[at].ReopenHistory ?? [])
+            {
+                new ReopenRecord(DateTimeOffset.UtcNow, Truncate(reason.Trim(), 500)),
+            };
+            while (history.Count > 20)
+                history.RemoveAt(0);
+            entries[at] = entries[at] with { Status = StatusOpen, ReopenHistory = history.ToArray() };
+            WriteIndexCore(logDir, entries);
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Server-side stamp adoption (SHELL-STAMP-1301-p5r3): the receiving
+    /// backend fills in backend+generation the client omitted, so repeats
+    /// of legacy unattributed signatures adopt current-occurrence stamps
+    /// through the normal merge path. Client-sent values always win;
+    /// first-occurrence message/source are untouched (handled in Log).
+    /// </summary>
+    public static ErrorReport WithServerAttribution(ErrorReport report, string? backend, string? generation)
+    {
+        ArgumentNullException.ThrowIfNull(report);
+        string? b = string.IsNullOrWhiteSpace(report.Backend) && !string.IsNullOrWhiteSpace(backend)
+            ? backend.Trim() : report.Backend;
+        string? g = string.IsNullOrWhiteSpace(report.Generation) && !string.IsNullOrWhiteSpace(generation)
+            ? generation.Trim() : report.Generation;
+        if (ReferenceEquals(b, report.Backend) && ReferenceEquals(g, report.Generation))
+            return report;
+        return report with { Backend = b, Generation = g };
+    }
+
     private static List<ErrorIndexEntry> ReadIndexCore(string logDir)
     {
         string path = Path.Combine(logDir, IndexFileName);
@@ -158,11 +226,18 @@ public static class ErrorLog
         try
         {
             var entries = JsonSerializer.Deserialize<List<ErrorIndexEntry>>(File.ReadAllText(path), s_json) ?? [];
-            // Pre-attribution rows lack Apps: normalize so consumers never see null.
+            // Pre-attribution rows lack Apps/Backends/Generations: normalize
+            // so consumers never see null. Pre-reopen rows lack history too.
             for (int i = 0; i < entries.Count; i++)
             {
-                if (entries[i].Apps is null)
-                    entries[i] = entries[i] with { Apps = [] };
+                if (entries[i].Apps is null || entries[i].Backends is null || entries[i].Generations is null || entries[i].ReopenHistory is null)
+                    entries[i] = entries[i] with
+                    {
+                        Apps = entries[i].Apps ?? [],
+                        Backends = entries[i].Backends ?? [],
+                        Generations = entries[i].Generations ?? [],
+                        ReopenHistory = entries[i].ReopenHistory ?? [],
+                    };
             }
 
             return entries;
@@ -173,13 +248,14 @@ public static class ErrorLog
         }
     }
 
-    // Distinct sorted app slugs per signature, capped so one noisy shared
+    // Distinct sorted tokens per signature, capped so one noisy shared
     // signature (e.g. a framework first-chance) cannot grow the index row.
-    private static string[] MergeApp(string[]? current, string? app)
+    // Serves app slugs, backend hosts and generation ids alike.
+    private static string[] MergeToken(string[]? current, string? value)
     {
         var set = new SortedSet<string>(current ?? [], StringComparer.OrdinalIgnoreCase);
-        if (!string.IsNullOrEmpty(app))
-            set.Add(app);
+        if (!string.IsNullOrEmpty(value))
+            set.Add(value);
         return set.Take(8).ToArray();
     }
 

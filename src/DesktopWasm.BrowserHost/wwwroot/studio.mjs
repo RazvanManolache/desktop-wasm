@@ -2,6 +2,7 @@ import {searchApps, readRoute, acceptsMessage, Sessions, validateCatalog} from '
 
 const $ = id => document.getElementById(id);
 const sessions = new Sessions();
+const mountRoot = new URL(document.baseURI).pathname.replace(/\/$/, '');
 const errors = [];
 let apps = [], selected = null, frame = null, timer = null, clock = null, started = 0, heartbeat = 0;
 let query = '', filter = 'all', category = 'all';
@@ -28,7 +29,7 @@ function tearDown() {
     $('renderer-reason').textContent = ''; $('renderer-loss').disabled = true;
 }
 function navigate(slug) {
-    const url = slug ? `/app/${encodeURIComponent(slug)}` : '/';
+    const url = mountRoot + (slug ? `/app/${encodeURIComponent(slug)}` : '/');
     if (location.pathname !== url) history.pushState(null, '', url);
     openRoute();
 }
@@ -56,7 +57,7 @@ function start(app) {
     frame.title = `${app.label} — isolated WPF runtime`;
     frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-downloads');
     // Frame boundary provides fault/state isolation, not a security sandbox for hostile code.
-    frame.src = `/runtime/${app.slug}?session=${encodeURIComponent(token)}&renderer=${encodeURIComponent(rendererChoice)}&diagnostics=${diagnostics ? '1' : '0'}`;
+    frame.src = `${mountRoot}/runtime/${app.slug}?session=${encodeURIComponent(token)}&renderer=${encodeURIComponent(rendererChoice)}&diagnostics=${diagnostics ? '1' : '0'}`;
     $('stage').append(frame);
     overlay(`Opening ${app.label}`, 'Starting a fresh runtime. You can keep browsing the library while this app loads.', null);
     clock = setInterval(() => {
@@ -64,8 +65,18 @@ function start(app) {
         if (sessions.current?.status === 'ready' && performance.now() - heartbeat > 12000)
             $('foot-status').textContent = 'The app is not responding. Restart it, stop it, or choose another app.';
     }, 500);
-    timer = setTimeout(() => fail('The app did not paint a frame within 60 seconds.', 'startup-timeout'), 60000);
+    armStartupTimer();
     $('foot-status').textContent = 'A new app runtime is loading. The library remains available.';
+}
+function armStartupTimer() {
+    clearTimeout(timer); timer = null;
+    // Tiered startup budget (verify-2 decision): 60s base, extended ONLY by
+    // progress/renderer evidence while loading — never by heartbeat/metrics —
+    // hard-capped by the per-app manifest budget (loadBudgetMs, default 600s).
+    const cap = selected?.loadBudgetMs ?? 600000;
+    const remaining = Math.min(60000, started + cap - performance.now());
+    if (remaining <= 0) { fail('The app did not paint a frame within its startup budget.', 'startup-timeout'); return; }
+    timer = setTimeout(() => fail('The app did not paint a frame within 60 seconds.', 'startup-timeout'), remaining);
 }
 function overlay(title, description, icon, isError = false, actions = []) {
     $('stage').querySelector('.studio-overlay')?.remove();
@@ -149,7 +160,7 @@ function home() {
     $('foot-status').textContent = 'The library is ready. No app runtime loaded.';
 }
 function openRoute() {
-    const route = readRoute(location.pathname);
+    const route = readRoute(location.pathname, mountRoot);
     if (!route) { home(); return; }
     const app = route.slug && apps.find(a => a.slug === route.slug);
     if (app) { select(app); return; }
@@ -241,6 +252,7 @@ addEventListener('message', event => {
         $('renderer-loss').disabled = !d.backend.startsWith('WebGL');
         $('renderer-draw').textContent = Number.isFinite(d.drawMs) ? ms(d.drawMs) : '—';
         $('renderer-input').textContent = Number.isFinite(d.inputMs) ? ms(d.inputMs) : '—';
+        if (current.status === 'loading') armStartupTimer();
         return;
     }
     if (d.type === 'heartbeat') { heartbeat = performance.now(); return; }
@@ -249,7 +261,7 @@ addEventListener('message', event => {
         $('loaded-mb').textContent = mb(d.loadedBytes); $('network-mb').textContent = mb(d.networkBytes);
         $('cache-count').textContent = `${d.reusedResponses} / ${d.requests}`; return;
     }
-    if (d.type === 'progress' && current.status === 'loading') { $('foot-status').textContent = `${selected.label} · ${String(d.phase).slice(0, 200)}`; return; }
+    if (d.type === 'progress' && current.status === 'loading') { $('foot-status').textContent = `${selected.label} · ${String(d.phase).slice(0, 200)}`; armStartupTimer(); return; }
     if (d.type === 'ready' && current.status === 'loading') {
         sessions.update(current.token, 'ready'); clearTimeout(timer); heartbeat = performance.now();
         $('stage').querySelector('.studio-overlay')?.remove(); status('Running', 'ready'); controls(true, true);

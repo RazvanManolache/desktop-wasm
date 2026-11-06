@@ -7,14 +7,27 @@ using FormsForm = System.Windows.Forms.Form;
 
 public sealed class TelerikPhotoBootTests
 {
+    // TMPMOVE retained-first fixture root (helper).
+    // TMPMOVE canonical-only: rewritten fixtures under retained/.
+    private static string RepoRoot =>
+        Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+    private static string RewrittenTelerik
+    {
+        get
+        {
+            var canon = Path.Combine(RepoRoot, ".artifacts", "tmp", "retained", "rewritten-telerik-photo");
+            return canon;
+        }
+    }
+
     [Fact]
     public void PhotoAlbum_Boots_And_Paints_Headless()
     {
         // Same regenerable-data coupling as TictactoePaintTests: the
-        // batch-rewritten app must exist in E:\tmp.
-        string dir = @"E:\tmp\rewritten-telerik-photo";
+        // batch-rewritten app must exist in the retained tree.
+        string dir = RewrittenTelerik;
         string app = Path.Combine(dir, "PhotoAlbum.exe");
-        Assert.True(File.Exists(app), $"regenerate via E:/tmp/rewrite-telerik-photo.ps1: {app}");
+        Assert.True(File.Exists(app), $"missing rewritten fixture (expected at retained/rewritten-telerik-photo): {app}");
         var photo = Assembly.LoadFrom(app);
         Assert.Equal("PhotoAlbum", photo.GetName().Name);
         // Browser parity: one copy of each assembly wins. Prefer the

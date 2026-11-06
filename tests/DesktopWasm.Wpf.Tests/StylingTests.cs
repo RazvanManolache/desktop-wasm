@@ -699,4 +699,37 @@ public sealed class StylingTests
         Assert.NotNull(directory);
         return System.IO.Path.Combine(directory.FullName, "src", "DesktopWasm.BrowserHost", "wwwroot", "apps", slug);
     }
+
+    [Fact]
+    public void Trigger_style_reapply_does_not_accumulate_property_changed_handlers()
+    {
+        // RVW-9594 Job2 (Opacity style-trigger reentrancy): every Reapply
+        // re-ran SubscribeTriggers, doubling PropertyChanged handlers per
+        // property change until the testhost died under load. Refresh must
+        // not rewire: EventSetter.ApplyTo already honors SkipEventWires for
+        // the same double-invoke reason.
+        var border = new Border();
+        var style = new Style(typeof(Border));
+        var trigger = new Trigger { Property = "IsEnabled", Value = false };
+        trigger.Setters.Add(new Setter(UIElement.OpacityProperty, 0.5));
+        style.Triggers.Add(trigger);
+        style.ApplyTo(border);
+        Assert.Equal(1, PropertyChangedHandlerCount(border));
+        for (var i = 0; i < 10; i++)
+        {
+            border.Width = 100 + i;
+            border.Height = 50 + i;
+        }
+        Assert.Equal(1.0, border.Opacity);
+        Assert.Equal(1, PropertyChangedHandlerCount(border));
+    }
+
+    private static int PropertyChangedHandlerCount(DependencyObject target)
+    {
+        var field = typeof(DependencyObject).GetField(
+            "PropertyChanged",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        var multicast = field?.GetValue(target) as Action<DependencyProperty, object?, object?>;
+        return multicast?.GetInvocationList().Length ?? 0;
+    }
 }

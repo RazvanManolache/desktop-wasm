@@ -13,6 +13,12 @@ public sealed class TempRawEnumerate
 {
     private const string ModernReaderStamp = "System.Resources.Extensions.DeserializingResourceReader, System.Resources.Extensions, Version=4.0.0.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51";
 
+    // TMPMOVE canonical-only: diagnostic output goes to the repo runs tree.
+    private static string RunsDir =>
+        System.IO.Path.Combine(
+            System.IO.Path.GetFullPath(System.IO.Path.Combine(System.AppContext.BaseDirectory, "..", "..", "..", "..", "..")),
+            ".artifacts", "tmp", "runs", "drawing-temp");
+
     [Fact]
     public void Temp_RawEnumerate_Lists_All_Names_Without_FirstChance()
     {
@@ -38,7 +44,8 @@ public sealed class TempRawEnumerate
         {
             System.AppDomain.CurrentDomain.FirstChanceException -= Handler;
         }
-        System.IO.File.WriteAllLines(@"E:\tmp\rawenum.txt", keys);
+        System.IO.Directory.CreateDirectory(RunsDir);
+        System.IO.File.WriteAllLines(System.IO.Path.Combine(RunsDir, "rawenum.txt"), keys);
         Assert.Contains("w.Item1", keys);
         Assert.Contains("w.Item2", keys);
         Assert.Contains("w.Stream", keys);

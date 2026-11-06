@@ -14,6 +14,26 @@ using Xunit;
 // trampolines; the JIT test proves verifiability.
 public sealed class RichTextStreamRedirectTests
 {
+    // TMPMOVE canonical-only: rewritten fixtures under retained/.
+    private static string RepoRoot =>
+        Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+    private static string RewrittenSmall
+    {
+        get
+        {
+            var canon = Path.Combine(RepoRoot, ".artifacts", "tmp", "retained", "rewritten-small");
+            return canon;
+        }
+    }
+    private static string RewrittenPaint
+    {
+        get
+        {
+            var canon = Path.Combine(RepoRoot, ".artifacts", "tmp", "retained", "rewritten-paint");
+            return canon;
+        }
+    }
+
     private static void BuildSynthetic(string tempOut)
     {
         var asmName = new AssemblyNameDefinition("RtfSynth", new Version(1, 0, 0, 0));
@@ -212,12 +232,12 @@ public sealed class RichTextStreamRedirectTests
     [Fact]
     public void Redirect_Real_Fork_StreamMethods_Become_Trampolines()
     {
-        string src = @"E:\tmp\rewritten-small\WfWasm.WinForms.dll";
+        string src = Path.Combine(RewrittenSmall, "WfWasm.WinForms.dll");
         string tmp = Path.Combine(Path.GetTempPath(), $"RtfFork_{Guid.NewGuid()}.dll");
         try
         {
             byte[] bytes = File.ReadAllBytes(src);
-            using var resolver = new FrameworkResolver(Path.GetDirectoryName(src), [@"E:\tmp\rewritten-small", @"E:\tmp\rewritten-paint"]);
+            using var resolver = new FrameworkResolver(Path.GetDirectoryName(src), [RewrittenSmall, RewrittenPaint]);
             var readerParams = new ReaderParameters { AssemblyResolver = resolver };
             using (var ms = new MemoryStream(bytes))
             using (var read = AssemblyDefinition.ReadAssembly(ms, readerParams))

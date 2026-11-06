@@ -99,7 +99,7 @@ public sealed class KeyboardDevice : InputDevice
     /// <summary>Always null: the engine composes no Win32/target source.</summary>
     public override PresentationSource? ActiveSource => null;
 
-    public UIElement? FocusedElement => Target as UIElement;
+    public IInputElement? FocusedElement => Target;
 
     public ModifierKeys Modifiers { get; internal set; }
 
@@ -114,7 +114,7 @@ public static class Keyboard
 
     public static KeyboardDevice PrimaryDevice => PrimaryDeviceValue;
 
-    public static UIElement? FocusedElement => WpfInputManager.Current?.Focused;
+    public static IInputElement? FocusedElement => WpfInputManager.Current?.Focused;
 
     public static ModifierKeys Modifiers => WpfInputManager.Current?.HeldModifiers ?? ModifierKeys.None;
 

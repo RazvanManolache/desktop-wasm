@@ -2,7 +2,7 @@
 // <canvas> element. Commands arrive as one JSON array per frame to keep
 // interop calls to one per frame: [op, ...args] where op is
 // 1 = fillRect [x, y, w, h, cssColor], 2 = roundRect [x, y, w, h, r, cssColor],
-// 3 = fillText [text, x, y, fontCss, cssColor, hAlign, vAlign, mnemonicIndex],
+// 3 = fillText [text, x, y, fontCss, cssColor, hAlign, vAlign, mnemonicIndex, clipX, clipY, clipW, clipH (0/0/0/0 = unbounded)],
 // 4 = fillGradientV [x, y, w, h, topCss, bottomCss],
 // 5 = strokeLine [x1, y1, x2, y2, width, cssColor],
 // 6 = ellipse [x, y, w, h, lineWidth, outlineCss, fillCss|null].
@@ -153,6 +153,10 @@ window.wfwasm.paint = function (canvasId, commandsJson, frameSeq) {
     var tAfterParse = perf ? performance.now() : 0;
     var hAligns = ["left", "center", "right"];
     var vAligns = ["alphabetic", "top", "middle", "bottom"];
+    // Clip scopes are local to one replay. Even a malformed stream or
+    // throwing paint command must never clip the next frame.
+    var clipDepth = 0;
+    try {
     for (var i = 0; i < commands.length; i++) {
         var c = commands[i];
         if (c[0] === 1) {
@@ -168,6 +172,8 @@ window.wfwasm.paint = function (canvasId, commandsJson, frameSeq) {
             ctx.font = c[4];
             ctx.textAlign = hAligns[c[6]] || "left";
             ctx.textBaseline = vAligns[c[7]] || "alphabetic";
+            var clipped = c[11] > 0 && c[12] > 0;
+            if (clipped) { ctx.save(); clipDepth++; ctx.beginPath(); ctx.rect(c[9], c[10], c[11], c[12]); ctx.clip(); }
             ctx.fillText(c[1], c[2], c[3]);
             if (c[8] >= 0 && c[8] < c[1].length) {
                 // Mnemonic underline: measure the prefix with the same font.
@@ -186,6 +192,7 @@ window.wfwasm.paint = function (canvasId, commandsJson, frameSeq) {
                 else if (ctx.textBaseline === "bottom") baseY = c[3] + (m.actualBoundingBoxDescent ? -m.actualBoundingBoxDescent : 0);
                 ctx.fillRect(px, baseY + 1, glyph, 1);
             }
+            if (clipped) { ctx.restore(); clipDepth--; }
             ctx.textAlign = "left";
             ctx.textBaseline = "alphabetic";
         } else if (c[0] === 4) {
@@ -249,7 +256,19 @@ window.wfwasm.paint = function (canvasId, commandsJson, frameSeq) {
             // wfwasmTexShift ahead of the patch (PaintAsync strips
             // shifts, so this runs only for hand-built streams).
             // No-op by design.
+        } else if (c[0] === 13) {
+            ctx.save();
+            clipDepth++;
+            ctx.beginPath();
+            ctx.rect(c[1], c[2], Math.max(0, c[3]), Math.max(0, c[4]));
+            ctx.clip();
+        } else if (c[0] === 14 && clipDepth > 0) {
+            ctx.restore();
+            clipDepth--;
         }
+    }
+    } finally {
+        while (clipDepth > 0) { ctx.restore(); clipDepth--; }
     }
     if (perf) {
         var tDone = performance.now();
@@ -308,19 +327,37 @@ window.wfwasmTexPatch = function (layerId, bytes, x, y, w, h) {
 // the exposed strip lands on already-moved pixels. Pixel p moves to
 // p+(dx,dy), matching managed ShiftPixels. Missing layers or a zero
 // shift keep the old layer (the managed side falls back to Def).
+// Retained scroll shift: moves a layer bitmap by (dx,dy) through a
+// reusable scratch copy (never a self-drawImage), so a following TexPatch of
+// the exposed strip lands on already-moved pixels. Pixel p moves to
+// p+(dx,dy), matching managed ShiftPixels. Missing layers or a zero
+// shift keep the old layer (the managed side falls back to Def).
+// Reuses window.wfwasm._shiftScratch to avoid allocating DOM canvas
+// elements and 2D contexts on every wheel tick / scroll burst.
 window.wfwasmTexShift = function (layerId, dx, dy) {
     try {
         dx |= 0; dy |= 0;
         if (!layerId || (dx === 0 && dy === 0)) return "noop";
         var layer = window.wfwasm._tex ? window.wfwasm._tex.get(String(layerId)) : null;
         if (!layer) return "nolayer";
-        var tmp = document.createElement("canvas");
-        tmp.width = layer.width; tmp.height = layer.height;
-        tmp.getContext("2d").drawImage(layer, 0, 0);
+        var lw = layer.width, lh = layer.height;
+        if (lw <= 0 || lh <= 0) return "noop";
+
+        var scratch = window.wfwasm._shiftScratch;
+        if (!scratch) {
+            scratch = document.createElement("canvas");
+            window.wfwasm._shiftScratch = scratch;
+        }
+        if (scratch.width < lw) scratch.width = lw;
+        if (scratch.height < lh) scratch.height = lh;
+
+        var sCtx = scratch.getContext("2d");
+        sCtx.clearRect(0, 0, lw, lh);
+        sCtx.drawImage(layer, 0, 0);
+
         var g = layer.getContext("2d", { alpha: true });
-        g.clearRect(0, 0, layer.width, layer.height);
-        g.drawImage(tmp, dx, dy);
-        tmp.width = 0; tmp.height = 0;
+        g.clearRect(0, 0, lw, lh);
+        g.drawImage(scratch, 0, 0, lw, lh, dx, dy, lw, lh);
         return "ok";
     } catch (e) {
         return "error:" + ((e && e.message) || e);
@@ -359,6 +396,10 @@ window.wfwasm.fitCanvas = function (canvasId, dotNet) {
     // scoped to the canvas so page inputs (search) keep their own keys.
     if (!canvas._wfFocusHook) {
         canvas._wfFocusHook = true;
+        // Blazor delegates wheel through a passive document listener.
+        // Prevent native page scrolling on the canvas with a non-passive
+        // target listener instead of asking that passive listener to do it.
+        canvas.addEventListener("wheel", e => e.preventDefault(), { passive: false });
         canvas.addEventListener("pointerdown", function (e) {
             // Press-drag-release outside the canvas must still deliver its
             // move/up (strokes, scrollbar/modal drags): capture the pointer
@@ -368,6 +409,16 @@ window.wfwasm.fitCanvas = function (canvasId, dotNet) {
                 try { canvas.focus({ preventScroll: true }); } catch (e) { try { canvas.focus(); } catch (e2) {} }
             }
         });
+        const cancel = function (e) {
+            // Normal implicit release follows mouseup. A cancellation or
+            // capture lost while a button is held has no such release event.
+            if (e.type !== "pointercancel" && !e.buttons) return;
+            if (canvas.isConnected && window.wfwasm._dotNet)
+                window.wfwasm._dotNet.invokeMethodAsync("OnPointerCanceled")
+                    .catch(err => console.error("Pointer cancellation failed", err));
+        };
+        canvas.addEventListener("pointercancel", cancel);
+        canvas.addEventListener("lostpointercapture", cancel);
     }
     if (window.wfwasm._perfOn) window.wfwasm._perfHookCanvas(canvas);
     return "ok";
@@ -393,6 +444,27 @@ window.wfwasm.releaseCanvas = function (canvasId) {
 // loose JPEG content is decoded by the browser here. Input is the
 // raw file bytes as base64; the result is base64 of an 8-byte
 // little-endian [width, height] header followed by row-major RGBA.
+// Paste bridge (input): read the system clipboard text for @onpaste commit.
+// Returns null when unreadable/denied: paste then stays a no-op, as before.
+window.wfwasm.readClipboardText = async function () {
+    try {
+        if (!navigator.clipboard || !navigator.clipboard.readText)
+            return null;
+        return await navigator.clipboard.readText();
+    } catch (e) {
+        return null;
+    }
+};
+
+// GAP-genprov-0836-k7d2: serving-identity stamp for managed reports. The
+// shell stamps window.wfwasmRuntime.generation (unset means unknown);
+// managed BrowserErrorReporter reads it once at init (cached) and posts
+// it on every report, mirroring the JS hook's backend+generation fields.
+window.wfwasm.readGeneration = function () {
+    try { return window.wfwasmRuntime?.generation ?? null; }
+    catch (e) { return null; }
+};
+
 window.wfwasm.decodeImage = async function (base64) {
     var bin = atob(base64);
     var raw = new Uint8Array(bin.length);
@@ -663,6 +735,15 @@ window.wfwasm.installErrorReporting = function () {
             return m ? decodeURIComponent(m[1]) : null;
         } catch (e) { return null; }
     }
+    // Serving-identity: the managed BrowserErrorReporter carries the same
+    // backend/generation fields. Backend is the page's own origin host
+    // (managed falls back to its HttpClient authority the same way);
+    // generation travels only when the shell stamps
+    // window.wfwasmRuntime.generation (unset means unknown).
+    function backendHost() {
+        try { return (typeof location !== "undefined" && location && location.host) || null; }
+        catch (e) { return null; }
+    }
     function push(source, name, message, stack, fatal) {
         name = String(name == null || name === "" ? "Error" : name);
         queue.push({
@@ -674,7 +755,9 @@ window.wfwasm.installErrorReporting = function () {
             context: fatal ? ring.join("\n").slice(-8000) : null,
             app: appSlug(),
             appLabel: window.wfwasmRuntime?.label ?? null,
-            sessionId: window.wfwasmRuntime?.session ?? null
+            sessionId: window.wfwasmRuntime?.session ?? null,
+            backend: backendHost(),
+            generation: window.wfwasmRuntime?.generation ?? null
         });
         if (fatal) window.wfwasmRuntime?.fail(firstLine(message));
         if (fatal) { if (timer) { clearTimeout(timer); timer = 0; } flush(); }
@@ -694,4 +777,23 @@ window.wfwasm.installErrorReporting = function () {
     window.wfwasm.reportRuntimeFailure = function (error) {
         push("runtime-start", error?.name || "Error", error?.message || String(error), error?.stack, true);
     };
+};
+
+// FontFaceSet.check also succeeds for nonexistent families. Compare the
+// candidate against three distinct CSS fallback metrics instead. This bounded
+// list offers usable browser fonts without prompting for local-font access.
+window.wfwasmFontFamilies = function () {
+    if (window.wfwasm._fontFamilies) return window.wfwasm._fontFamilies;
+    const g = document.createElement("canvas").getContext("2d");
+    const candidates = ["Arial", "Arial Black", "Bahnschrift", "Book Antiqua", "Calibri", "Cambria", "Candara", "Century Gothic", "Comic Sans MS", "Consolas", "Constantia", "Corbel", "Courier New", "Franklin Gothic Medium", "Garamond", "Georgia", "Impact", "Lucida Console", "Lucida Sans Unicode", "Microsoft Sans Serif", "Palatino Linotype", "Segoe Print", "Segoe Script", "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", "Tahoma", "Times New Roman", "Trebuchet MS", "Verdana", "Aptos", "Helvetica", "Helvetica Neue", "Menlo", "Monaco", "San Francisco", "Roboto", "Noto Sans", "Noto Serif", "DejaVu Sans", "DejaVu Serif", "Liberation Sans", "Liberation Serif"];
+    const text = "mmmmmmmmWWWWWWWiiiii0123456789@#";
+    const bases = ["monospace", "serif", "sans-serif"];
+    const widths = bases.map(f => { g.font = "72px " + f; return g.measureText(text).width; });
+    const available = candidates.filter(f => bases.some((base, i) => {
+        g.font = '72px "' + f + '",' + base;
+        return Math.abs(g.measureText(text).width - widths[i]) > 0.01;
+    }));
+    document.fonts?.forEach(f => { if (f.status === "loaded") available.push(f.family.replace(/^["']|["']$/g, "")); });
+    window.wfwasm._fontFamilies = JSON.stringify([...new Set(available)].sort());
+    return window.wfwasm._fontFamilies;
 };

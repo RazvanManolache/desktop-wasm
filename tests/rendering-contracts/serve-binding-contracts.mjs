@@ -3,10 +3,12 @@
 import http from 'node:http';
 import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';
 import {resolve,dirname} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {createHash,randomUUID} from 'node:crypto';
 import {verifyBindingReport} from './verify-binding-report.mjs';
 const args=process.argv.slice(2),value=(key,fallback)=>{const i=args.indexOf(key);return i<0?fallback:args[i+1];};
-const output=resolve(value('--output','E:/tmp/wf-binding-contract-report.json'));
+const repoRoot=resolve(dirname(fileURLToPath(import.meta.url)),'..','..');
+const output=resolve(value('--output',repoRoot+'/.artifacts/tmp/runs/rendering-contracts/wf-binding-contract-report.json'));
 const hash=b=>createHash('sha256').update(b).digest('hex');
 const binding=readFileSync(new URL('../../src/WfWasm.CanvasHost/wwwroot/gpu-bind.js',import.meta.url));
 const cases=readFileSync(new URL('./binding-pixel-cases.mjs',import.meta.url));

@@ -96,6 +96,33 @@
         BrowserErrorReporter.AppProvider = () => _reportApp;
         BrowserErrorReporter.AppLabelProvider = () => _reportLabel;
         BrowserErrorReporter.SessionProvider = () => _reportSession;
+        // Backend identity needs no server change: the reporting client's
+        // own origin names the serving pair. Generation stays provider-fed
+        // until the server stamps it (shell seam); unset means unknown.
+        BrowserErrorReporter.BackendProvider = () => Http.BaseAddress?.Authority;
+        // GAP-genprov-0836-k7d2: generation mirrors BackendProvider (sync
+        // per-report evaluation). The value is cached from the stamped
+        // window.wfwasmRuntime.generation via RefreshReportGenerationAsync
+        // at first render; null until then means unknown (dev-server).
+        BrowserErrorReporter.GenerationProvider = BrowserErrorReporter.CachedGeneration;
+    }
+
+    // GAP-genprov-0836-k7d2: read the stamped serving generation once at
+    // init (cached sync value for GenerationProvider, mirroring
+    // BackendProvider). Fail-closed: unstamped/dev-server stays unknown.
+    internal static async Task RefreshReportGenerationAsync(Microsoft.JSInterop.IJSRuntime js)
+    {
+        try
+        {
+            BrowserErrorReporter.NoteGeneration(await js.InvokeAsync<string?>("wfwasm.readGeneration"));
+        }
+        catch
+        {
+            BrowserErrorReporter.NoteGeneration(null);
+        }
+        // Establish the provider wherever the refresh runs (idempotent with
+        // the OnInitialized mirror line): read -> cache -> resolve.
+        BrowserErrorReporter.GenerationProvider = BrowserErrorReporter.CachedGeneration;
     }
 
     protected override void OnParametersSet()
@@ -232,6 +259,7 @@
             BrowserErrorReporter.InputContextProvider = () => _winFormsHost.RecentInputContext();
             await JS.InvokeVoidAsync("wfwasm.fitCanvas", "wfcanvas", _self);
             await JS.InvokeVoidAsync("wfwasm.installErrorReporting");
+            await RefreshReportGenerationAsync(JS);
             if (AppContext.TryGetSwitch("WfWasm.PerfTimeline", out bool perfOn) && perfOn)
                 SetDiagnosticsEnabled(true);
             _canvasReady = true;

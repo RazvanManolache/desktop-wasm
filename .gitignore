@@ -36,3 +36,4 @@ src/WfWasm.CanvasHost/wwwroot/eval/latest.json
 
 .ci-dist/
 .ci-results/
+.ci-temp/

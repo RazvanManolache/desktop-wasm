@@ -6,10 +6,10 @@
       "aliases": [
         "/demo/a11y-events"
       ],
-      "label": "Announcements \u0026 prefs",
+      "label": "Announcements & prefs",
       "description": "Screen-reader announcements plus theme-preference refresh",
       "category": "Interaction",
-      "icon": "\u25C9",
+      "icon": "◉",
       "provenance": {
         "family": "wpf",
         "origin": "native-demo",
@@ -39,7 +39,7 @@
       "label": "Animation lab",
       "description": "Show/hide clocks: height, opacity, visibility and margin",
       "category": "Interaction",
-      "icon": "\u25C9",
+      "icon": "◉",
       "provenance": {
         "family": "wpf",
         "origin": "native-demo",
@@ -69,7 +69,7 @@
       "label": "Asset explorer",
       "description": "Browse a sample project tree and inspect its files",
       "category": "Mini apps",
-      "icon": "\u00E2\u2014\u00AB",
+      "icon": "â—«",
       "provenance": {
         "family": "wpf",
         "origin": "native-demo",
@@ -99,7 +99,7 @@
       "label": "AvalonDock TestApp",
       "description": "Docking, floating windows and tabbed documents",
       "category": "Control suites",
-      "icon": "\u00E2\u2014\u2021",
+      "icon": "â—‡",
       "provenance": {
         "family": "wpf",
         "origin": "original",
@@ -264,7 +264,7 @@
           {
             "assembly": "TestApp",
             "kind": "missing-dependency",
-            "detail": "Referenced assembly \u0027WindowsFormsIntegration\u0027 is absent from upstream build output."
+            "detail": "Referenced assembly 'WindowsFormsIntegration' is absent from upstream build output."
           },
           {
             "assembly": "TestApp",
@@ -312,7 +312,7 @@
       "label": "AvalonEdit sample",
       "description": "Text editing, syntax highlighting and scrolling",
       "category": "Control suites",
-      "icon": "\u00E2\u2014\u2021",
+      "icon": "â—‡",
       "provenance": {
         "family": "wpf",
         "origin": "original",
@@ -583,7 +583,7 @@
           {
             "assembly": "ICSharpCode.AvalonEdit",
             "kind": "unmapped-type",
-            "detail": "PresentationCore:System.Windows.Media.TextFormatting.TextSpan\u00601"
+            "detail": "PresentationCore:System.Windows.Media.TextFormatting.TextSpan`1"
           },
           {
             "assembly": "ICSharpCode.AvalonEdit",
@@ -718,7 +718,7 @@
           {
             "assembly": "ICSharpCode.AvalonEdit.Sample",
             "kind": "missing-dependency",
-            "detail": "Referenced assembly \u0027WindowsFormsIntegration\u0027 is absent from upstream build output."
+            "detail": "Referenced assembly 'WindowsFormsIntegration' is absent from upstream build output."
           },
           {
             "assembly": "ICSharpCode.AvalonEdit.Sample",
@@ -777,13 +777,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027benchmark-advanceddatagridview\u0027 plus WinForms transform inputs.",
-      "evidence": [],
-      "gaps": [
-        "app folder for \u0027benchmark-advanceddatagridview\u0027 plus WinForms transform inputs"
-      ]
+      "availabilityNote": "Staged locally at '.artifacts/benchmark-apps/benchmark-advanceddatagridview/AdvancedDataGridViewSample.dll' (sha B9C03AAA0D4E…); runtime unverified.",
+      "evidence": [
+        "local:.artifacts/benchmark-apps/benchmark-advanceddatagridview/AdvancedDataGridViewSample.dll#B9C03AAA0D4E086A2E6ACB233B58C9E3086DA772A0450E802E0B0912FBBDD8FD"
+      ],
+      "gaps": []
     },
     {
       "id": "benchmark-bizhawk",
@@ -811,10 +811,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027benchmark-bizhawk\u0027 plus WinForms transform inputs.",
+      "availabilityNote": "Gated: adapter-required — boots to replacement form only (results-import.json: adapter-gated); app folder present, no full input package.",
       "evidence": [],
       "gaps": [
-        "app folder for \u0027benchmark-bizhawk\u0027 plus WinForms transform inputs"
+        "adapter-required: replacement form only (app folder present)"
       ]
     },
     {
@@ -823,7 +823,7 @@
         "/app/benchmark-chip8",
         "benchmarkchip8"
       ],
-      "label": "CHIP-8 \u2014 ChocolateCHIP",
+      "label": "CHIP-8 — ChocolateCHIP",
       "description": "Quick start benchmark",
       "category": "Benchmarks",
       "icon": "",
@@ -841,13 +841,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027benchmark-chip8\u0027 plus WinForms transform inputs.",
-      "evidence": [],
-      "gaps": [
-        "app folder for \u0027benchmark-chip8\u0027 plus WinForms transform inputs"
-      ]
+      "availabilityNote": "Staged locally at '.artifacts/benchmark-apps/benchmark-chip8/ChocolateCHIP.exe' (sha D8DA0B83FDCA5158ABF8DB9470773DE4947D2306C1E322C51D46224D460F68B9); runtime unverified. Last observed: Launch-ready on served generation: boot-clean (results-import.json, 0 pageerrors); G0 workflow PASS on w17 gen 20261105T1941Zw17 (Open ROM error dialog opened and dismissed via OK, wf-g0-chip8).",
+      "evidence": [
+        "local:.artifacts/benchmark-apps/benchmark-chip8/ChocolateCHIP.exe#D8DA0B83FDCA5158ABF8DB9470773DE4947D2306C1E322C51D46224D460F68B9"
+      ],
+      "gaps": []
     },
     {
       "id": "benchmark-componentone",
@@ -875,10 +875,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027benchmark-componentone\u0027 plus WinForms transform inputs.",
+      "availabilityNote": "Missing local input: app folder for 'benchmark-componentone' plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder for \u0027benchmark-componentone\u0027 plus WinForms transform inputs"
+        "app folder for 'benchmark-componentone' plus WinForms transform inputs"
       ]
     },
     {
@@ -905,13 +905,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027benchmark-cyotek\u0027 plus WinForms transform inputs.",
-      "evidence": [],
-      "gaps": [
-        "app folder for \u0027benchmark-cyotek\u0027 plus WinForms transform inputs"
-      ]
+      "availabilityNote": "Staged locally at '.artifacts/benchmark-apps/benchmark-cyotek/Cyotek.Windows.Forms.ColorPicker.Demo.exe' (sha 56B7DC62FD90B251F9F4AA59CA37BAEE6B191D0C59D8931A25D60E24BB349636); runtime unverified. Last observed: Launch-ready: boot-clean, 0 pageerrors; G0 demo-button interaction non-responsive app-side (wf-g0-cyotek; chronic IndexOutOfRangeException, pre-existing) — feature gap, not a launch gate.",
+      "evidence": [
+        "local:.artifacts/benchmark-apps/benchmark-cyotek/Cyotek.Windows.Forms.ColorPicker.Demo.exe#56B7DC62FD90B251F9F4AA59CA37BAEE6B191D0C59D8931A25D60E24BB349636"
+      ],
+      "gaps": []
     },
     {
       "id": "benchmark-devexpress",
@@ -939,10 +939,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027benchmark-devexpress\u0027 plus WinForms transform inputs.",
+      "availabilityNote": "Missing local input: app folder for 'benchmark-devexpress' plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder for \u0027benchmark-devexpress\u0027 plus WinForms transform inputs"
+        "app folder for 'benchmark-devexpress' plus WinForms transform inputs"
       ]
     },
     {
@@ -951,7 +951,7 @@
         "/app/benchmark-dockpanel",
         "benchmarkdockpanel"
       ],
-      "label": "DockPanel Suite \u2014 DockSample",
+      "label": "DockPanel Suite — DockSample",
       "description": "Layout and docking benchmark",
       "category": "Benchmarks",
       "icon": "",
@@ -969,13 +969,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027benchmark-dockpanel\u0027 plus WinForms transform inputs.",
-      "evidence": [],
-      "gaps": [
-        "app folder for \u0027benchmark-dockpanel\u0027 plus WinForms transform inputs"
-      ]
+      "availabilityNote": "Staged locally at '.artifacts/benchmark-apps/benchmark-dockpanel/DockSample.exe' (sha 1B6FBB917FB5EA671296265615E3517605A796EBA835F6B2DFC1F3299A6B1AF5); runtime unverified. Last observed: Launch-ready: boot-clean; G0 FILE menu opened and New item clicked (ItemClick enter/exit logged) with no document window within 5s (wf-g0-dockpanel, app-side no-op).",
+      "evidence": [
+        "local:.artifacts/benchmark-apps/benchmark-dockpanel/DockSample.exe#1B6FBB917FB5EA671296265615E3517605A796EBA835F6B2DFC1F3299A6B1AF5"
+      ],
+      "gaps": []
     },
     {
       "id": "benchmark-external-calculator",
@@ -1001,13 +1001,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027benchmark-external-calculator\u0027 plus WinForms transform inputs.",
-      "evidence": [],
-      "gaps": [
-        "app folder for \u0027benchmark-external-calculator\u0027 plus WinForms transform inputs"
-      ]
+      "availabilityNote": "Staged locally at '.artifacts/benchmark-apps/benchmark-external-calculator/Calculator.exe' (sha EF1184639490…); runtime unverified.",
+      "evidence": [
+        "local:.artifacts/benchmark-apps/benchmark-external-calculator/Calculator.exe#EF1184639490AF3F7369CB8A21464FE07720A7C21D38087CEB6B64CBD0BDE614"
+      ],
+      "gaps": []
     },
     {
       "id": "benchmark-fastcoloredtextbox",
@@ -1033,13 +1033,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027benchmark-fastcoloredtextbox\u0027 plus WinForms transform inputs.",
-      "evidence": [],
-      "gaps": [
-        "app folder for \u0027benchmark-fastcoloredtextbox\u0027 plus WinForms transform inputs"
-      ]
+      "availabilityNote": "Staged locally at '.artifacts/benchmark-apps/benchmark-fastcoloredtextbox/Tester.exe' (sha 00713B11208587448EB4044A03D9BF2A569D12B09EC32E4E602B5F379C3FDD14); runtime unverified. Last observed: Launch-ready: boot-clean (results-import.json, 0 pageerrors); interaction not probed in G0 scope.",
+      "evidence": [
+        "local:.artifacts/benchmark-apps/benchmark-fastcoloredtextbox/Tester.exe#00713B11208587448EB4044A03D9BF2A569D12B09EC32E4E602B5F379C3FDD14"
+      ],
+      "gaps": []
     },
     {
       "id": "benchmark-fiddler-classic",
@@ -1065,9 +1065,9 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "available",
+      "availability": "unavailable",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027.artifacts/benchmark-apps/benchmark-fiddler-classic\u0027 (sha 23104C3B1D5C\u2026); runtime unverified.",
+      "availabilityNote": "Gated: boot-fault — RSACryptoServiceProvider cctor PlatformNotSupportedException (windows-only features). Staged at '.artifacts/benchmark-apps/benchmark-fiddler-classic/Fiddler.exe' (sha 389dc8d6c576d1e196d03fdc7fda3a2f57947d9e154ec8e5f672c2e1900bff8a).",
       "evidence": [
         "local:.artifacts/benchmark-apps/benchmark-fiddler-classic#23104C3B1D5C1F9E4CBC1BB1C65819A90DD33CE50A3D79151858DAF9E9F5FAC8"
       ],
@@ -1099,10 +1099,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027benchmark-gitextensions\u0027 plus WinForms transform inputs.",
+      "availabilityNote": "Missing local input: app folder for 'benchmark-gitextensions' plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder for \u0027benchmark-gitextensions\u0027 plus WinForms transform inputs"
+        "app folder for 'benchmark-gitextensions' plus WinForms transform inputs"
       ]
     },
     {
@@ -1129,13 +1129,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027benchmark-hexbox\u0027 plus WinForms transform inputs.",
-      "evidence": [],
-      "gaps": [
-        "app folder for \u0027benchmark-hexbox\u0027 plus WinForms transform inputs"
-      ]
+      "availabilityNote": "Staged locally at '.artifacts/benchmark-apps/benchmark-hexbox/Be.HexEditor.dll' (sha 78B099DF89C739CE74F0F2CB823F109B3FDE00463A7EC348161BACA88FDA4616); runtime unverified. Last observed: Launch-ready with gap: boot-partial — shell renders, content area empty (Be.HexEditor.Util cctor); 0 pageerrors.",
+      "evidence": [
+        "local:.artifacts/benchmark-apps/benchmark-hexbox/Be.HexEditor.dll#78B099DF89C739CE74F0F2CB823F109B3FDE00463A7EC348161BACA88FDA4616"
+      ],
+      "gaps": []
     },
     {
       "id": "benchmark-infragistics",
@@ -1163,10 +1163,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027benchmark-infragistics\u0027 plus WinForms transform inputs.",
+      "availabilityNote": "Missing local input: app folder for 'benchmark-infragistics' plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder for \u0027benchmark-infragistics\u0027 plus WinForms transform inputs"
+        "app folder for 'benchmark-infragistics' plus WinForms transform inputs"
       ]
     },
     {
@@ -1193,13 +1193,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027benchmark-keepass\u0027 plus WinForms transform inputs.",
-      "evidence": [],
-      "gaps": [
-        "app folder for \u0027benchmark-keepass\u0027 plus WinForms transform inputs"
-      ]
+      "availabilityNote": "Staged locally at '.artifacts/benchmark-apps/benchmark-keepass/KeePass.exe' (sha 04d29636c393f0c1fc99ff739295494be3adefded93271e44591e8e300225a5a); boot-clean on served generation (results-import.json, 0 pageerrors; nonfatal IndexOutOfRange logged). Runtime unverified; this label records prepared inputs only.",
+      "evidence": [
+        "local:.artifacts/benchmark-apps/benchmark-keepass/KeePass.exe#04D29636C393F0C1FC99FF739295494BE3ADEFDED93271E44591E8E300225A5A"
+      ],
+      "gaps": []
     },
     {
       "id": "benchmark-krypton",
@@ -1207,7 +1207,7 @@
         "/app/benchmark-krypton",
         "benchmarkkrypton"
       ],
-      "label": "Krypton Toolkit \u2014 TestForm",
+      "label": "Krypton Toolkit — TestForm",
       "description": "Layout and docking benchmark",
       "category": "Benchmarks",
       "icon": "",
@@ -1225,13 +1225,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027benchmark-krypton\u0027 plus WinForms transform inputs.",
-      "evidence": [],
-      "gaps": [
-        "app folder for \u0027benchmark-krypton\u0027 plus WinForms transform inputs"
-      ]
+      "availabilityNote": "Staged locally at '.artifacts/benchmark-apps/benchmark-krypton/TestForm.dll' (sha 478BBF4D45B1183005FDF721F5241B41684062A5DF8BF14B2C7116E9E8F6F5A9); runtime unverified. Last observed: Launch-ready with gap: boot-partial-real — Welcome form renders; nonfatal Principal/Registry/Process PNSE; 0 pageerrors.",
+      "evidence": [
+        "local:.artifacts/benchmark-apps/benchmark-krypton/TestForm.dll#478BBF4D45B1183005FDF721F5241B41684062A5DF8BF14B2C7116E9E8F6F5A9"
+      ],
+      "gaps": []
     },
     {
       "id": "benchmark-linqpad5",
@@ -1257,12 +1257,14 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "unavailable",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027benchmark-linqpad5\u0027 plus WinForms transform inputs.",
-      "evidence": [],
+      "availabilityNote": "Gated: boot-fault — MainForm..ctor NullReferenceException (real window). Staged at '.artifacts/benchmark-apps/benchmark-linqpad5/LINQPad.exe' (sha 5770384010f04dd7b9b4bdb1c2a7c452bf4551603cb26bccb1b1fb33dd290e9a).",
+      "evidence": [
+        "local:.artifacts/benchmark-apps/benchmark-linqpad5/LINQPad.exe#5770384010F04DD7B9B4BDB1C2A7C452BF4551603CB26BCCB1B1FB33DD290E9A"
+      ],
       "gaps": [
-        "app folder for \u0027benchmark-linqpad5\u0027 plus WinForms transform inputs"
+        "Gated: boot-fault — MainForm..ctor NullReferenceException (real window). Staged at '.artifacts/benchmark-apps/benchmark-linqpad5/LINQPad.exe' (sha 5770384010f04dd7b9b4bdb1c2a7c452bf4551603cb26bccb1b1fb33dd290e9a)."
       ]
     },
     {
@@ -1289,13 +1291,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027benchmark-minesweeper\u0027 plus WinForms transform inputs.",
-      "evidence": [],
-      "gaps": [
-        "app folder for \u0027benchmark-minesweeper\u0027 plus WinForms transform inputs"
-      ]
+      "availabilityNote": "Staged locally at '.artifacts/benchmark-apps/benchmark-minesweeper/Minesweeper.dll' (sha 73E13D8B5EED0D4F344009A17BDAA4062D3CEE2CF9FE4EDD500519AC33108DBE); runtime unverified. Last observed: Launch-ready: boot-clean (results-import.json); APPREV workflow attempted-no-actuation.",
+      "evidence": [
+        "local:.artifacts/benchmark-apps/benchmark-minesweeper/Minesweeper.dll#73E13D8B5EED0D4F344009A17BDAA4062D3CEE2CF9FE4EDD500519AC33108DBE"
+      ],
+      "gaps": []
     },
     {
       "id": "benchmark-mremoteng",
@@ -1323,10 +1325,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027benchmark-mremoteng\u0027 plus WinForms transform inputs.",
+      "availabilityNote": "Missing local input: app folder for 'benchmark-mremoteng' plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder for \u0027benchmark-mremoteng\u0027 plus WinForms transform inputs"
+        "app folder for 'benchmark-mremoteng' plus WinForms transform inputs"
       ]
     },
     {
@@ -1355,10 +1357,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027benchmark-naps2\u0027 plus WinForms transform inputs.",
+      "availabilityNote": "Gated: adapter-required — boots to replacement form only (results-import.json: adapter-gated); app folder present, no full input package.",
       "evidence": [],
       "gaps": [
-        "app folder for \u0027benchmark-naps2\u0027 plus WinForms transform inputs"
+        "adapter-required: replacement form only (app folder present)"
       ]
     },
     {
@@ -1385,12 +1387,14 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "unavailable",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027benchmark-openpdn\u0027 plus WinForms transform inputs.",
-      "evidence": [],
+      "availabilityNote": "Gated: boot-fault on served generation — wasm `table index is out of bounds` x2 before interaction; preparation receipt not-ok. Staged at '.artifacts/benchmark-apps/benchmark-openpdn/PaintDotNet.exe' (sha 656cee6276399521bf83d4e74a6a967566a0d1cd173f2352518eeb825aa977ce).",
+      "evidence": [
+        "local:.artifacts/benchmark-apps/benchmark-openpdn/PaintDotNet.exe#656CEE6276399521BF83D4E74A6A967566A0D1CD173F2352518EEB825AA977CE"
+      ],
       "gaps": [
-        "app folder for \u0027benchmark-openpdn\u0027 plus WinForms transform inputs"
+        "Gated: boot-fault on served generation — wasm `table index is out of bounds` x2 before interaction; preparation receipt not-ok. Staged at '.artifacts/benchmark-apps/benchmark-openpdn/PaintDotNet.exe' (sha 656cee6276399521bf83d4e74a6a967566a0d1cd173f2352518eeb825aa977ce)."
       ]
     },
     {
@@ -1417,12 +1421,14 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "unavailable",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027benchmark-pkhex\u0027 plus WinForms transform inputs.",
-      "evidence": [],
+      "availabilityNote": "Gated: boot-timeout — 240s hang, compositor stalls, unclassified. Staged at '.artifacts/benchmark-apps/benchmark-pkhex/PKHeX.dll' (sha 3fc5e77192a1a425471d2fc48b1ce30586e9ed763b30c9ac4b99cf03bcce94dc).",
+      "evidence": [
+        "local:.artifacts/benchmark-apps/benchmark-pkhex/PKHeX.dll#3FC5E77192A1A425471D2FC48B1CE30586E9ED763B30C9AC4B99CF03BCCE94DC"
+      ],
       "gaps": [
-        "app folder for \u0027benchmark-pkhex\u0027 plus WinForms transform inputs"
+        "Gated: boot-timeout — 240s hang, compositor stalls, unclassified. Staged at '.artifacts/benchmark-apps/benchmark-pkhex/PKHeX.dll' (sha 3fc5e77192a1a425471d2fc48b1ce30586e9ed763b30c9ac4b99cf03bcce94dc)."
       ]
     },
     {
@@ -1451,11 +1457,16 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027benchmark-realtaiizor\u0027 plus WinForms transform inputs.",
-      "evidence": [],
+      "availabilityNote": "Staged locally at '.artifacts/benchmark-apps/benchmark-realtaiizor/ReaLTaiizor.UI.exe' (net9.0-windows upstream demo build, 0 errors; receipt preparation.json); serving + behavior unverified.",
+      "evidence": [
+        "local:.artifacts/benchmark-apps/benchmark-realtaiizor/ReaLTaiizor.UI.exe",
+        "local:.artifacts/benchmark-apps/benchmark-realtaiizor/preparation.json"
+      ],
       "gaps": [
-        "app folder for \u0027benchmark-realtaiizor\u0027 plus WinForms transform inputs"
-      ]
+        "serving + behavior unverified"
+      ],
+      "status": "staged",
+      "available": false
     },
     {
       "id": "benchmark-reflector",
@@ -1483,10 +1494,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027benchmark-reflector\u0027 plus WinForms transform inputs.",
+      "availabilityNote": "Missing local input: app folder for 'benchmark-reflector' plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder for \u0027benchmark-reflector\u0027 plus WinForms transform inputs"
+        "app folder for 'benchmark-reflector' plus WinForms transform inputs"
       ]
     },
     {
@@ -1515,10 +1526,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027benchmark-sharex\u0027 plus WinForms transform inputs.",
+      "availabilityNote": "Missing local input: app folder for 'benchmark-sharex' plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder for \u0027benchmark-sharex\u0027 plus WinForms transform inputs"
+        "app folder for 'benchmark-sharex' plus WinForms transform inputs"
       ]
     },
     {
@@ -1547,10 +1558,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027benchmark-subtitleedit\u0027 plus WinForms transform inputs.",
+      "availabilityNote": "Missing local input: app folder for 'benchmark-subtitleedit' plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder for \u0027benchmark-subtitleedit\u0027 plus WinForms transform inputs"
+        "app folder for 'benchmark-subtitleedit' plus WinForms transform inputs"
       ]
     },
     {
@@ -1559,7 +1570,7 @@
         "/app/benchmark-treemap",
         "benchmarktreemap"
       ],
-      "label": "Disk treemap \u2014 DS-step",
+      "label": "Disk treemap — DS-step",
       "description": "Quick start benchmark",
       "category": "Benchmarks",
       "icon": "",
@@ -1579,10 +1590,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027benchmark-treemap\u0027 plus WinForms transform inputs.",
+      "availabilityNote": "Gated: adapter-required — boots to replacement form only (results-import.json: adapter-gated); app folder present, no full input package.",
       "evidence": [],
       "gaps": [
-        "app folder for \u0027benchmark-treemap\u0027 plus WinForms transform inputs"
+        "adapter-required: replacement form only (app folder present)"
       ]
     },
     {
@@ -1609,13 +1620,13 @@
         "winforms"
       ],
       "transformVersion": "wf-rewrite-v1",
-      "availability": "missingInput",
+      "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027benchmark-vgapainter\u0027 plus WinForms transform inputs.",
-      "evidence": [],
-      "gaps": [
-        "app folder for \u0027benchmark-vgapainter\u0027 plus WinForms transform inputs"
-      ]
+      "availabilityNote": "Staged locally at '.artifacts/benchmark-apps/benchmark-vgapainter/VGAPainter.exe' (sha 078AA647ECD0B40838090BC04AB3258C4619965B00AB25CCDD9E415F16CD23C2); runtime unverified. Last observed: Launch-ready: boot-clean; G0 Palette menu opened, Import item click raises app ArgumentException on empty path (wf-g0-vgapainter).",
+      "evidence": [
+        "local:.artifacts/benchmark-apps/benchmark-vgapainter/VGAPainter.exe#078AA647ECD0B40838090BC04AB3258C4619965B00AB25CCDD9E415F16CD23C2"
+      ],
+      "gaps": []
     },
     {
       "id": "binding",
@@ -1625,7 +1636,7 @@
       "label": "Data binding",
       "description": "View-model behind XAML text",
       "category": "Data",
-      "icon": "\u00E2\u203A\u0081",
+      "icon": "â›",
       "provenance": {
         "family": "wpf",
         "origin": "native-demo",
@@ -1655,7 +1666,7 @@
       "label": "Calculator keypad",
       "description": "Real-XAML grid: pixel rows, spans",
       "category": "Layout",
-      "icon": "\u00E2\u2013\u00A4",
+      "icon": "â–¤",
       "provenance": {
         "family": "wpf",
         "origin": "native-demo",
@@ -1702,10 +1713,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027calculator\u0027 plus WinForms transform inputs.",
+      "availabilityNote": "Missing local input: app folder for 'calculator' plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder for \u0027calculator\u0027 plus WinForms transform inputs"
+        "app folder for 'calculator' plus WinForms transform inputs"
       ]
     },
     {
@@ -1733,10 +1744,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027calendar\u0027 plus WinForms transform inputs.",
+      "availabilityNote": "Missing local input: app folder for 'calendar' plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder for \u0027calendar\u0027 plus WinForms transform inputs"
+        "app folder for 'calendar' plus WinForms transform inputs"
       ]
     },
     {
@@ -1744,10 +1755,10 @@
       "aliases": [
         "/demo/chrome-pack"
       ],
-      "label": "Chrome \u0026 pack",
+      "label": "Chrome & pack",
       "description": "Custom caption chrome plus pack-stream content",
       "category": "Interaction",
-      "icon": "\u25E8",
+      "icon": "◨",
       "provenance": {
         "family": "wpf",
         "origin": "native-demo",
@@ -1777,7 +1788,7 @@
       "label": "Color lab",
       "description": "Explore palettes and preview theme colors",
       "category": "Mini apps",
-      "icon": "\u00E2\u2014\u2030",
+      "icon": "â—‰",
       "provenance": {
         "family": "wpf",
         "origin": "native-demo",
@@ -1807,7 +1818,7 @@
       "label": "Controls showcase",
       "description": "Buttons, text, borders",
       "category": "Fundamentals",
-      "icon": "\u00E2\u2013\u00A3",
+      "icon": "â–£",
       "provenance": {
         "family": "wpf",
         "origin": "native-demo",
@@ -1823,7 +1834,7 @@
       "transformVersion": "wpf-convert-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/wpf/catalog-staging/browserhost-20261031T003154Z/blazor.boot.json\u0027 (sha 37660C5D20B9\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/wpf/catalog-staging/browserhost-20261031T003154Z/blazor.boot.json' (sha 37660C5D20B9…); runtime unverified.",
       "evidence": [
         "local:inputs/wpf/catalog-staging/browserhost-20261031T003154Z/blazor.boot.json#37660C5D20B97D4BBE12A6B5B7EC980CDAD07AD7554EBE2D656639986119623A",
         "producer:generation 20261031T003154Z pin wpf:build-boot-manifest 37660C5D"
@@ -1838,7 +1849,7 @@
       "label": "Data table",
       "description": "Text columns over plain rows, selectable",
       "category": "Data",
-      "icon": "\u00E2\u0160\u017E",
+      "icon": "âŠž",
       "provenance": {
         "family": "wpf",
         "origin": "native-demo",
@@ -1865,10 +1876,10 @@
       "aliases": [
         "/demo/dialogs"
       ],
-      "label": "Dialogs \u0026 docking",
+      "label": "Dialogs & docking",
       "description": "Docked layout with a modal dialog",
       "category": "Interaction",
-      "icon": "\u00E2\u2013\u00A2",
+      "icon": "â–¢",
       "provenance": {
         "family": "wpf",
         "origin": "native-demo",
@@ -1895,10 +1906,10 @@
       "aliases": [
         "/demo/drag-drop"
       ],
-      "label": "Drag \u0026 drop",
+      "label": "Drag & drop",
       "description": "File-drop targets, paste veto and session source",
       "category": "Interaction",
-      "icon": "\u2913",
+      "icon": "⤓",
       "provenance": {
         "family": "wpf",
         "origin": "native-demo",
@@ -1928,7 +1939,7 @@
       "label": "Effects lab",
       "description": "Drop shadows, password masking and hosted pages",
       "category": "Interaction",
-      "icon": "\u25CD",
+      "icon": "◍",
       "provenance": {
         "family": "wpf",
         "origin": "native-demo",
@@ -1955,10 +1966,10 @@
       "aliases": [
         "/demo/files-clipboard"
       ],
-      "label": "Files \u0026 clipboard",
+      "label": "Files & clipboard",
       "description": "Pick files into session mounts; copy and paste with denial states",
       "category": "Interaction",
-      "icon": "\u29C9",
+      "icon": "⧉",
       "provenance": {
         "family": "wpf",
         "origin": "native-demo",
@@ -1988,7 +1999,7 @@
       "label": "Microsoft Geometry",
       "description": "Paths, combined geometry and clipping",
       "category": "Microsoft samples",
-      "icon": "\u00E2\u2014\u2021",
+      "icon": "â—‡",
       "provenance": {
         "family": "wpf",
         "origin": "original",
@@ -2032,12 +2043,12 @@
       },
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: package copy for \u0027geometry\u0027 hash-pinned from manifest.",
+      "availabilityNote": "Missing local input: package copy for 'geometry' hash-pinned from manifest.",
       "evidence": [
         "frozen-root manifest apps/geometry"
       ],
       "gaps": [
-        "package copy for \u0027geometry\u0027 hash-pinned from manifest"
+        "package copy for 'geometry' hash-pinned from manifest"
       ]
     },
     {
@@ -2048,7 +2059,7 @@
       "label": "HandyControl demo",
       "description": "Modern custom controls and themed popups",
       "category": "Control suites",
-      "icon": "\u00E2\u2014\u2021",
+      "icon": "â—‡",
       "provenance": {
         "family": "wpf",
         "origin": "original",
@@ -2234,12 +2245,12 @@
           {
             "assembly": "HandyControl",
             "kind": "missing-dependency",
-            "detail": "Referenced assembly \u0027System.Security.Permissions\u0027 is absent from upstream build output."
+            "detail": "Referenced assembly 'System.Security.Permissions' is absent from upstream build output."
           },
           {
             "assembly": "HandyControl",
             "kind": "missing-dependency",
-            "detail": "Referenced assembly \u0027System.Windows.Extensions\u0027 is absent from upstream build output."
+            "detail": "Referenced assembly 'System.Windows.Extensions' is absent from upstream build output."
           }
         ],
         "sourceCommit": "e9ad3d701b90e724399a413569fbd7f35a141053"
@@ -2262,7 +2273,7 @@
       "label": "HelloWorld (real app)",
       "description": "Converted WPF-Samples binary, booted via shim",
       "category": "Real apps",
-      "icon": "\u00E2\u0153\u00A6",
+      "icon": "âœ¦",
       "provenance": {
         "family": "wpf",
         "origin": "original",
@@ -2306,7 +2317,7 @@
       },
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/wpf/catalog-staging/hello-real\u0027 (sha E51A1047325C\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/wpf/catalog-staging/hello-real' (sha E51A1047325C…); runtime unverified.",
       "evidence": [
         "frozen-root manifest apps/hello-real",
         "local:inputs/wpf/catalog-staging/hello-real#E51A1047325C35E6AC5C204E07BF617578096A0F524D5A591C7D282B56EFFBDC"
@@ -2321,7 +2332,7 @@
       "label": "Hello XAML",
       "description": "Markup loading to a visual tree",
       "category": "Fundamentals",
-      "icon": "\u00E2\u2014\u02C6",
+      "icon": "â—ˆ",
       "provenance": {
         "family": "wpf",
         "origin": "native-demo",
@@ -2351,7 +2362,7 @@
       "label": "Hit-test lab",
       "description": "Point picks, rubber-band selection and live theme resources",
       "category": "Interaction",
-      "icon": "\u25CE",
+      "icon": "◎",
       "provenance": {
         "family": "wpf",
         "origin": "native-demo",
@@ -2381,7 +2392,7 @@
       "label": "ILSpy 9.1",
       "description": "Assembly trees and decompiled document views",
       "category": "External applications",
-      "icon": "\u00E2\u2014\u2021",
+      "icon": "â—‡",
       "provenance": {
         "family": "wpf",
         "origin": "original",
@@ -3045,7 +3056,7 @@
           {
             "assembly": "DataGridExtensions",
             "kind": "unmapped-type",
-            "detail": "PresentationCore:System.Windows.FreezableCollection\u00601"
+            "detail": "PresentationCore:System.Windows.FreezableCollection`1"
           },
           {
             "assembly": "DataGridExtensions",
@@ -3160,7 +3171,7 @@
           {
             "assembly": "ICSharpCode.AvalonEdit",
             "kind": "missing-dependency",
-            "detail": "Referenced assembly \u0027System.Windows.Forms\u0027 is absent from upstream build output."
+            "detail": "Referenced assembly 'System.Windows.Forms' is absent from upstream build output."
           },
           {
             "assembly": "ICSharpCode.AvalonEdit",
@@ -3585,7 +3596,7 @@
           {
             "assembly": "ICSharpCode.AvalonEdit",
             "kind": "unmapped-type",
-            "detail": "PresentationCore:System.Windows.Media.TextFormatting.TextSpan\u00601"
+            "detail": "PresentationCore:System.Windows.Media.TextFormatting.TextSpan`1"
           },
           {
             "assembly": "ICSharpCode.AvalonEdit",
@@ -3775,7 +3786,7 @@
           {
             "assembly": "ICSharpCode.AvalonEdit",
             "kind": "unmapped-type",
-            "detail": "PresentationFramework:System.Windows.Documents.TextElementCollection\u00601"
+            "detail": "PresentationFramework:System.Windows.Documents.TextElementCollection`1"
           },
           {
             "assembly": "ICSharpCode.AvalonEdit",
@@ -3840,17 +3851,17 @@
           {
             "assembly": "ILSpy",
             "kind": "missing-dependency",
-            "detail": "ICSharpCode.ILSpy.Controls.CustomDialog is live but its base \u0027System.Windows.Forms.Form\u0027 cannot resolve."
+            "detail": "ICSharpCode.ILSpy.Controls.CustomDialog is live but its base 'System.Windows.Forms.Form' cannot resolve."
           },
           {
             "assembly": "ILSpy",
             "kind": "missing-dependency",
-            "detail": "Referenced assembly \u0027System.Windows.Forms\u0027 is absent from upstream build output."
+            "detail": "Referenced assembly 'System.Windows.Forms' is absent from upstream build output."
           },
           {
             "assembly": "ILSpy",
             "kind": "missing-dependency",
-            "detail": "Referenced assembly \u0027System.Drawing.Common\u0027 is absent from upstream build output."
+            "detail": "Referenced assembly 'System.Drawing.Common' is absent from upstream build output."
           },
           {
             "assembly": "ILSpy",
@@ -3860,7 +3871,7 @@
           {
             "assembly": "ILSpy",
             "kind": "unmapped-type",
-            "detail": "WindowsBase:System.Windows.Threading.DispatcherOperation\u00601"
+            "detail": "WindowsBase:System.Windows.Threading.DispatcherOperation`1"
           },
           {
             "assembly": "ILSpy",
@@ -3930,7 +3941,7 @@
           {
             "assembly": "ILSpy",
             "kind": "unmapped-type",
-            "detail": "PresentationFramework:System.Windows.Documents.TextElementCollection\u00601"
+            "detail": "PresentationFramework:System.Windows.Documents.TextElementCollection`1"
           },
           {
             "assembly": "ILSpy",
@@ -4510,7 +4521,7 @@
           {
             "assembly": "Microsoft.Xaml.Behaviors",
             "kind": "nested-type",
-            "detail": "System.Windows.FreezableCollection\u00601/Enumerator (nested framework types are not mapped)"
+            "detail": "System.Windows.FreezableCollection`1/Enumerator (nested framework types are not mapped)"
           },
           {
             "assembly": "Microsoft.Xaml.Behaviors",
@@ -4675,7 +4686,7 @@
           {
             "assembly": "Microsoft.Xaml.Behaviors",
             "kind": "unmapped-type",
-            "detail": "PresentationCore:System.Windows.FreezableCollection\u00601"
+            "detail": "PresentationCore:System.Windows.FreezableCollection`1"
           },
           {
             "assembly": "Microsoft.Xaml.Behaviors",
@@ -4900,7 +4911,7 @@
           {
             "assembly": "TomsToolbox.Wpf",
             "kind": "unmapped-type",
-            "detail": "PresentationFramework:System.Windows.Documents.TextElementCollection\u00601"
+            "detail": "PresentationFramework:System.Windows.Documents.TextElementCollection`1"
           },
           {
             "assembly": "TomsToolbox.Wpf",
@@ -5010,7 +5021,7 @@
           {
             "assembly": "TomsToolbox.Wpf",
             "kind": "unmapped-type",
-            "detail": "PresentationCore:System.Windows.FreezableCollection\u00601"
+            "detail": "PresentationCore:System.Windows.FreezableCollection`1"
           },
           {
             "assembly": "TomsToolbox.Wpf",
@@ -5280,7 +5291,7 @@
           {
             "assembly": "TomsToolbox.Wpf.Composition",
             "kind": "unmapped-type",
-            "detail": "PresentationCore:System.Windows.FreezableCollection\u00601"
+            "detail": "PresentationCore:System.Windows.FreezableCollection`1"
           },
           {
             "assembly": "TomsToolbox.Wpf.Composition",
@@ -5450,10 +5461,10 @@
       "aliases": [
         "/demo/ink-doc"
       ],
-      "label": "Ink \u0026 document lab",
+      "label": "Ink & document lab",
       "description": "Pen-stroke capture plus FlowDocument release notes",
       "category": "Interaction",
-      "icon": "\u270E",
+      "icon": "✎",
       "provenance": {
         "family": "wpf",
         "origin": "native-demo",
@@ -5483,7 +5494,7 @@
       "label": "Input playground",
       "description": "Click routing with a live counter",
       "category": "Interaction",
-      "icon": "\u00E2\u0152\u0081",
+      "icon": "âŒ",
       "provenance": {
         "family": "wpf",
         "origin": "native-demo",
@@ -5499,7 +5510,7 @@
       "transformVersion": "wpf-convert-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/wpf/catalog-staging/browserhost-20261031T003154Z/blazor.boot.json\u0027 (sha 37660C5D20B9\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/wpf/catalog-staging/browserhost-20261031T003154Z/blazor.boot.json' (sha 37660C5D20B9…); runtime unverified.",
       "evidence": [
         "local:inputs/wpf/catalog-staging/browserhost-20261031T003154Z/blazor.boot.json#37660C5D20B97D4BBE12A6B5B7EC980CDAD07AD7554EBE2D656639986119623A",
         "producer:generation 20261031T003154Z pin wpf:build-boot-manifest 37660C5D"
@@ -5514,7 +5525,7 @@
       "label": "Interop hosts",
       "description": "Immediate content in a retained tree",
       "category": "Interaction",
-      "icon": "\u00E2\u2014\u00AB",
+      "icon": "â—«",
       "provenance": {
         "family": "wpf",
         "origin": "native-demo",
@@ -5544,7 +5555,7 @@
       "label": "Layout gallery",
       "description": "Grid cells, StackPanel, Canvas",
       "category": "Layout",
-      "icon": "\u00E2\u2013\u00A6",
+      "icon": "â–¦",
       "provenance": {
         "family": "wpf",
         "origin": "native-demo",
@@ -5574,7 +5585,7 @@
       "label": "List selection",
       "description": "Click or arrow through selectable rows",
       "category": "Data",
-      "icon": "\u00E2\u02DC\u00B0",
+      "icon": "â˜°",
       "provenance": {
         "family": "wpf",
         "origin": "native-demo",
@@ -5604,7 +5615,7 @@
       "label": "MahApps.Metro demo",
       "description": "Metro chrome, flyouts and dialogs",
       "category": "Control suites",
-      "icon": "\u00E2\u2014\u2021",
+      "icon": "â—‡",
       "provenance": {
         "family": "wpf",
         "origin": "original",
@@ -5685,7 +5696,7 @@
           {
             "assembly": "ControlzEx",
             "kind": "missing-dependency",
-            "detail": "Referenced assembly \u0027System.Windows.Extensions\u0027 is absent from upstream build output."
+            "detail": "Referenced assembly 'System.Windows.Extensions' is absent from upstream build output."
           },
           {
             "assembly": "ControlzEx",
@@ -5790,12 +5801,12 @@
           {
             "assembly": "ControlzEx",
             "kind": "unmapped-type",
-            "detail": "WindowsBase:System.Windows.WeakEventManager\u00602"
+            "detail": "WindowsBase:System.Windows.WeakEventManager`2"
           },
           {
             "assembly": "ControlzEx",
             "kind": "unmapped-type",
-            "detail": "PresentationCore:System.Windows.FreezableCollection\u00601"
+            "detail": "PresentationCore:System.Windows.FreezableCollection`1"
           },
           {
             "assembly": "ControlzEx",
@@ -6050,7 +6061,7 @@
           {
             "assembly": "ICSharpCode.AvalonEdit",
             "kind": "unmapped-type",
-            "detail": "PresentationCore:System.Windows.Media.TextFormatting.TextSpan\u00601"
+            "detail": "PresentationCore:System.Windows.Media.TextFormatting.TextSpan`1"
           },
           {
             "assembly": "ICSharpCode.AvalonEdit",
@@ -6185,17 +6196,17 @@
           {
             "assembly": "MahApps.Metro",
             "kind": "missing-dependency",
-            "detail": "MahApps.Metro.Controls.WindowApplicationSettings is live but its base \u0027System.Configuration.ApplicationSettingsBase\u0027 cannot resolve."
+            "detail": "MahApps.Metro.Controls.WindowApplicationSettings is live but its base 'System.Configuration.ApplicationSettingsBase' cannot resolve."
           },
           {
             "assembly": "MahApps.Metro",
             "kind": "missing-dependency",
-            "detail": "Referenced assembly \u0027System.Configuration.ConfigurationManager\u0027 is absent from upstream build output."
+            "detail": "Referenced assembly 'System.Configuration.ConfigurationManager' is absent from upstream build output."
           },
           {
             "assembly": "MahApps.Metro",
             "kind": "nested-type",
-            "detail": "System.Windows.FreezableCollection\u00601/Enumerator (nested framework types are not mapped)"
+            "detail": "System.Windows.FreezableCollection`1/Enumerator (nested framework types are not mapped)"
           },
           {
             "assembly": "MahApps.Metro",
@@ -6345,7 +6356,7 @@
           {
             "assembly": "MahApps.Metro",
             "kind": "unmapped-type",
-            "detail": "PresentationCore:System.Windows.FreezableCollection\u00601"
+            "detail": "PresentationCore:System.Windows.FreezableCollection`1"
           },
           {
             "assembly": "MahApps.Metro",
@@ -6960,12 +6971,12 @@
           {
             "assembly": "Microsoft.Web.WebView2.Wpf",
             "kind": "missing-dependency",
-            "detail": "Referenced assembly \u0027Microsoft.Windows.SDK.NET\u0027 is absent from upstream build output."
+            "detail": "Referenced assembly 'Microsoft.Windows.SDK.NET' is absent from upstream build output."
           },
           {
             "assembly": "Microsoft.Web.WebView2.Wpf",
             "kind": "missing-dependency",
-            "detail": "Referenced assembly \u0027WinRT.Runtime\u0027 is absent from upstream build output."
+            "detail": "Referenced assembly 'WinRT.Runtime' is absent from upstream build output."
           },
           {
             "assembly": "Microsoft.Web.WebView2.Wpf",
@@ -7040,7 +7051,7 @@
           {
             "assembly": "Microsoft.Xaml.Behaviors",
             "kind": "nested-type",
-            "detail": "System.Windows.FreezableCollection\u00601/Enumerator (nested framework types are not mapped)"
+            "detail": "System.Windows.FreezableCollection`1/Enumerator (nested framework types are not mapped)"
           },
           {
             "assembly": "Microsoft.Xaml.Behaviors",
@@ -7135,7 +7146,7 @@
           {
             "assembly": "Microsoft.Xaml.Behaviors",
             "kind": "unmapped-type",
-            "detail": "PresentationCore:System.Windows.FreezableCollection\u00601"
+            "detail": "PresentationCore:System.Windows.FreezableCollection`1"
           },
           {
             "assembly": "Microsoft.Xaml.Behaviors",
@@ -7253,7 +7264,7 @@
       "label": "Material Design demo",
       "description": "Themes, vector icons and dialogs",
       "category": "Control suites",
-      "icon": "\u00E2\u2014\u2021",
+      "icon": "â—‡",
       "provenance": {
         "family": "wpf",
         "origin": "original",
@@ -7496,7 +7507,7 @@
       },
       "availability": "available",
       "upstreamStatus": "not-converted",
-      "availabilityNote": "Staged locally at \u0027inputs/wpf/catalog-staging/material-design\u0027 (sha 0935A3652038\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/wpf/catalog-staging/material-design' (sha 0935A3652038…); runtime unverified.",
       "evidence": [
         "frozen-root manifest apps/material-design",
         "local:inputs/wpf/catalog-staging/material-design#0935A365203809BFE6093AC202C5049E0FEF5C928813A99D219859C968B9B676"
@@ -7511,7 +7522,7 @@
       "label": "Menus",
       "description": "Dropdown menus with commands",
       "category": "Interaction",
-      "icon": "\u00E2\u2030\u00A3",
+      "icon": "â‰£",
       "provenance": {
         "family": "wpf",
         "origin": "native-demo",
@@ -7563,7 +7574,7 @@
       "availabilityNote": "No proven mixed session: entry carries no typed bridge identity; receipts cannot promote it.",
       "evidence": [],
       "gaps": [
-        "typed bridge identity (provider \u002B contract) from the interop lane"
+        "typed bridge identity (provider + contract) from the interop lane"
       ]
     },
     {
@@ -7574,7 +7585,7 @@
       "label": "OxyPlot ExampleBrowser",
       "description": "Plots, axes, pan, zoom and trackers",
       "category": "Control suites",
-      "icon": "\u00E2\u2014\u2021",
+      "icon": "â—‡",
       "provenance": {
         "family": "wpf",
         "origin": "original",
@@ -7691,12 +7702,12 @@
       },
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: package copy for \u0027oxyplot\u0027 hash-pinned from manifest.",
+      "availabilityNote": "Missing local input: package copy for 'oxyplot' hash-pinned from manifest.",
       "evidence": [
         "frozen-root manifest apps/oxyplot"
       ],
       "gaps": [
-        "package copy for \u0027oxyplot\u0027 hash-pinned from manifest"
+        "package copy for 'oxyplot' hash-pinned from manifest"
       ]
     },
     {
@@ -7725,7 +7736,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027targets/paint.net\u0027 (sha 56BC4E6620DC\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'targets/paint.net' (sha 56BC4E6620DC…); runtime unverified.",
       "evidence": [
         "local:targets/paint.net#56BC4E6620DCB56171BFE363640C0279286FB3D4B98D2067DC919EE4925C1310"
       ],
@@ -7739,7 +7750,7 @@
       "label": "PC Space Map",
       "description": "A real WPF disk map and navigation UI",
       "category": "External applications",
-      "icon": "\u00E2\u2014\u2021",
+      "icon": "â—‡",
       "provenance": {
         "family": "wpf",
         "origin": "original",
@@ -7807,72 +7818,72 @@
           {
             "assembly": "PC Space Map",
             "kind": "missing-dependency",
-            "detail": "Referenced assembly \u0027Microsoft.AspNetCore\u0027 is absent from upstream build output."
+            "detail": "Referenced assembly 'Microsoft.AspNetCore' is absent from upstream build output."
           },
           {
             "assembly": "PC Space Map",
             "kind": "missing-dependency",
-            "detail": "Referenced assembly \u0027Microsoft.AspNetCore.Http.Abstractions\u0027 is absent from upstream build output."
+            "detail": "Referenced assembly 'Microsoft.AspNetCore.Http.Abstractions' is absent from upstream build output."
           },
           {
             "assembly": "PC Space Map",
             "kind": "missing-dependency",
-            "detail": "Referenced assembly \u0027Microsoft.Extensions.Primitives\u0027 is absent from upstream build output."
+            "detail": "Referenced assembly 'Microsoft.Extensions.Primitives' is absent from upstream build output."
           },
           {
             "assembly": "PC Space Map",
             "kind": "missing-dependency",
-            "detail": "Referenced assembly \u0027Microsoft.AspNetCore.Server.Kestrel.Core\u0027 is absent from upstream build output."
+            "detail": "Referenced assembly 'Microsoft.AspNetCore.Server.Kestrel.Core' is absent from upstream build output."
           },
           {
             "assembly": "PC Space Map",
             "kind": "missing-dependency",
-            "detail": "Referenced assembly \u0027Microsoft.AspNetCore.Http.Features\u0027 is absent from upstream build output."
+            "detail": "Referenced assembly 'Microsoft.AspNetCore.Http.Features' is absent from upstream build output."
           },
           {
             "assembly": "PC Space Map",
             "kind": "missing-dependency",
-            "detail": "Referenced assembly \u0027Microsoft.AspNetCore.Http.Results\u0027 is absent from upstream build output."
+            "detail": "Referenced assembly 'Microsoft.AspNetCore.Http.Results' is absent from upstream build output."
           },
           {
             "assembly": "PC Space Map",
             "kind": "missing-dependency",
-            "detail": "Referenced assembly \u0027Microsoft.AspNetCore.Http.Extensions\u0027 is absent from upstream build output."
+            "detail": "Referenced assembly 'Microsoft.AspNetCore.Http.Extensions' is absent from upstream build output."
           },
           {
             "assembly": "PC Space Map",
             "kind": "missing-dependency",
-            "detail": "Referenced assembly \u0027Microsoft.Extensions.Hosting.Abstractions\u0027 is absent from upstream build output."
+            "detail": "Referenced assembly 'Microsoft.Extensions.Hosting.Abstractions' is absent from upstream build output."
           },
           {
             "assembly": "PC Space Map",
             "kind": "missing-dependency",
-            "detail": "Referenced assembly \u0027Microsoft.Extensions.Logging\u0027 is absent from upstream build output."
+            "detail": "Referenced assembly 'Microsoft.Extensions.Logging' is absent from upstream build output."
           },
           {
             "assembly": "PC Space Map",
             "kind": "missing-dependency",
-            "detail": "Referenced assembly \u0027Microsoft.AspNetCore.Server.Kestrel\u0027 is absent from upstream build output."
+            "detail": "Referenced assembly 'Microsoft.AspNetCore.Server.Kestrel' is absent from upstream build output."
           },
           {
             "assembly": "PC Space Map",
             "kind": "missing-dependency",
-            "detail": "Referenced assembly \u0027Microsoft.AspNetCore.Routing\u0027 is absent from upstream build output."
+            "detail": "Referenced assembly 'Microsoft.AspNetCore.Routing' is absent from upstream build output."
           },
           {
             "assembly": "PC Space Map",
             "kind": "missing-dependency",
-            "detail": "Referenced assembly \u0027Microsoft.AspNetCore.Hosting.Server.Abstractions\u0027 is absent from upstream build output."
+            "detail": "Referenced assembly 'Microsoft.AspNetCore.Hosting.Server.Abstractions' is absent from upstream build output."
           },
           {
             "assembly": "PC Space Map",
             "kind": "missing-dependency",
-            "detail": "Referenced assembly \u0027Microsoft.Extensions.DependencyInjection.Abstractions\u0027 is absent from upstream build output."
+            "detail": "Referenced assembly 'Microsoft.Extensions.DependencyInjection.Abstractions' is absent from upstream build output."
           },
           {
             "assembly": "PC Space Map",
             "kind": "missing-dependency",
-            "detail": "Referenced assembly \u0027Microsoft.Extensions.Features\u0027 is absent from upstream build output."
+            "detail": "Referenced assembly 'Microsoft.Extensions.Features' is absent from upstream build output."
           }
         ],
         "sourceCommit": "1363cf73e1efe6078f31e65accc0ca3dcb98c673"
@@ -7895,7 +7906,7 @@
       "label": "Pocket calculator",
       "description": "A working keypad with arithmetic and memory",
       "category": "Mini apps",
-      "icon": "\u00E2\u2013\u00A4",
+      "icon": "â–¤",
       "provenance": {
         "family": "wpf",
         "origin": "native-demo",
@@ -7925,7 +7936,7 @@
       "label": "Primitives lab",
       "description": "Thumb drag, hold-to-repeat and popup placement",
       "category": "Interaction",
-      "icon": "\u25C8",
+      "icon": "◈",
       "provenance": {
         "family": "wpf",
         "origin": "native-demo",
@@ -7955,7 +7966,7 @@
       "label": "Project planner",
       "description": "Add tasks, mark work done, and track progress",
       "category": "Mini apps",
-      "icon": "\u00E2\u0153\u201C",
+      "icon": "âœ“",
       "provenance": {
         "family": "wpf",
         "origin": "native-demo",
@@ -7985,7 +7996,7 @@
       "label": "Resources",
       "description": "Dictionaries, pack URIs, StaticResource",
       "category": "Data",
-      "icon": "\u00E2\u2014\u2030",
+      "icon": "â—‰",
       "provenance": {
         "family": "wpf",
         "origin": "native-demo",
@@ -8015,7 +8026,7 @@
       "label": "ScreenToGif editor",
       "description": "Timeline editing, image previews and property panels",
       "category": "External applications",
-      "icon": "\u00E2\u2014\u2021",
+      "icon": "â—‡",
       "provenance": {
         "family": "wpf",
         "origin": "original",
@@ -8447,17 +8458,17 @@
           {
             "assembly": "KGySoft.Drawing",
             "kind": "missing-dependency",
-            "detail": "Referenced assembly \u0027System.Drawing.Common\u0027 is absent from upstream build output."
+            "detail": "Referenced assembly 'System.Drawing.Common' is absent from upstream build output."
           },
           {
             "assembly": "ScreenToGif",
             "kind": "missing-dependency",
-            "detail": "Referenced assembly \u0027System.Drawing.Common\u0027 is absent from upstream build output."
+            "detail": "Referenced assembly 'System.Drawing.Common' is absent from upstream build output."
           },
           {
             "assembly": "ScreenToGif.Util",
             "kind": "missing-dependency",
-            "detail": "Referenced assembly \u0027System.Drawing.Common\u0027 is absent from upstream build output."
+            "detail": "Referenced assembly 'System.Drawing.Common' is absent from upstream build output."
           }
         ],
         "sourceCommit": "a4d0a67c2131cd048ceec86cd40afc2f1a06f2fd"
@@ -8480,7 +8491,7 @@
       "label": "ScrollViewer",
       "description": "Wheel, drag and keyboard scrolling",
       "category": "Interaction",
-      "icon": "\u00E2\u2020\u2022",
+      "icon": "â†•",
       "provenance": {
         "family": "wpf",
         "origin": "native-demo",
@@ -8510,7 +8521,7 @@
       "label": "Shell lab",
       "description": "Size-to-content, taskbar progress and grid splitting",
       "category": "Interaction",
-      "icon": "\u25AB",
+      "icon": "▫",
       "provenance": {
         "family": "wpf",
         "origin": "native-demo",
@@ -8540,7 +8551,7 @@
       "label": "Microsoft SimpleBinding",
       "description": "Real resources, data objects and live binding",
       "category": "Microsoft samples",
-      "icon": "\u00E2\u2014\u2021",
+      "icon": "â—‡",
       "provenance": {
         "family": "wpf",
         "origin": "original",
@@ -8586,12 +8597,12 @@
       },
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: package copy for \u0027simple-binding\u0027 hash-pinned from manifest.",
+      "availabilityNote": "Missing local input: package copy for 'simple-binding' hash-pinned from manifest.",
       "evidence": [
         "frozen-root manifest apps/simple-binding"
       ],
       "gaps": [
-        "package copy for \u0027simple-binding\u0027 hash-pinned from manifest"
+        "package copy for 'simple-binding' hash-pinned from manifest"
       ]
     },
     {
@@ -8599,10 +8610,10 @@
       "aliases": [
         "/demo/size-ellipse"
       ],
-      "label": "Size \u0026 ellipse",
+      "label": "Size & ellipse",
       "description": "Resize-driven tiles with avatar ellipses",
       "category": "Layout",
-      "icon": "\u25CD",
+      "icon": "◍",
       "provenance": {
         "family": "wpf",
         "origin": "native-demo",
@@ -8632,7 +8643,7 @@
       "label": "Slider lab",
       "description": "Range drag, snap, keyboard and live readout",
       "category": "Interaction",
-      "icon": "\u00E2\u2020\u201D",
+      "icon": "â†”",
       "provenance": {
         "family": "wpf",
         "origin": "native-demo",
@@ -8660,7 +8671,7 @@
         "/app/smoke"
       ],
       "label": "Smoke form",
-      "description": "dotnet/samples \u00B7 windowsforms/helloworld-sharedsource",
+      "description": "dotnet/samples · windowsforms/helloworld-sharedsource",
       "category": "WinForms",
       "icon": "",
       "provenance": {
@@ -8679,7 +8690,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/catalog-staging/canvas-host-20261031T003154Z/blazor.boot.json\u0027 (sha 5913C8D8AC03\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/catalog-staging/canvas-host-20261031T003154Z/blazor.boot.json' (sha 5913C8D8AC03…); runtime unverified.",
       "evidence": [
         "local:inputs/winforms/catalog-staging/canvas-host-20261031T003154Z/blazor.boot.json#5913C8D8AC031E1E77361EC3DD7D556DFBE4AF37114BFEE39B8FA9710784DE59",
         "producer:generation 20261031T003154Z pin backend:canvas-boot-manifest 5913C8D8"
@@ -8712,7 +8723,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-auto-complete\u0027 (sha 84A949D5680F\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/syncfusion-staging/syncfusion-auto-complete' (sha 84A949D5680F…); runtime unverified.",
       "evidence": [
         "acceptance:.artifacts/autocomplete-repair/live/results.json (launch/render; caret caveat, not full parity)",
         "local:inputs/winforms/syncfusion-staging/syncfusion-auto-complete#84A949D5680F4B9F7DA71AC7BCB2A8E0FA4DC4E53C6AC1530B0F2D3C12416015",
@@ -8746,7 +8757,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-barcode\u0027 (sha 047A2CC575D3\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/syncfusion-staging/syncfusion-barcode' (sha 047A2CC575D3…); runtime unverified.",
       "evidence": [
         "local:inputs/winforms/syncfusion-staging/syncfusion-barcode#047A2CC575D3BFD513B0E28C8625FB7924D5D5C9D0B901D7C24E6866BBE1D25F"
       ],
@@ -8778,7 +8789,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-bullet-graph\u0027 (sha D54A81BCEC8E\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/syncfusion-staging/syncfusion-bullet-graph' (sha D54A81BCEC8E…); runtime unverified.",
       "evidence": [
         "local:inputs/winforms/syncfusion-staging/syncfusion-bullet-graph#D54A81BCEC8EAD030168F3F689FAABFCDE60B09A6B4B99206BF9BE43076044D5"
       ],
@@ -8810,7 +8821,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-buttons\u0027 (sha 315B863BAE62\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/syncfusion-staging/syncfusion-buttons' (sha 315B863BAE62…); runtime unverified.",
       "evidence": [
         "local:inputs/winforms/syncfusion-staging/syncfusion-buttons#315B863BAE62CDFB1B777A7C424FDA2A294678ACD7309BCD0898013D87651A6A"
       ],
@@ -8842,7 +8853,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-calendar\u0027 (sha 371538453D7C\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/syncfusion-staging/syncfusion-calendar' (sha 371538453D7C…); runtime unverified.",
       "evidence": [
         "local:inputs/winforms/syncfusion-staging/syncfusion-calendar#371538453D7CB083433A1E2851CB57CBED3BDD4FA5FAD9F89B34537E82BD4684"
       ],
@@ -8874,7 +8885,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-chart\u0027 (sha 9400D1952B19\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/syncfusion-staging/syncfusion-chart' (sha 9400D1952B19…); runtime unverified.",
       "evidence": [
         "local:inputs/winforms/syncfusion-staging/syncfusion-chart#9400D1952B1918132FC330B38710FB0031E7820DD06649769D6A3B8E0C841FCA"
       ],
@@ -8906,7 +8917,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-clock\u0027 (sha 9581952C05BF\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/syncfusion-staging/syncfusion-clock' (sha 9581952C05BF…); runtime unverified.",
       "evidence": [
         "local:inputs/winforms/syncfusion-staging/syncfusion-clock#9581952C05BFA16A72AB0C926DE7AD0C1D9861831297F03E838F9FBAF7C6750E"
       ],
@@ -8938,7 +8949,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-combobox\u0027 (sha E7113DB46B2C\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/syncfusion-staging/syncfusion-combobox' (sha E7113DB46B2C…); runtime unverified.",
       "evidence": [
         "local:inputs/winforms/syncfusion-staging/syncfusion-combobox#E7113DB46B2C1346B8E40DCF431EAD23329805114A93F4D437593A0A3A2546F8"
       ],
@@ -8970,7 +8981,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-control-bars\u0027 (sha 7DB4345F579A\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/syncfusion-staging/syncfusion-control-bars' (sha 7DB4345F579A…); runtime unverified.",
       "evidence": [
         "local:inputs/winforms/syncfusion-staging/syncfusion-control-bars#7DB4345F579A6CF83FB65D2FB8CBB80AEA12495ABF931ADBB45F6BFB6B2BBC70"
       ],
@@ -9002,7 +9013,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-datagrid\u0027 (sha 3B2F8282A7DD\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/syncfusion-staging/syncfusion-datagrid' (sha 3B2F8282A7DD…); runtime unverified.",
       "evidence": [
         "local:inputs/winforms/syncfusion-staging/syncfusion-datagrid#3B2F8282A7DDB004FCE78E4B620E1604B0CA1CCE766DAD49E3D283641662BA03"
       ],
@@ -9034,7 +9045,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-diagram\u0027 (sha 4F3C9F0B23D5\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/syncfusion-staging/syncfusion-diagram' (sha 4F3C9F0B23D5…); runtime unverified.",
       "evidence": [
         "local:inputs/winforms/syncfusion-staging/syncfusion-diagram#4F3C9F0B23D5A3B8F15F2CF2CB72E6AB22AB4156833174B38197651B44EE6FB5"
       ],
@@ -9066,7 +9077,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-docking\u0027 (sha 44E00A5AB1CF\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/syncfusion-staging/syncfusion-docking' (sha 44E00A5AB1CF…); runtime unverified.",
       "evidence": [
         "local:inputs/winforms/syncfusion-staging/syncfusion-docking#44E00A5AB1CF3E669B4F9A4E09BB61CDE5EA3BC7B1BDEA1B803FDC04F1F7F19D"
       ],
@@ -9098,7 +9109,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-font-combo\u0027 (sha 46C4ECC586B0\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/syncfusion-staging/syncfusion-font-combo' (sha 46C4ECC586B0…); runtime unverified.",
       "evidence": [
         "local:inputs/winforms/syncfusion-staging/syncfusion-font-combo#46C4ECC586B0787B304CFE58F60AAE7FF2A34595E2A99EFD7C292CBAFEAADCF5"
       ],
@@ -9130,7 +9141,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-gauges\u0027 (sha B7D1D432A3B8\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/syncfusion-staging/syncfusion-gauges' (sha B7D1D432A3B8…); runtime unverified.",
       "evidence": [
         "local:inputs/winforms/syncfusion-staging/syncfusion-gauges#B7D1D432A3B8E40A560E011A464913027D5ED55029350AA282079E405B5C2078"
       ],
@@ -9162,7 +9173,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-grid-cells\u0027 (sha 4F397FD6D1B9\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/syncfusion-staging/syncfusion-grid-cells' (sha 4F397FD6D1B9…); runtime unverified.",
       "evidence": [
         "local:inputs/winforms/syncfusion-staging/syncfusion-grid-cells#4F397FD6D1B9B24FF15D9C89BF1909A2564FDC593985CFF9BB2B5539F1593BDE"
       ],
@@ -9194,7 +9205,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-grid-grouping\u0027 (sha 5F33E2F2157D\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/syncfusion-staging/syncfusion-grid-grouping' (sha 5F33E2F2157D…); runtime unverified.",
       "evidence": [
         "local:inputs/winforms/syncfusion-staging/syncfusion-grid-grouping#5F33E2F2157D277F6164A87B396B210B1F88D6D49461B57070E7BC171D455D67"
       ],
@@ -9226,7 +9237,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-html\u0027 (sha F1A7419F78DF\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/syncfusion-staging/syncfusion-html' (sha F1A7419F78DF…); runtime unverified.",
       "evidence": [
         "local:inputs/winforms/syncfusion-staging/syncfusion-html#F1A7419F78DF68A5AAE75A8025064A070A3A742E371E05746E05989E6F97E1C4"
       ],
@@ -9258,7 +9269,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-hub-tile\u0027 (sha AE1D17234E8F\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/syncfusion-staging/syncfusion-hub-tile' (sha AE1D17234E8F…); runtime unverified.",
       "evidence": [
         "local:inputs/winforms/syncfusion-staging/syncfusion-hub-tile#AE1D17234E8F9E2860582C782B8EBD4CDED1A94003FF9F8E91B4E173A794043A"
       ],
@@ -9290,7 +9301,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-maps\u0027 (sha 01088CC36E78\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/syncfusion-staging/syncfusion-maps' (sha 01088CC36E78…); runtime unverified.",
       "evidence": [
         "local:inputs/winforms/syncfusion-staging/syncfusion-maps#01088CC36E78FA10F32CA679A2E09D245A44E1DA460BE3B83FE6E36871D0734F"
       ],
@@ -9322,7 +9333,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-masked-edit\u0027 (sha 8FA17724D349\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/syncfusion-staging/syncfusion-masked-edit' (sha 8FA17724D349…); runtime unverified.",
       "evidence": [
         "local:inputs/winforms/syncfusion-staging/syncfusion-masked-edit#8FA17724D34931D70B22467C05C173E8C1CB74C9B64D4F3C286B7E3DD578E3CD"
       ],
@@ -9354,7 +9365,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-multi-column-tree\u0027 (sha 96B1F669365B\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/syncfusion-staging/syncfusion-multi-column-tree' (sha 96B1F669365B…); runtime unverified.",
       "evidence": [
         "local:inputs/winforms/syncfusion-staging/syncfusion-multi-column-tree#96B1F669365BC15AB8020508B91255F4C68F054B2435AC3AFE5E080BCA5E60AD"
       ],
@@ -9386,7 +9397,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-navigation-drawer\u0027 (sha 93901033D23B\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/syncfusion-staging/syncfusion-navigation-drawer' (sha 93901033D23B…); runtime unverified.",
       "evidence": [
         "local:inputs/winforms/syncfusion-staging/syncfusion-navigation-drawer#93901033D23B68881FDD3D96C5137175D6B62711E099EE3516A0EB9F366DDEC7"
       ],
@@ -9418,7 +9429,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-numeric\u0027 (sha 22CF45A376BE\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/syncfusion-staging/syncfusion-numeric' (sha 22CF45A376BE…); runtime unverified.",
       "evidence": [
         "local:inputs/winforms/syncfusion-staging/syncfusion-numeric#22CF45A376BEAC63E0B4240E7D4EB496F4A6E450EBFC35C2584C31C2D8A19006"
       ],
@@ -9450,7 +9461,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-pivot-chart\u0027 (sha 7FD3F0499FAE\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/syncfusion-staging/syncfusion-pivot-chart' (sha 7FD3F0499FAE…); runtime unverified.",
       "evidence": [
         "local:inputs/winforms/syncfusion-staging/syncfusion-pivot-chart#7FD3F0499FAE77F4C1AABBA365FB1DE4710F07EEEA85CC55C7D378621429586D"
       ],
@@ -9482,7 +9493,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-pivot-grid\u0027 (sha 2B33791686D2\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/syncfusion-staging/syncfusion-pivot-grid' (sha 2B33791686D2…); runtime unverified.",
       "evidence": [
         "local:inputs/winforms/syncfusion-staging/syncfusion-pivot-grid#2B33791686D22A5691DCC9BE116068CB36486775338B6BBD46F826D85C59C79B"
       ],
@@ -9514,7 +9525,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-radial-slider\u0027 (sha 20B3003137D2\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/syncfusion-staging/syncfusion-radial-slider' (sha 20B3003137D2…); runtime unverified.",
       "evidence": [
         "local:inputs/winforms/syncfusion-staging/syncfusion-radial-slider#20B3003137D24F3AF269B509DD9A16E376048263204779570CEB913BBA58DE25"
       ],
@@ -9546,7 +9557,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-range-slider\u0027 (sha ABF1B8F1391F\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/syncfusion-staging/syncfusion-range-slider' (sha ABF1B8F1391F…); runtime unverified.",
       "evidence": [
         "local:inputs/winforms/syncfusion-staging/syncfusion-range-slider#ABF1B8F1391FB31735753E4F7C0471A7EC9B8A39DB3ABF121210A4CF311D365A"
       ],
@@ -9578,7 +9589,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-rating\u0027 (sha E48F1BCF87E0\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/syncfusion-staging/syncfusion-rating' (sha E48F1BCF87E0…); runtime unverified.",
       "evidence": [
         "local:inputs/winforms/syncfusion-staging/syncfusion-rating#E48F1BCF87E0367869117735889A440A02E627DF8A050A0BEB9C3D0283A0D7B0"
       ],
@@ -9610,7 +9621,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-scroll-frame\u0027 (sha C082103BF580\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/syncfusion-staging/syncfusion-scroll-frame' (sha C082103BF580…); runtime unverified.",
       "evidence": [
         "local:inputs/winforms/syncfusion-staging/syncfusion-scroll-frame#C082103BF58074BB85DBFC806AD40F9A21E2CD3CFA8049329B8EF9E6FE82D937"
       ],
@@ -9642,7 +9653,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-skin-manager\u0027 (sha AAC0069A42D7\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/syncfusion-staging/syncfusion-skin-manager' (sha AAC0069A42D7…); runtime unverified.",
       "evidence": [
         "local:inputs/winforms/syncfusion-staging/syncfusion-skin-manager#AAC0069A42D7E32E8D6C223225C5999FF2A082B22A912DB1EB131523FF091870"
       ],
@@ -9674,7 +9685,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-smith-chart\u0027 (sha 9A208E76E4D6\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/syncfusion-staging/syncfusion-smith-chart' (sha 9A208E76E4D6…); runtime unverified.",
       "evidence": [
         "local:inputs/winforms/syncfusion-staging/syncfusion-smith-chart#9A208E76E4D6616B63367B5B4A4035AF7A142CCAC836CD382B6B32AD702F89E6"
       ],
@@ -9706,7 +9717,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-spell-checker\u0027 (sha 83EE60B1E154\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/syncfusion-staging/syncfusion-spell-checker' (sha 83EE60B1E154…); runtime unverified.",
       "evidence": [
         "local:inputs/winforms/syncfusion-staging/syncfusion-spell-checker#83EE60B1E154FDB4347C9BE855D75A1313C0FC387C9A2458928E744115872AE5"
       ],
@@ -9738,7 +9749,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-split-container\u0027 (sha E58BCE386340\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/syncfusion-staging/syncfusion-split-container' (sha E58BCE386340…); runtime unverified.",
       "evidence": [
         "local:inputs/winforms/syncfusion-staging/syncfusion-split-container#E58BCE386340FC16E70939602C13F2C7BA23946E5C6CD51D5E6AA0E5B5D8D94C"
       ],
@@ -9770,7 +9781,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-status-bar\u0027 (sha 29EC5695435E\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/syncfusion-staging/syncfusion-status-bar' (sha 29EC5695435E…); runtime unverified.",
       "evidence": [
         "local:inputs/winforms/syncfusion-staging/syncfusion-status-bar#29EC5695435ED52E5C30F7B83830BA695CD35669FF6C063E0705269F399BBEA6"
       ],
@@ -9802,7 +9813,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-tabbed-mdi\u0027 (sha 78B441FAF162\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/syncfusion-staging/syncfusion-tabbed-mdi' (sha 78B441FAF162…); runtime unverified.",
       "evidence": [
         "local:inputs/winforms/syncfusion-staging/syncfusion-tabbed-mdi#78B441FAF162BFCA5DA11A6D191CCCB68A886078FCCC75E8882B4160D3BA10E2"
       ],
@@ -9834,7 +9845,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-tile-layout\u0027 (sha 4573FD49B4C8\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/syncfusion-staging/syncfusion-tile-layout' (sha 4573FD49B4C8…); runtime unverified.",
       "evidence": [
         "local:inputs/winforms/syncfusion-staging/syncfusion-tile-layout#4573FD49B4C8FC090E7067B81E0FDAA934D9ADFF35E7686C7A5F4F38570EA1A2"
       ],
@@ -9866,7 +9877,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-toggle\u0027 (sha 2FB49DF475C5\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/syncfusion-staging/syncfusion-toggle' (sha 2FB49DF475C5…); runtime unverified.",
       "evidence": [
         "local:inputs/winforms/syncfusion-staging/syncfusion-toggle#2FB49DF475C545B00AF0C6DD5C94030ABA5A44A1308D66E6AC26529618B6F7C8"
       ],
@@ -9898,7 +9909,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-tool-tip\u0027 (sha 5C03FA40926D\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/syncfusion-staging/syncfusion-tool-tip' (sha 5C03FA40926D…); runtime unverified.",
       "evidence": [
         "local:inputs/winforms/syncfusion-staging/syncfusion-tool-tip#5C03FA40926D7E76955E2D4D0AE4CC87699633109544B57E5AB8AF3993EB3209"
       ],
@@ -9930,7 +9941,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-tree-map\u0027 (sha 0CD97A196E57\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/syncfusion-staging/syncfusion-tree-map' (sha 0CD97A196E57…); runtime unverified.",
       "evidence": [
         "local:inputs/winforms/syncfusion-staging/syncfusion-tree-map#0CD97A196E5780BB9437EEEDAB8E28E90CFF7E091261F85A104258707456D532"
       ],
@@ -9962,7 +9973,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-treeview\u0027 (sha B665847C5FC8\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/syncfusion-staging/syncfusion-treeview' (sha B665847C5FC8…); runtime unverified.",
       "evidence": [
         "local:inputs/winforms/syncfusion-staging/syncfusion-treeview#B665847C5FC8A3EDC13D49D5227AA459930BF9726DAF28247B16B7674F7AC973"
       ],
@@ -9994,7 +10005,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-wizard\u0027 (sha 233CB858614B\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/syncfusion-staging/syncfusion-wizard' (sha 233CB858614B…); runtime unverified.",
       "evidence": [
         "local:inputs/winforms/syncfusion-staging/syncfusion-wizard#233CB858614B5560958A9775A6E271C3F78806A1EA976196F5114F7F980CE84F"
       ],
@@ -10026,7 +10037,7 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/winforms/syncfusion-staging/syncfusion-word\u0027 (sha 238E14907559\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/winforms/syncfusion-staging/syncfusion-word' (sha 238E14907559…); runtime unverified.",
       "evidence": [
         "local:inputs/winforms/syncfusion-staging/syncfusion-word#238E14907559EC1C64E325AFF2194E981049568254F340E6B7430043A23299C4"
       ],
@@ -10040,7 +10051,7 @@
       "label": "Tabs lab",
       "description": "Tab selection, progress value and hover tooltips",
       "category": "Interaction",
-      "icon": "\u25A4",
+      "icon": "▤",
       "provenance": {
         "family": "wpf",
         "origin": "native-demo",
@@ -10087,10 +10098,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027telerik-bookshelf\u0027 plus WinForms transform inputs.",
+      "availabilityNote": "Missing local input: app folder for 'telerik-bookshelf' plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder for \u0027telerik-bookshelf\u0027 plus WinForms transform inputs"
+        "app folder for 'telerik-bookshelf' plus WinForms transform inputs"
       ]
     },
     {
@@ -10118,10 +10129,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027telerik-bugtracker\u0027 plus WinForms transform inputs.",
+      "availabilityNote": "Missing local input: app folder for 'telerik-bugtracker' plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder for \u0027telerik-bugtracker\u0027 plus WinForms transform inputs"
+        "app folder for 'telerik-bugtracker' plus WinForms transform inputs"
       ]
     },
     {
@@ -10149,10 +10160,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027telerik-demoappshub\u0027 plus WinForms transform inputs.",
+      "availabilityNote": "Missing local input: app folder for 'telerik-demoappshub' plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder for \u0027telerik-demoappshub\u0027 plus WinForms transform inputs"
+        "app folder for 'telerik-demoappshub' plus WinForms transform inputs"
       ]
     },
     {
@@ -10180,10 +10191,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027telerik-diagram\u0027 plus WinForms transform inputs.",
+      "availabilityNote": "Missing local input: app folder for 'telerik-diagram' plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder for \u0027telerik-diagram\u0027 plus WinForms transform inputs"
+        "app folder for 'telerik-diagram' plus WinForms transform inputs"
       ]
     },
     {
@@ -10211,10 +10222,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027telerik-erp\u0027 plus WinForms transform inputs.",
+      "availabilityNote": "Missing local input: app folder for 'telerik-erp' plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder for \u0027telerik-erp\u0027 plus WinForms transform inputs"
+        "app folder for 'telerik-erp' plus WinForms transform inputs"
       ]
     },
     {
@@ -10242,10 +10253,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027telerik-exportwithdpl\u0027 plus WinForms transform inputs.",
+      "availabilityNote": "Missing local input: app folder for 'telerik-exportwithdpl' plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder for \u0027telerik-exportwithdpl\u0027 plus WinForms transform inputs"
+        "app folder for 'telerik-exportwithdpl' plus WinForms transform inputs"
       ]
     },
     {
@@ -10273,10 +10284,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027telerik-fileexplorer\u0027 plus WinForms transform inputs.",
+      "availabilityNote": "Missing local input: app folder for 'telerik-fileexplorer' plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder for \u0027telerik-fileexplorer\u0027 plus WinForms transform inputs"
+        "app folder for 'telerik-fileexplorer' plus WinForms transform inputs"
       ]
     },
     {
@@ -10304,10 +10315,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027telerik-hotelapp\u0027 plus WinForms transform inputs.",
+      "availabilityNote": "Missing local input: app folder for 'telerik-hotelapp' plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder for \u0027telerik-hotelapp\u0027 plus WinForms transform inputs"
+        "app folder for 'telerik-hotelapp' plus WinForms transform inputs"
       ]
     },
     {
@@ -10335,10 +10346,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027telerik-medicalapp\u0027 plus WinForms transform inputs.",
+      "availabilityNote": "Missing local input: app folder for 'telerik-medicalapp' plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder for \u0027telerik-medicalapp\u0027 plus WinForms transform inputs"
+        "app folder for 'telerik-medicalapp' plus WinForms transform inputs"
       ]
     },
     {
@@ -10370,10 +10381,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027telerik-photo\u0027 plus WinForms transform inputs.",
+      "availabilityNote": "Missing local input: app folder for 'telerik-photo' plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder for \u0027telerik-photo\u0027 plus WinForms transform inputs"
+        "app folder for 'telerik-photo' plus WinForms transform inputs"
       ]
     },
     {
@@ -10401,10 +10412,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027telerik-richtexteditor\u0027 plus WinForms transform inputs.",
+      "availabilityNote": "Missing local input: app folder for 'telerik-richtexteditor' plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder for \u0027telerik-richtexteditor\u0027 plus WinForms transform inputs"
+        "app folder for 'telerik-richtexteditor' plus WinForms transform inputs"
       ]
     },
     {
@@ -10432,10 +10443,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027telerik-rssreader\u0027 plus WinForms transform inputs.",
+      "availabilityNote": "Missing local input: app folder for 'telerik-rssreader' plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder for \u0027telerik-rssreader\u0027 plus WinForms transform inputs"
+        "app folder for 'telerik-rssreader' plus WinForms transform inputs"
       ]
     },
     {
@@ -10463,10 +10474,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027telerik-spellcheckasyoutype\u0027 plus WinForms transform inputs.",
+      "availabilityNote": "Missing local input: app folder for 'telerik-spellcheckasyoutype' plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder for \u0027telerik-spellcheckasyoutype\u0027 plus WinForms transform inputs"
+        "app folder for 'telerik-spellcheckasyoutype' plus WinForms transform inputs"
       ]
     },
     {
@@ -10494,10 +10505,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027telerik-toastnotificationmanagerexamples\u0027 plus WinForms transform inputs.",
+      "availabilityNote": "Missing local input: app folder for 'telerik-toastnotificationmanagerexamples' plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder for \u0027telerik-toastnotificationmanagerexamples\u0027 plus WinForms transform inputs"
+        "app folder for 'telerik-toastnotificationmanagerexamples' plus WinForms transform inputs"
       ]
     },
     {
@@ -10537,7 +10548,7 @@
         "/demo/testapp-joint"
       ],
       "label": "AvalonDock TestApp (joint)",
-      "description": "AvalonDock TestApp converted to a joint WinForms\u002BWPF package (staged, serving \u002B behavior unverified).",
+      "description": "AvalonDock TestApp converted to a joint WinForms+WPF package (staged, serving + behavior unverified).",
       "category": "Mixed",
       "icon": "",
       "provenance": {
@@ -10548,14 +10559,14 @@
         "commit": "10d1cc6fb3ef45284b31bf2372a35d83f3b3ca02",
         "project": "source/TestApp/TestApp.csproj",
         "license": "MS-PL",
-        "boundary": "Serving \u002B behavior unverified: staged bytes only. WPF-routed refs moved into the engine namespace; method-body call compatibility proven only by browser boot (verifier lane).",
+        "boundary": "Serving + behavior unverified: staged bytes only. WPF-routed refs moved into the engine namespace; method-body call compatibility proven only by browser boot (verifier lane).",
         "hasRecipe": true
       },
       "entry": {
         "kind": "converted-app",
         "entryAssembly": "TestApp",
         "manifestSlug": "testapp-joint",
-        "bootNote": "Joint converted app boots via package loader once served; serving \u002B behavior unverified.",
+        "bootNote": "Joint converted app boots via package loader once served; serving + behavior unverified.",
         "bridge": {
           "provider": "DesktopWasm.Interop.WindowsFormsHostResolver",
           "contract": "System.Windows.Forms.Integration.WindowsFormsHost"
@@ -10735,7 +10746,7 @@
       },
       "availability": "staged",
       "upstreamStatus": "converted",
-      "availabilityNote": "Staged locally at \u0027inputs/mixed/testapp-package\u0027 (sha 7b1c88186a0d\u2026); serving \u002B behavior unverified.",
+      "availabilityNote": "Staged locally at 'inputs/mixed/testapp-package' (sha 7b1c88186a0d…); serving + behavior unverified.",
       "evidence": [
         "local:inputs/mixed/testapp-package#7b1c88186a0de72a7ca72282eec40f05ee37e1737a8b4784c99c92eb04938892",
         "producer:inputs/mixed/testapp-package/PROVENANCE.json",
@@ -10799,10 +10810,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027tic-tac-toe\u0027 plus WinForms transform inputs.",
+      "availabilityNote": "Missing local input: app folder for 'tic-tac-toe' plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder for \u0027tic-tac-toe\u0027 plus WinForms transform inputs"
+        "app folder for 'tic-tac-toe' plus WinForms transform inputs"
       ]
     },
     {
@@ -10830,10 +10841,10 @@
       "transformVersion": "wf-rewrite-v1",
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: app folder for \u0027todo\u0027 plus WinForms transform inputs.",
+      "availabilityNote": "Missing local input: app folder for 'todo' plus WinForms transform inputs.",
       "evidence": [],
       "gaps": [
-        "app folder for \u0027todo\u0027 plus WinForms transform inputs"
+        "app folder for 'todo' plus WinForms transform inputs"
       ]
     },
     {
@@ -10844,7 +10855,7 @@
       "label": "Tree hierarchy",
       "description": "Expand, collapse and pick nodes",
       "category": "Data",
-      "icon": "\u00E2\u2020\u00B3",
+      "icon": "â†³",
       "provenance": {
         "family": "wpf",
         "origin": "native-demo",
@@ -10871,10 +10882,10 @@
       "aliases": [
         "/demo/typography"
       ],
-      "label": "Text \u0026 typography",
+      "label": "Text & typography",
       "description": "Font sizes and ellipsis",
       "category": "Fundamentals",
-      "icon": "\u00C2\u00B6",
+      "icon": "Â¶",
       "provenance": {
         "family": "wpf",
         "origin": "native-demo",
@@ -10901,10 +10912,10 @@
       "aliases": [
         "/demo/validation-links"
       ],
-      "label": "Validation \u0026 links",
+      "label": "Validation & links",
       "description": "Rule-checked input plus in-session link navigation",
       "category": "Data",
-      "icon": "\u21C4",
+      "icon": "⇄",
       "provenance": {
         "family": "wpf",
         "origin": "native-demo",
@@ -10934,7 +10945,7 @@
       "label": "Microsoft Calculator",
       "description": "Original calculator with commands and keyboard input",
       "category": "Microsoft samples",
-      "icon": "\u00E2\u2014\u2021",
+      "icon": "â—‡",
       "provenance": {
         "family": "wpf",
         "origin": "original",
@@ -10978,12 +10989,12 @@
       },
       "availability": "missingInput",
       "upstreamStatus": "ready",
-      "availabilityNote": "Missing local input: package copy for \u0027wpf-calculator\u0027 hash-pinned from manifest.",
+      "availabilityNote": "Missing local input: package copy for 'wpf-calculator' hash-pinned from manifest.",
       "evidence": [
         "frozen-root manifest apps/wpf-calculator"
       ],
       "gaps": [
-        "package copy for \u0027wpf-calculator\u0027 hash-pinned from manifest"
+        "package copy for 'wpf-calculator' hash-pinned from manifest"
       ]
     },
     {
@@ -10994,7 +11005,7 @@
       "label": "Microsoft WPF Gallery",
       "description": "A broad control gallery from Microsoft",
       "category": "Microsoft samples",
-      "icon": "\u00E2\u2014\u2021",
+      "icon": "â—‡",
       "provenance": {
         "family": "wpf",
         "origin": "original",
@@ -11003,7 +11014,7 @@
         "commit": "811d01e95c8c929e68539d698d0a0609e94fd185",
         "project": "Sample Applications/WPFGallery/WPFGallery.csproj",
         "license": "MIT",
-        "boundary": "Type conversion is complete (0 gaps; converted package identity transcribed from frozen manifest apps/wpf-gallery, manifest sha 65ECEA648ADC65F2E6BC6156BACA502AE73F7F69A6683400FE2FDF04586FCDDF, 29 assemblies verified against the frozen bytes). Staged in this root at inputs/wpf/catalog-staging/wpf-gallery (manifest sha 65ECEA648ADC65F2E6BC6156BACA502AE73F7F69A6683400FE2FDF04586FCDDF, 29-assembly closure digest-verified on stage 2026-11-02 by import lane RVW8900); serving + behavior unverified. Frozen-root-era browser notes below describe the frozen app, not current-workspace serving: Dashboard to Basic Input to ButtonPage navigation plus the ButtonPage disable-checkbox chain (unchecked to checked flips the sample button enabled to disabled), Layout GridPage 3x3 ShowGridLines parsing, Layout GroupBoxPage Name/Gender typing, Text TextBoxPage AlphabeticValidationRule behavior, Collections ListBoxPage color/font selection, and Fluent theme-pack fallback (proof scripts live beside the frozen root, e.g. gallery_state_proof.py). Serving \u002B behavior unverified in this workspace. Remaining limits: loose-XAML detail pages outside the proven path keep precise boundaries (Interaction.Triggers, MenuItem Click EventSetter, FrameWindow Source, Calendar, DatePicker, RichTextBox); session-memory long-dwell idle acceptance stays open.",
+        "boundary": "Type conversion is complete (0 gaps; converted package identity transcribed from frozen manifest apps/wpf-gallery, manifest sha 65ECEA648ADC65F2E6BC6156BACA502AE73F7F69A6683400FE2FDF04586FCDDF, 29 assemblies verified against the frozen bytes). Staged in this root at inputs/wpf/catalog-staging/wpf-gallery (manifest sha 65ECEA648ADC65F2E6BC6156BACA502AE73F7F69A6683400FE2FDF04586FCDDF, 29-assembly closure digest-verified on stage 2026-11-02 by import lane RVW8900); serving + behavior unverified. Frozen-root-era browser notes below describe the frozen app, not current-workspace serving: Dashboard to Basic Input to ButtonPage navigation plus the ButtonPage disable-checkbox chain (unchecked to checked flips the sample button enabled to disabled), Layout GridPage 3x3 ShowGridLines parsing, Layout GroupBoxPage Name/Gender typing, Text TextBoxPage AlphabeticValidationRule behavior, Collections ListBoxPage color/font selection, and Fluent theme-pack fallback (proof scripts live beside the frozen root, e.g. gallery_state_proof.py). Serving + behavior unverified in this workspace. Remaining limits: loose-XAML detail pages outside the proven path keep precise boundaries (Interaction.Triggers, MenuItem Click EventSetter, FrameWindow Source, Calendar, DatePicker, RichTextBox); session-memory long-dwell idle acceptance stays open.",
         "hasRecipe": true
       },
       "entry": {
@@ -11586,7 +11597,7 @@
       },
       "availability": "available",
       "upstreamStatus": "ready",
-      "availabilityNote": "Staged locally at \u0027inputs/wpf/catalog-staging/wpf-gallery\u0027 (sha 65ECEA648ADC\u2026); runtime unverified.",
+      "availabilityNote": "Staged locally at 'inputs/wpf/catalog-staging/wpf-gallery' (sha 65ECEA648ADC…); runtime unverified.",
       "evidence": [
         "frozen-root manifest apps/wpf-gallery",
         "local:inputs/wpf/catalog-staging/wpf-gallery#65ECEA648ADC65F2E6BC6156BACA502AE73F7F69A6683400FE2FDF04586FCDDF"

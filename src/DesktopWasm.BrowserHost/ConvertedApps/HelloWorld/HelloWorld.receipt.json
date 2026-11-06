@@ -1,0 +1,19 @@
+{
+  "App": "HelloWorld.dll",
+  "InputSha256": "1B3D4D688489347D366A71E6B24689FF2100DCA7C524EC2C65F098E5CAFD9EB5",
+  "MapVersion": "wpf-convert-v1",
+  "SourceCommit": "811d01e95c8c929e68539d698d0a0609e94fd185",
+  "EmbeddedXaml": [
+    "App.xaml",
+    "MainWindow.xaml"
+  ],
+  "Warnings": [
+    "Original compiled BAML still ships inside \u0027HelloWorld.g.resources\u0027 (kept for fidelity; boot prefers loose XAML)."
+  ],
+  "ConvertedAt": "2026-10-22T22:07:20.5853271+00:00",
+  "HostFramework": ".NET 9.0.21",
+  "Adaptations": [
+    "Removed dead unloadable type \u0027HelloWorld.Properties.Settings\u0027.",
+    "Pruned unused unresolvable reference \u0027System.Configuration.ConfigurationManager\u0027."
+  ]
+}

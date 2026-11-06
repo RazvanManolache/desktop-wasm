@@ -193,4 +193,126 @@ public sealed class SpatialEffectsTests
         byte[] left = Render(effect, 8, 16), right = Render(effect, 8, 16, 8);
         for (int y = 0; y < 16; y++) { Assert.Equal(plane.AsSpan(y * 64, 32).ToArray(), left.AsSpan(y * 32, 32).ToArray()); Assert.Equal(plane.AsSpan(y * 64 + 32, 32).ToArray(), right.AsSpan(y * 32, 32).ToArray()); }
     }
+    // Genuine Paint.NET 5 color properties carry ManagedColor values
+    // (PaintDotNet.Imaging: no A/R/G/B properties, no ToColor; sRGB via
+    // ManagedColorExtensions.GetSrgb). The CPU fallback must convert
+    // those endpoints instead of silently rendering the white/black
+    // fallbacks while the dialog shows user-picked colors.
+    public sealed class GenuineManagedColor
+    {
+        private readonly byte _r, _g, _b, _a;
+        public GenuineManagedColor(byte r, byte g, byte b, byte a = 255) { _r = r; _g = g; _b = b; _a = a; }
+        public byte[] ToSrgbBytes() => new byte[] { _r, _g, _b, _a };
+    }
+    public sealed class GenuineRgba128Float
+    {
+        public float R { get; set; }
+        public float G { get; set; }
+        public float B { get; set; }
+        public float A { get; set; }
+    }
+    public sealed class GenuineSrgbColorA
+    {
+        public GenuineRgba128Float srgbColor = new();
+    }
+    [Fact]
+    public void Clouds_reads_genuine_ManagedColor_endpoints()
+    {
+        var effect = new CloudsGpuEffect();
+        int w = 16, h = 12;
+        byte[] src = new byte[w * h * 4];
+        for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++)
+        {
+            int o = (y * w + x) * 4;
+            src[o] = (byte)((x * 13 + y * 29) & 0xFF);
+            src[o + 1] = (byte)((x * 7 + y * 41) & 0xFF);
+            src[o + 2] = (byte)((x * 31 + y * 3) & 0xFF);
+            src[o + 3] = 255;
+        }
+        for (int y = 4; y < 8; y++)
+        for (int x = 5; x < 11; x++)
+        {
+            int o = (y * w + x) * 4;
+            src[o] = src[o + 1] = src[o + 2] = 255;
+        }
+        CpuPaint.NoteTileSourceBytes(effect, src, w, h, w * 4);
+        effect.Token.Values["Scale"] = 300;
+        effect.Token.Values["Power"] = 0.5;
+        effect.Token.Values["Seed"] = 3;
+        effect.Token.Objects["Color1"] = new GenuineManagedColor(200, 10, 20);
+        effect.Token.Objects["Color2"] = new GenuineManagedColor(10, 20, 200);
+        byte[] full = Render(effect, w, h);
+        for (int i = 0; i < full.Length; i += 4)
+        {
+            Assert.Equal((byte)255, full[i + 3]);
+            Assert.InRange(full[i], (byte)10, (byte)200);
+            Assert.InRange(full[i + 1], (byte)10, (byte)20);
+            Assert.InRange(full[i + 2], (byte)10, (byte)200);
+        }
+    }
+    // PdnCpu-side managed-effect diagnostic: for a Clouds effect owner,
+    // report per-property resolution (genuine scalar props + ManagedColor
+    // endpoints) and the exact sRGB bytes the CPU fallback would render.
+    // Fail-closed by contract: hostile shapes (throwing getters, missing
+    // token/owner) yield reason strings, never throws. Lets a trace
+    // distinguish "token unreadable here" from fork-side dialog death.
+    public sealed class ThrowingScaleToken { public int Scale => throw new InvalidOperationException("boom"); }
+    public sealed class ThrowingScaleEffect { public ThrowingScaleToken Token { get; } = new(); }
+    public sealed class TokenlessEffect { }
+    [Fact]
+    public void Clouds_diagnosis_resolves_genuine_token_and_reports_hostile_shapes_fail_closed()
+    {
+        var effect = new CloudsGpuEffect();
+        effect.Token.Values["Scale"] = 250;
+        effect.Token.Values["Power"] = 0.5;
+        effect.Token.Values["Seed"] = 3;
+        effect.Token.Values["MixMode"] = 0;
+        effect.Token.Objects["Color1"] = new GenuineManagedColor(200, 10, 20);
+        effect.Token.Objects["Color2"] = new GenuineManagedColor(10, 20, 200);
+        var full = CpuPaint.DiagnoseCloudsEffect(effect);
+        Assert.True(full.HasToken);
+        Assert.Equal("", full.Problems);
+        Assert.True(full.ScalePresent && full.PowerPresent && full.SeedPresent && full.MixModePresent);
+        Assert.True(full.Color1Present && full.Color2Present);
+        Assert.Equal(250, full.Scale);
+        Assert.Equal(0.5, full.Power);
+        Assert.Equal(3, full.Seed);
+        Assert.Equal(0xFFC80A14u, full.Color1Argb);
+        Assert.Equal(0xFF0A14C8u, full.Color2Argb);
+        var bad = CpuPaint.DiagnoseCloudsEffect(new ThrowingScaleEffect());
+        Assert.True(bad.HasToken);
+        Assert.Contains("Scale", bad.Problems);
+        var noToken = CpuPaint.DiagnoseCloudsEffect(new TokenlessEffect());
+        Assert.False(noToken.HasToken);
+        Assert.Contains("null token", noToken.Problems);
+        var noOwner = CpuPaint.DiagnoseCloudsEffect(null);
+        Assert.False(noOwner.HasToken);
+        Assert.Contains("null owner", noOwner.Problems);
+    }
+}
+namespace PaintDotNet.Imaging
+{
+    // Shape-faithful stand-in for the genuine ManagedColorExtensions
+    // (verified against the shipped PaintDotNet.Core): single-argument
+    // GetSrgb returning an SrgbColorA whose srgbColor field carries
+    // float R/G/B/A channels. Lives in the value's assembly so the
+    // reflection lookup resolves exactly like the genuine one.
+    public static class ManagedColorExtensions
+    {
+        public static SpatialEffectsTests.GenuineSrgbColorA GetSrgb(SpatialEffectsTests.GenuineManagedColor c)
+        {
+            byte[] b = c.ToSrgbBytes();
+            return new SpatialEffectsTests.GenuineSrgbColorA
+            {
+                srgbColor = new SpatialEffectsTests.GenuineRgba128Float
+                {
+                    R = b[0] / 255f,
+                    G = b[1] / 255f,
+                    B = b[2] / 255f,
+                    A = b[3] / 255f
+                }
+            };
+        }
+    }
 }

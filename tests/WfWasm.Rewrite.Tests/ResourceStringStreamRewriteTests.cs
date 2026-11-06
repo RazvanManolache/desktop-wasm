@@ -6,6 +6,18 @@ using WfWasm.Rewrite;
 // managed catch on the ctor path: silent OOB trap, calendar+diagram dead).
 public sealed class ResourceStringStreamRewriteTests
 {
+    // TMPMOVE canonical-only: rewritten fixtures under retained/.
+    private static string RepoRoot =>
+        Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+    private static string RewrittenSmall
+    {
+        get
+        {
+            var canon = Path.Combine(RepoRoot, ".artifacts", "tmp", "retained", "rewritten-small");
+            return canon;
+        }
+    }
+
     private static string ShimDll(string project, string name)
     {
         string dll = Path.GetFullPath(Path.Combine(
@@ -238,7 +250,7 @@ public sealed class ResourceStringStreamRewriteTests
                     if (already is not null)
                         return already;
                     foreach (string dir in new[]
-                        { AppContext.BaseDirectory, @"E:\tmp\rewritten-small" })
+                        { AppContext.BaseDirectory, RewrittenSmall })
                     {
                         string cand = Path.Combine(dir, want + ".dll");
                         if (File.Exists(cand))

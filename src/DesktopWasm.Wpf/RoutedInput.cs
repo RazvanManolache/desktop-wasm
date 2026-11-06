@@ -990,6 +990,19 @@ public sealed class WpfInputManager
             if (BuildRouteTo(root, Focused, route)) return route;
         }
 
+        // Parent-parented-but-not-logical content (e.g. a DataGrid editing
+        // element, which parents back to its cell without joining the
+        // logical collection): the focused element must still own its keys,
+        // so route the live Parent chain instead of broadcasting to roots
+        // (which silently drops typing/commit on the focused editor).
+        if (Focused is not null)
+        {
+            route.Clear();
+            for (var p = Focused; p is not null; p = p.Parent) route.Add(p);
+            route.Reverse();
+            if (route.Count > 0) return route;
+        }
+
         route.Clear();
         foreach (var r in _roots) if (IsShown(r)) route.Add(r);
         return route;

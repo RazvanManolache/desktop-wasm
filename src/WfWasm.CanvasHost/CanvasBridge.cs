@@ -22,6 +22,7 @@ namespace WfWasm.CanvasHost;
 /// the retained layer; hand-built streams without a prior upload no-op).
 /// 12 = shiftBitmap [layerId,dx,dy] (marker only: the upload loop applies
 /// the shift out-of-band ahead of the patch; hand-built streams no-op).
+/// 13 = pushClip [x,y,w,h] (intersects the current clip), 14 = popClip.
 /// Frame/end markers carry no pixels.
 /// </summary>
 public static partial class CanvasBridge
@@ -102,6 +103,12 @@ public static partial class CanvasBridge
                     break;
                 case ShiftBitmapCommand s:
                     ops.Add([12, s.LayerId, s.DX, s.DY]);
+                    break;
+                case PushClipCommand c:
+                    ops.Add([13, c.X, c.Y, c.Width, c.Height]);
+                    break;
+                case PopClipCommand:
+                    ops.Add([14]);
                     break;
             }
         }

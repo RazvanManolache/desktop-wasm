@@ -1,10 +1,17 @@
 // The launcher never starts .NET. Only an app frame (or legacy demo URL) does.
-const mount = '/wpf';
-const route = location.pathname.startsWith(mount + '/')
-    ? location.pathname.slice(mount.length) : location.pathname;
-if (route === '/gpu-spike') {
-    location.replace('/?rendering=1');
-} else if (route.startsWith('/runtime/') || route.startsWith('/demo/')) {
+// Mount-aware: the same file serves the studio root (/) and the unified-shell
+// mount (/wpf/). Routing matches on the mount-stripped path so
+// /wpf/runtime/<app> and /wpf/demo/<app> boot the runtime branch; asset URLs
+// stay relative so the document base href scopes resource bases under either
+// root without edits.
+const MOUNT_PREFIX = '/wpf';
+const requestPath = location.pathname;
+const underMount = requestPath === MOUNT_PREFIX || requestPath.startsWith(MOUNT_PREFIX + '/');
+const routePath = underMount ? (requestPath.slice(MOUNT_PREFIX.length) || '/') : requestPath;
+const mountRoot = underMount ? MOUNT_PREFIX : '';
+if (routePath === '/gpu-spike') {
+    location.replace(mountRoot + '/?rendering=1');
+} else if (routePath.startsWith('/runtime/') || routePath.startsWith('/demo/')) {
     document.body.classList.add('runtime-page');
     document.getElementById('studio').remove();
     const app = document.getElementById('app');

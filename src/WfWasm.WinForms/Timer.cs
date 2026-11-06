@@ -9,8 +9,10 @@ namespace System.Windows.Forms;
 // animations freeze at their start values, clocks and polling UI stall).
 // Same public contract (Tag included: Telerik's animation settings stash
 // their element in it); ticks come from a System.Threading.Timer firing
-// one-shot callbacks that reschedule, so Tick handlers never overlap the
-// way message coalescing prevents on desktop. Callbacks arrive on pool
+// one-shot callbacks that re-arm by recreating the one-shot (Change-based
+// reschedule delivered exactly one tick in the served runtime), so Tick
+// handlers never overlap the way message coalescing prevents on desktop.
+// Callbacks arrive on pool
 // threads: control access from Tick follows the same Invoke marshaling
 // rules as desktop. A throwing Tick is reported to the console and the
 // timer keeps running instead of taking down the runtime, matching the
@@ -24,6 +26,8 @@ public class Timer : Component
     private bool _enabled;
     private System.Threading.Timer? _timer;
     private readonly Lock _lock = new();
+    private int _firedOnce;
+    private int _tickCount;
 
     public Timer()
     {
@@ -85,6 +89,7 @@ public class Timer : Component
                 if (value)
                 {
                     StartTimerLocked();
+                    Console.WriteLine($"[WfWasm.Timer] armed interval={_interval}");
                 }
                 else
                 {
@@ -134,11 +139,23 @@ public class Timer : Component
     private void StartTimerLocked()
     {
         StopTimerLocked();
-        _timer = new System.Threading.Timer(
-            static state => ((Timer)state!).FireOnce(),
-            this,
-            _interval,
-            System.Threading.Timeout.Infinite);
+        try
+        {
+            _timer = new System.Threading.Timer(
+                static state => ((Timer)state!).FireOnce(),
+                this,
+                _interval,
+                System.Threading.Timeout.Infinite);
+            _firedOnce = 0;
+            _tickCount = 0;
+        }
+        catch (Exception ex)
+        {
+            // Served diagnosis needs the arming fault even when a caller
+            // swallows it (silent never-ticks look identical otherwise).
+            Console.Error.WriteLine($"[WfWasm.Timer] arm failed: {ex.GetType().Name}: {ex.Message}");
+            throw;
+        }
     }
 
     private void StopTimerLocked()
@@ -148,8 +165,29 @@ public class Timer : Component
         timer?.Dispose();
     }
 
+    /// <summary>Ticks delivered since the current arming (reset by Start).</summary>
+    public int TickCount => System.Threading.Volatile.Read(ref _tickCount);
+
     private void FireOnce()
     {
+        if (System.Threading.Interlocked.Exchange(ref _firedOnce, 1) == 0)
+        {
+            // One line per arming: proves Threading.Timer callbacks arrive
+            // without spamming per-tick on fast cadences.
+            Console.WriteLine("[WfWasm.Timer] first tick");
+        }
+
+        int n = System.Threading.Interlocked.Increment(ref _tickCount);
+        if (n <= 3 || n % 50 == 0)
+        {
+            // Sparse continuation proof: with Change-based re-arm the
+            // served wizard timer delivered exactly one tick (PSTALL
+            // WC1534: armed + first tick, then a frozen progress bar and
+            // zero pixels with no Tick-failed line). A climbing count
+            // names repeat delivery; a stuck count names the re-arm.
+            Console.WriteLine($"[WfWasm.Timer] tick #{n} interval={_interval}");
+        }
+
         try
         {
             OnTick(EventArgs.Empty);
@@ -164,17 +202,35 @@ public class Timer : Component
 
         lock (_lock)
         {
-            if (_enabled && _timer is not null)
+            if (!_enabled || DesignMode)
             {
-                try
-                {
-                    _timer.Change(_interval, System.Threading.Timeout.Infinite);
-                }
-                catch (ObjectDisposedException)
-                {
-                    // Lost a stop/dispose race: stay stopped.
-                    _timer = null;
-                }
+                return;
+            }
+
+            // Re-arm by recreating the one-shot, not by Change: the
+            // served runtime delivered the constructed one-shot exactly
+            // once and then went silent (no failure, no reschedule), so
+            // Change cannot be trusted here. Recreating after OnTick
+            // keeps the non-overlap contract (the next callback cannot
+            // start until this one finishes re-arming).
+            try
+            {
+                StopTimerLocked();
+                _firedOnce = 1;
+                _timer = new System.Threading.Timer(
+                    static state => ((Timer)state!).FireOnce(),
+                    this,
+                    _interval,
+                    System.Threading.Timeout.Infinite);
+            }
+            catch (Exception ex)
+            {
+                // Served diagnosis needs the re-arm fault: a dead re-arm
+                // with Enabled still true is indistinguishable from a
+                // wedged handler otherwise.
+                Console.Error.WriteLine($"[WfWasm.Timer] re-arm failed: {ex.GetType().Name}: {ex.Message}");
+                _timer = null;
+                _enabled = false;
             }
         }
     }

@@ -13,6 +13,10 @@ public static class DesktopBenchmarks
         string Purpose, string[] Components, string License, string Notes, string? DownloadUrl, string? Sha256)
     {
         public bool RequiresManualInput => Build == "manual";
+
+        // Optional machine-readable startup-adapter marker (e.g. gitext
+        // "GitExtensions"). Absent from older catalog JSON: defaults null.
+        public string? StartupAdapter { get; set; }
     }
 
     public static IReadOnlyList<Benchmark> Entries { get; } = Read();

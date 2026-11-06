@@ -44,7 +44,7 @@ internal static class EditorStateProbe
         void Walk(Control c)
         {
             if (controls.Count > 1000) return;
-            controls.Add(new { type = c.GetType().FullName, c.Name, c.Text, bounds = c.Bounds.ToString(), c.Visible, c.Focused, c.ContainsFocus, parent = c.Parent?.Name, dock = c.Dock.ToString(), items = Get(Get(c, "Items"), "Count"), columns = (Get(c, "Columns") as IEnumerable)?.Cast<object>().Select(x => new { name = Get(x, "Name")?.ToString(), width = Get(x, "Width") }).ToArray() });
+            controls.Add(new { type = c.GetType().FullName, c.Name, c.Text, bounds = c.Bounds.ToString(), c.Visible, c.Focused, c.ContainsFocus, parent = c.Parent?.Name, dock = c.Dock.ToString(), value = Get(c, "Value"), selfPaint = WinFormsAppHost.TypeSelfPaints(c.GetType()), bgImageNull = c.BackgroundImage is null, items = Get(Get(c, "Items"), "Count"), columns = (Get(c, "Columns") as IEnumerable)?.Cast<object>().Select(x => new { name = Get(x, "Name")?.ToString(), width = Get(x, "Width") }).ToArray() });
             Visual(Get(c, "RootElement"), 0);
             foreach (Control child in c.Controls) Walk(child);
         }
@@ -56,7 +56,7 @@ internal static class EditorStateProbe
         {
             controls, elements,
             caret = caret is null ? null : new { type = caret.GetType().FullName, visibility = Get(caret, "Visibility")?.ToString(), color = Get(caret, "Color")?.ToString(), x = Get(position, "X"), y = Get(position, "Y"), width = Get(caret, "Width"), height = Get(caret, "Height"), bounds = bounds?.ToString(), focused = Get(caret, "IsFocused"), shown = Get(caret, "IsVisible") },
-            forms = Application.OpenForms.Cast<Form>().Select(f => new { type = f.GetType().FullName, f.Text, bounds = f.Bounds.ToString(), f.Visible, controls = f.Controls.Cast<Control>().Select(c => new { type = c.GetType().Name, c.Name, c.Text, bounds = c.Bounds.ToString() }).ToArray() }).ToArray()
+            forms = Application.OpenForms.Cast<Form>().Select(f => new { type = f.GetType().FullName, f.Text, bounds = f.Bounds.ToString(), f.Visible, controls = f.Controls.Cast<Control>().Select(c => new { type = c.GetType().Name, c.Name, c.Text, bounds = c.Bounds.ToString(), value = Get(c, "Value") }).ToArray() }).ToArray()
         });
     }
 }

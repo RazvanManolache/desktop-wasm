@@ -26,6 +26,13 @@ public static class ComboBoxBrowserHook
         public int OpenSnapshot = -1;
         public bool SnapshotValid;
         public int CommittedIndex = -1;
+        // RT-ADGV-SEL-1326-j7x1: the open-state arrow preview must survive
+        // a lost SelectedIndex (served wasm condition: highlight moves but
+        // the native index snaps back, so Enter commits stale state).
+        // PreviewIndex remembers the last previewed row per combo; Enter
+        // commits it, and every close/commit/refill path clears it.
+        public int PreviewIndex = -1;
+        public bool PreviewValid;
     }
 
     private static readonly ConditionalWeakTable<ComboBox, KeyState> s_keyState = new();
@@ -96,6 +103,7 @@ public static class ComboBoxBrowserHook
         try { combo.SelectedIndex = restored; } catch { }
         StateOf(combo).CommittedIndex = restored;
         StateOf(combo).SnapshotValid = false;
+        StateOf(combo).PreviewValid = false;
     }
 
     /// <summary>
@@ -111,12 +119,14 @@ public static class ComboBoxBrowserHook
         {
             try { combo.DroppedDown = false; } catch { }
             StateOf(combo).SnapshotValid = false;
+            StateOf(combo).PreviewValid = false;
             return;
         }
         try { combo.SelectedIndex = index; } catch { return; }
         try { combo.DroppedDown = false; } catch { }
         StateOf(combo).CommittedIndex = combo.SelectedIndex;
         StateOf(combo).SnapshotValid = false;
+        StateOf(combo).PreviewValid = false;
         RaiseCommitEvent(combo);
         try
         {
@@ -144,6 +154,7 @@ public static class ComboBoxBrowserHook
             if (!simple)
                 try { combo.DroppedDown = !combo.DroppedDown; } catch { }
             StateOf(combo).SnapshotValid = false;
+            StateOf(combo).PreviewValid = false;
             e.Handled = true;
             return true;
         }
@@ -151,6 +162,7 @@ public static class ComboBoxBrowserHook
         {
             try { combo.DroppedDown = true; } catch { }
             StateOf(combo).SnapshotValid = false;
+            StateOf(combo).PreviewValid = false;
             e.Handled = true;
             return true;
         }
@@ -158,6 +170,7 @@ public static class ComboBoxBrowserHook
         {
             try { combo.DroppedDown = false; } catch { }
             StateOf(combo).SnapshotValid = false;
+            StateOf(combo).PreviewValid = false;
             e.Handled = true;
             return true;
         }
@@ -167,13 +180,18 @@ public static class ComboBoxBrowserHook
             if (st.SnapshotValid)
                 try { combo.SelectedIndex = st.OpenSnapshot; } catch { }
             st.SnapshotValid = false;
+            st.PreviewValid = false;
             try { combo.DroppedDown = false; } catch { }
             e.Handled = true;
             return true;
         }
         if (code == Keys.Enter && combo.DroppedDown && !simple)
         {
-            combo.CommitForkSelection(combo.SelectedIndex);
+            KeyState stEnter = StateOf(combo);
+            int commitIndex = combo.SelectedIndex;
+            if (stEnter.PreviewValid && stEnter.PreviewIndex >= 0 && stEnter.PreviewIndex < combo.Items.Count)
+                commitIndex = stEnter.PreviewIndex;
+            combo.CommitForkSelection(commitIndex);
             e.Handled = true;
             return true;
         }
@@ -199,6 +217,8 @@ public static class ComboBoxBrowserHook
                 st.SnapshotValid = true;
             }
             try { combo.SelectedIndex = target; } catch { }
+            st.PreviewIndex = target;
+            st.PreviewValid = true;
             return true;
         }
         try { combo.SelectedIndex = target; } catch { return true; }
@@ -233,10 +253,12 @@ public static class ComboBoxBrowserHook
             {
                 try { combo.DroppedDown = false; } catch { }
                 StateOf(combo).SnapshotValid = false;
+                StateOf(combo).PreviewValid = false;
                 return true;
             }
             try { combo.DroppedDown = false; } catch { }
             StateOf(combo).SnapshotValid = false;
+            StateOf(combo).PreviewValid = false;
             return true;
         }
         if (localX >= combo.Width - ButtonWidth && localY < combo.Height)
@@ -244,12 +266,14 @@ public static class ComboBoxBrowserHook
             if (!simple)
                 try { combo.DroppedDown = true; } catch { }
             StateOf(combo).SnapshotValid = false;
+            StateOf(combo).PreviewValid = false;
             return true;
         }
         if (combo.DropDownStyle == ComboBoxStyle.DropDownList)
         {
             try { combo.DroppedDown = true; } catch { }
             StateOf(combo).SnapshotValid = false;
+            StateOf(combo).PreviewValid = false;
             return true;
         }
         return false;

@@ -878,6 +878,10 @@ public static partial class XamlLoader
                 rest = rest[..cut];
             }
             var fullName = rest.Trim() + "." + shortName;
+            if (rest.Trim() == "System" &&
+                (assemblyName is null or "mscorlib" or "System.Runtime" or "System.Private.CoreLib" or "netstandard") &&
+                typeof(object).Assembly.GetType(fullName, throwOnError: false) is { IsVisible: true } frameworkType)
+                return frameworkType;
             foreach (var assembly in ConvertedSearchAssemblies())
             {
                 if (assemblyName is not null &&
@@ -995,29 +999,20 @@ public static partial class XamlLoader
                     r.Name.Equals("PresentationFramework", StringComparison.OrdinalIgnoreCase))
                     continue;
 
-                foreach (var candidate in loaded)
-                {
-                    if (string.Equals(candidate.GetName().Name, r.Name, StringComparison.OrdinalIgnoreCase))
-                    {
-                        Add(candidate);
-                        if (walked.Add(candidate))
-                            queue.Enqueue(candidate);
-                    }
-                }
-
+                Assembly? resolved = null;
                 if (WpfAppBoot.PackAssemblyResolver is { } resolver)
                 {
-                    try
-                    {
-                        var candidate = resolver(r.Name);
-                        if (candidate is not null)
-                        {
-                            Add(candidate);
-                            if (walked.Add(candidate))
-                                queue.Enqueue(candidate);
-                        }
-                    }
+                    try { resolved = resolver(r.Name); }
                     catch { }
+                }
+                resolved ??= loaded.FirstOrDefault(candidate =>
+                    string.Equals(candidate.GetName().FullName, r.FullName, StringComparison.OrdinalIgnoreCase))
+                    ?? loaded.FirstOrDefault(candidate =>
+                        string.Equals(candidate.GetName().Name, r.Name, StringComparison.OrdinalIgnoreCase));
+                if (resolved is not null)
+                {
+                    Add(resolved);
+                    if (walked.Add(resolved)) queue.Enqueue(resolved);
                 }
             }
         }
@@ -1025,7 +1020,7 @@ public static partial class XamlLoader
         return assemblies;
     }
 
-    private static List<Assembly> ConvertedSearchAssemblies()
+    internal static List<Assembly> ConvertedSearchAssemblies()
     {
         var engine = typeof(UIElement).Assembly;
         var assemblies = new List<Assembly>();
@@ -1035,17 +1030,38 @@ public static partial class XamlLoader
             if (assembly is not null && !ReferenceEquals(assembly, engine) && seen.Add(assembly))
                 assemblies.Add(assembly);
         }
+        var closureNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (CustomElementSource is not null)
         {
             foreach (var asm in ConvertedClosureAssemblies())
+            {
                 Add(asm);
+                closureNames.Add(asm.GetName().Name!);
+            }
         }
         else
         {
             Add(CustomElementSource);
         }
         foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-            Add(assembly);
+        {
+            var name = assembly.GetName().Name!;
+            if (closureNames.Contains(name)) continue;
+            // XAML-only dependencies need not appear in the entry's CLR
+            // reference graph. Resolve their loaded simple name through the
+            // active package too, before considering an older session image.
+            var current = WpfAppBoot.PackAssemblyResolver?.Invoke(name);
+            if (current is not null)
+            {
+                Add(current);
+                closureNames.Add(name);
+            }
+            // With an active package, its declared closure is the boundary:
+            // scanning every other application's/framework's types both
+            // contaminates lookup and makes theme inflation quadratic in
+            // the number of applications previously launched.
+            else if (WpfAppBoot.PackAssemblyResolver is null) Add(assembly);
+        }
         return assemblies;
     }
 

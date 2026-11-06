@@ -27,7 +27,8 @@ Do not open index.html directly from the filesystem.
 
 This package contains first-party toolkit demonstrations. Converted external
 apps, commercial demo inputs and the unified WinForms backend are not included.
-CI checks that the calculator paints a frame in Chromium; this is a preview,
+CI checks rendered calculator and planner frames and mounted navigation in
+headless Chromium; this is a preview,
 not a claim of complete WPF compatibility or validation of every demo.
 ''', encoding='utf-8')
 import os

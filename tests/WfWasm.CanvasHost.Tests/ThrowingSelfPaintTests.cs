@@ -51,4 +51,54 @@ public sealed class ThrowingSelfPaintTests
             f.Width == 80 && f.Height == 28);
         Assert.True(recorder.Commands.Count > 1, "pump must keep painting past the throwing control");
     }
+
+    private sealed class SiteBoomControl : FormsControl
+    {
+        protected override void OnPaint(FormsPaintEventArgs e) =>
+            throw new InvalidOperationException("sites-boom");
+    }
+
+    // RVW-1105-0900-runtime Job1: the self-paint one-time log truncates the
+    // inner stack to 6 frames x 160 chars, which can erase the decisive
+    // cause. The line must also retain the structured causal chain
+    // (every level's exception type + throwing-site method). FAILS until
+    // the SITES segment lands; do not weaken to the truncated STACK alone.
+    [Fact]
+    public void SelfPaint_Failure_Log_Retains_Structured_Causal_Sites()
+    {
+        using var host = new WinFormsAppHost();
+        host.SelectScene(AppScene.Smoke);
+        var form = host.GetOrCreateForm(AppScene.Smoke);
+        Assert.NotNull(form);
+
+        using var boom = new SiteBoomControl
+        {
+            Name = "sitesBoom",
+            Location = new System.Drawing.Point(4, 40),
+            Size = new System.Drawing.Size(80, 28),
+            BackColor = System.Drawing.Color.Blue,
+        };
+        form.Controls.Add(boom);
+
+        var sb = new System.Text.StringBuilder();
+        var old = System.Console.Out;
+        System.Console.SetOut(new System.IO.StringWriter(sb));
+        var recorder = new RecordingRenderer();
+        try
+        {
+            var ex = Record.Exception(() => host.Paint(recorder));
+            Assert.Null(ex);
+        }
+        finally
+        {
+            System.Console.SetOut(old);
+            form.Controls.Remove(boom);
+        }
+
+        string log = sb.ToString();
+        Assert.Contains("Self-paint failed", log);
+        Assert.Contains("SITES=", log);
+        Assert.Contains(nameof(SiteBoomControl), log);
+        Assert.Contains("OnPaint", log);
+    }
 }

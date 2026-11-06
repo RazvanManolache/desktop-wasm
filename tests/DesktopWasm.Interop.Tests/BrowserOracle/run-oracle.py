@@ -65,19 +65,8 @@ def sha256_file(path):
     return h.hexdigest()
 
 
-def _playwright_base():
-    # EXPORT-ONLY portable repair (PUBPROGRESS-20261103-REVIEW-FIXES): derive
-    # the Playwright browser dir from the environment instead of a hardcoded
-    # operator profile path. Live tree intentionally keeps its local path.
-    local = os.environ.get("LOCALAPPDATA")
-    if local:
-        return os.path.join(local, "ms-playwright")
-    home = os.path.expanduser("~")
-    return os.path.join(home, "AppData", "Local", "ms-playwright")
-
-
 def find_chromium():
-    base = _playwright_base()
+    base = os.path.expandvars(r"C:\Users\razva\AppData\Local\ms-playwright")
     if not os.path.isdir(base):
         return None
     best = None

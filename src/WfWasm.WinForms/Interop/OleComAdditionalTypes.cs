@@ -185,30 +185,6 @@ namespace Windows.Win32.System.Com
 
 namespace Windows.Win32.System.Com
 {
-    [Guid("0000000A-0000-0000-C000-000000000046")]
-    internal unsafe partial struct ILockBytes : IComIID, IVTable<ILockBytes, ILockBytes.Vtbl>
-    {
-        private static readonly Guid s_guid = new("0000000A-0000-0000-C000-000000000046");
-        public static ref readonly Guid IID_Guid => ref s_guid;
-        static ref readonly Guid IComIID.Guid => ref s_guid;
-        public void** lpVtbl;
-        public struct Vtbl { internal void* QueryInterface; internal void* AddRef; internal void* Release; }
-        public static void PopulateVTable(Vtbl* vtable) { }
-
-        public HRESULT ReadAt(ulong ulOffset, void* pv, uint cb, uint* pcbRead) => HRESULT.E_NOTIMPL;
-        public HRESULT WriteAt(ulong ulOffset, void* pv, uint cb, uint* pcbWritten) => HRESULT.E_NOTIMPL;
-        public HRESULT Flush() => HRESULT.S_OK;
-        public HRESULT SetSize(ulong cb) => HRESULT.S_OK;
-        public HRESULT LockRegion(ulong libOffset, ulong cb, uint dwLockType) => HRESULT.E_NOTIMPL;
-        public HRESULT UnlockRegion(ulong libOffset, ulong cb, uint dwLockType) => HRESULT.E_NOTIMPL;
-        public HRESULT Stat(STATSTG* pstatstg, uint grfStatFlag) => HRESULT.E_NOTIMPL;
-        public HRESULT Stat(out STATSTG pstatstg, uint grfStatFlag) { pstatstg = default; return HRESULT.S_OK; }
-        public uint AddRef() => 1;
-        public uint Release() => 0;
-
-        public interface Interface { }
-    }
-
     [Flags]
     internal enum ADVF : uint
     {
@@ -529,7 +505,7 @@ namespace Windows.Win32
 
     internal static partial class PInvoke
     {
-        public static unsafe HRESULT CreateILockBytesOnHGlobal(HGLOBAL hGlobal, BOOL fDeleteOnRelease, ILockBytes** ppLkbyt) => HRESULT.E_NOTIMPL;
-        public static unsafe HRESULT StgCreateDocfileOnILockBytes(ILockBytes* plkbyt, STGM grfMode, uint reserved, IStorage** ppstgOpen) => HRESULT.E_NOTIMPL;
+        public static unsafe HRESULT CreateILockBytesOnHGlobal(HGLOBAL hGlobal, BOOL fDeleteOnRelease, System.Com.StructuredStorage.ILockBytes** ppLkbyt) => HRESULT.E_NOTIMPL;
+        public static unsafe HRESULT StgCreateDocfileOnILockBytes(System.Com.StructuredStorage.ILockBytes* plkbyt, STGM grfMode, uint reserved, IStorage** ppstgOpen) => HRESULT.E_NOTIMPL;
     }
 }

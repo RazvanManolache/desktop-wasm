@@ -147,6 +147,43 @@ public static partial class AppAssemblyLoader
     [JSImport("globalThis.wfwasmFetchAssembly")]
     private static partial byte[] FetchRequestedAssembly(string app, string name);
 
+    // RV2944-shell demand-storm seam: the synchronous demand fetch behind an
+    // injectable delegate so the storm path is measurable off-browser.
+    // Production always uses the JSImport above (see reset helper).
+    internal static Func<string, string, byte[]?> DemandFetch = (app, name) => FetchRequestedAssembly(app, name);
+
+    internal static void ResetDemandFetchForTest() =>
+        DemandFetch = (app, name) => FetchRequestedAssembly(app, name);
+
+    // The CLR probes "<base>.XmlSerializers" for every XmlSerializer use.
+    // These pre-generated serializer assemblies are optional: absence falls
+    // back to runtime serialization, and none of the shipped apps carry one.
+    internal static bool IsKnownOptionalProbe(string name) =>
+        name.EndsWith(".XmlSerializers", StringComparison.OrdinalIgnoreCase);
+
+    internal static byte[]? ResolveDemandBytes(string app, string name)
+    {
+        // Short-circuit BEFORE any synchronous demand fetch: the outcome is
+        // identical to the 204 miss the fetch would return (null, with the
+        // caller recording Missing), minus the main-thread storm wait.
+        if (IsKnownOptionalProbe(name)) return null;
+        return DemandAssemblyPayload.Decode(DemandFetch(app, name));
+    }
+
+    // Names the runtime XmlSerializer probe chain will ask for once boot
+    // reaches form code. Never present in PE references, so the parallel
+    // prefetch closure must name them explicitly (miss-safe downstream).
+    internal static List<string> OptionalProbeCandidates(string entry, IEnumerable<string> directRefs)
+    {
+        var result = new List<string> { entry + ".XmlSerializers" };
+        foreach (string r in directRefs)
+        {
+            string candidate = r + ".XmlSerializers";
+            if (!result.Contains(candidate, StringComparer.OrdinalIgnoreCase)) result.Add(candidate);
+        }
+        return result;
+    }
+
     public static string? GetAppLoadError(string app) => LastAppError.TryGetValue(app, out string? err) ? err : null;
 
     public static IReadOnlyList<string> GetResolutionFailures(string app)
@@ -393,7 +430,9 @@ public static partial class AppAssemblyLoader
                 if (app is null || !OperatingSystem.IsBrowser() || Missing.Contains(app + "/" + name)) return null;
                 // AssemblyResolve is synchronous. Fetch only the name the CLR
                 // requested, then supply its verified bytes before returning.
-                bytes = DemandAssemblyPayload.Decode(FetchRequestedAssembly(app, name));
+                // Known-optional probes short-circuit inside (same miss as a
+                // 204, without the main-thread storm wait).
+                bytes = ResolveDemandBytes(app, name);
                 if (bytes is null) { Missing.Add(app + "/" + name); return null; }
                 lock (Gate) Bytes[name] = bytes;
                 Console.WriteLine($"[AppAssemblyLoader] Requested {app}/{name} ({bytes.Length} bytes) at runtime.");
@@ -584,6 +623,20 @@ public static partial class AppAssemblyLoader
                         secondaryNames.Add(k);
                     }
                 }
+            }
+        }
+        // RV2944-shell: warm the XmlSerializer probe chain in the existing
+        // parallel lanes. The CLR probes "<base>.XmlSerializers" at runtime;
+        // those names never appear in PE references, so without this they
+        // always fall through to the synchronous demand hook. Miss-safe:
+        // PrefetchOneAsync already swallows non-success per name.
+        foreach (string c in OptionalProbeCandidates(manifest.entry, direct.Select(d => Key(d.name))))
+        {
+            if (!loadedNames.Contains(WellKnownForkAssembly(c) ?? c)
+                && !bootstrap.Any(f => Key(f.name).Equals(c, StringComparison.OrdinalIgnoreCase))
+                && !direct.Any(f => Key(f.name).Equals(c, StringComparison.OrdinalIgnoreCase)))
+            {
+                secondaryNames.Add(c);
             }
         }
         if (secondaryNames.Count > 0)

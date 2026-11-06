@@ -92,6 +92,92 @@ public sealed class AvailabilityTests
     }
 
     [Fact]
+    public void StagedBytesWithoutReceiptStayMissingInput()
+    {
+        // RVW-1104-2100 Job1: bytes sitting in a staged app folder (entry
+        // assembly + preparation.json) never promote on their own — only a
+        // vetted import-lane receipt does. A WinForms native-demo entry
+        // refreshed with no receipts keeps its app-folder gap, even though
+        // the folder may exist on disk (Refresh takes no disk input).
+        var app = Fx.Descriptor("fixture-benchmark",
+            capabilities: AppCapability.WinForms,
+            family: "winforms",
+            transformVersion: "wf-rewrite-v1");
+        var after = LocalInputMapper.Refresh(app,
+            new Dictionary<string, LocalInputMapper.StagedReceipt>(StringComparer.OrdinalIgnoreCase));
+        Assert.Equal(AppAvailability.MissingInput, after.Availability);
+        Assert.NotEmpty(after.Gaps);
+        Assert.Contains(after.Gaps, g => g.Contains("fixture-benchmark", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("Missing local input", after.AvailabilityNote, StringComparison.Ordinal);
+        Assert.DoesNotContain(after.Evidence, e => e.StartsWith("local:", StringComparison.Ordinal));
+        CatalogValidator.ValidateDescriptor(after);
+    }
+
+    [Fact]
+    public void ReceiptBackedBenchmarkEntriesRetainBytePinsAndCurrentLaunchGates()
+    {
+        // RVW-1104-2100 JobA: the five staged+prepared benchmark apps flipped
+        // by vetted entry-file receipts (foreman RULING: entry SHAs are byte
+        // facts) plus entry-assembly transform proof. Each must stay
+        // Available with its byte-pinned local: evidence, empty gaps, and a
+        // runtime-unverified note. Asserted-directory provenance (e.g. the
+        // fiddler pin) is never presented as a byte fact here.
+        var registry = CatalogSerializer.Deserialize(
+            File.ReadAllText(Path.Combine(Fx.CatalogDir(), "apps.json")));
+        foreach (string id in new[]
+        {
+            "benchmark-openpdn", "benchmark-pkhex", "benchmark-keepass",
+            "benchmark-linqpad5", "benchmark-advanceddatagridview",
+            "benchmark-external-calculator",
+        })
+        {
+            var app = registry.Resolve(id);
+            Assert.Contains(app.Evidence, e =>
+                e.StartsWith("local:.artifacts/benchmark-apps/" + id + "/", StringComparison.Ordinal));
+            // Preparation is not evidence of a successful boot. These three
+            // original apps now have observed faults/timeouts and stay gated.
+            bool faulted = id is "benchmark-openpdn" or "benchmark-pkhex" or "benchmark-linqpad5";
+            Assert.Equal(faulted ? AppAvailability.Unavailable : AppAvailability.Available, app.Availability);
+            if (faulted)
+            {
+                Assert.NotEmpty(app.Gaps);
+                Assert.Contains("Gated:", app.AvailabilityNote, StringComparison.Ordinal);
+            }
+            else
+            {
+                Assert.Empty(app.Gaps);
+                Assert.Contains("unverified", app.AvailabilityNote, StringComparison.OrdinalIgnoreCase);
+            }
+            CatalogValidator.ValidateDescriptor(app);
+            Assert.Equal(!faulted, Assert.Single(registry.Menu(), m => m.Id == id).IsLaunchable);
+        }
+    }
+
+    [Theory]
+    [InlineData("chip8")]
+    [InlineData("cyotek")]
+    [InlineData("dockpanel")]
+    [InlineData("fastcoloredtextbox")]
+    [InlineData("hexbox")]
+    [InlineData("krypton")]
+    [InlineData("minesweeper")]
+    [InlineData("vgapainter")]
+    public void NewlyStagedBenchmarkEntriesCarryFileDigestProvenance(string suffix)
+    {
+        var registry = CatalogSerializer.Deserialize(
+            File.ReadAllText(Path.Combine(Fx.CatalogDir(), "apps.json")));
+        var app = registry.Resolve("benchmark-" + suffix);
+        Assert.Equal(AppAvailability.Available, app.Availability);
+        Assert.Empty(app.Gaps);
+        var pin = Assert.Single(app.Evidence, e => e.StartsWith("local:", StringComparison.Ordinal));
+        Assert.StartsWith("local:.artifacts/benchmark-apps/" + app.Id + "/", pin);
+        var digest = pin[(pin.LastIndexOf('#') + 1)..];
+        Assert.Equal(64, digest.Length);
+        Assert.All(digest, c => Assert.True(char.IsAsciiHexDigit(c)));
+        Assert.Contains("runtime unverified", app.AvailabilityNote, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void StagedBytesAreNotVerifiedRuntime()
     {
         // The mapper caps at Available; there is no verified state to reach.

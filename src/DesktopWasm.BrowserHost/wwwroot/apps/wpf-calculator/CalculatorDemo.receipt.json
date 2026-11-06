@@ -1,0 +1,20 @@
+{
+  "App": "CalculatorDemo.dll",
+  "InputSha256": "BDD2D4A6A5F170699BFB2F92DCCBA9E6F7A8E6BD97BB1F8501F4B321B53D7647",
+  "MapVersion": "wpf-convert-v1",
+  "SourceCommit": "811d01e95c8c929e68539d698d0a0609e94fd185",
+  "EmbeddedXaml": [
+    "App.xaml",
+    "MainWindow.xaml"
+  ],
+  "Warnings": [
+    "Original compiled BAML still ships inside \u0027CalculatorDemo.g.resources\u0027 (kept for fidelity; boot prefers loose XAML)."
+  ],
+  "ConvertedAt": "2026-10-22T23:10:39.3487806+00:00",
+  "HostFramework": ".NET 9.0.21",
+  "Adaptations": [
+    "Removed dead unloadable type \u0027CalculatorDemo.Properties.Settings\u0027.",
+    "Removed BAML-helper type \u0027XamlGeneratedNamespace.GeneratedInternalTypeHelper\u0027 (framework BamlReader never runs).",
+    "Pruned unused unresolvable reference \u0027System.Configuration.ConfigurationManager\u0027."
+  ]
+}

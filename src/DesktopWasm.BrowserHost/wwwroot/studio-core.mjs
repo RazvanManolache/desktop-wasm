@@ -8,7 +8,13 @@ export function searchApps(apps, {query = '', filter = 'all', category = 'all'} 
         (category === 'all' || app.category === category) &&
         words.every(word => `${app.label} ${app.description} ${app.category} ${app.author || ''}`.toLocaleLowerCase().includes(word)));
 }
-export function readRoute(path) {
+export function readRoute(path, basePath = '') {
+    basePath = basePath.replace(/\/$/, '');
+    if (basePath) {
+        if (path === basePath) path = '/';
+        else if (path.startsWith(basePath + '/')) path = path.slice(basePath.length);
+        else return {unknown: path};
+    }
     const match = /^\/app\/([^/]+)\/?$/.exec(path);
     if (!match) return path === '/' ? null : {unknown: path};
     try { return {slug: decodeURIComponent(match[1])}; }

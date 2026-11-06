@@ -8,7 +8,7 @@ namespace WfWasm.Renderer;
 /// Real SVG backend: every command becomes an element, so output can be
 /// asserted textually and opened in a browser. No native dependencies.
 /// </summary>
-public sealed class SvgRenderer : ICanvasRenderer
+public sealed class SvgRenderer : ICanvasRenderer, ICanvasClipping
 {
     private readonly StringBuilder _svg = new();
     private bool _open;
@@ -115,6 +115,15 @@ public sealed class SvgRenderer : ICanvasRenderer
         // placeholder so SVG stays textual and valid.
         _svg.Append(FormattableString.Invariant(
             $"<g data-image=\"{width}x{height}\"><rect x=\"{x}\" y=\"{y}\" width=\"{dw}\" height=\"{dh}\" fill=\"none\" stroke=\"#888888ff\" stroke-width=\"1\"/></g>"));
+    }
+
+    public IDisposable PushClip(float x, float y, float width, float height)
+    {
+        RequireOpen();
+        int id = _clipCount++;
+        _svg.Append(FormattableString.Invariant(
+            $"<defs><clipPath id=\"wcclip{id}\"><rect x=\"{x}\" y=\"{y}\" width=\"{Math.Max(0, width)}\" height=\"{Math.Max(0, height)}\"/></clipPath></defs><g clip-path=\"url(#wcclip{id})\">"));
+        return new CanvasClipScope(() => _svg.Append("</g>"));
     }
 
     public void EndFrame()

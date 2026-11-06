@@ -4,13 +4,24 @@ using WfWasm.Shim;
 
 public sealed class SceneMemoryTests
 {
+    // TMPMOVE canonical-only: rewritten fixtures under retained/.
+    private static string RepoRoot =>
+        Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+    private static string RewrittenSmall
+    {
+        get
+        {
+            var canon = Path.Combine(RepoRoot, ".artifacts", "tmp", "retained", "rewritten-small");
+            return canon;
+        }
+    }
     private static void LoadApp(string file, string simpleName)
     {
         // Same regenerable-data coupling as the other host tests: the
-        // rewritten app must exist in E:\tmp; bridge the assembly name
+        // rewritten app must exist in the retained tree; bridge the assembly name
         // like the browser loader does by file.
-        string app = @$"E:\tmp\rewritten-small\{file}";
-        Assert.True(File.Exists(app), $"regenerate via E:/tmp/rewrite-small.ps1: {app}");
+        string app = Path.Combine(RewrittenSmall, file);
+        Assert.True(File.Exists(app), $"missing rewritten fixture (expected at retained/rewritten-small): {app}");
         var asm = Assembly.LoadFrom(app);
         ResolveEventHandler? resolver = (_, args) =>
             args.Name.Split(',')[0].Trim() == simpleName ? asm : null;

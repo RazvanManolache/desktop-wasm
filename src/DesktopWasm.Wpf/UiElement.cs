@@ -7878,6 +7878,16 @@ public class ListBox : Control
     private int _selectedIndex = -1;
 
     /// <summary>
+    /// Remembered selection identity (D2): the data item holding the
+    /// selection across rebuilds that empty or reorder the source, where the
+    /// slot anchor cannot work. Adopted from effective selections, dropped on
+    /// explicit deselect, source replacement, or genuine removal; kept across
+    /// Clear-without-OldItems and sparing mutations. A never-returning track
+    /// degrades exactly to today's slot behavior.
+    /// </summary>
+    private object? _trackedSelection;
+
+    /// <summary>
     /// Selection breadth (matches ListBox.SelectionMode; retained, Single
     /// default like WPF). The engine list selects one row at a time, so
     /// Multiple/Extended load but stay a selection breadth boundary.
@@ -7907,6 +7917,10 @@ public class ListBox : Control
             if (_selectedIndex == raw) return;
             var old = SelectedIndex;
             _selectedIndex = raw;
+            // D2: user-driven sets adopt (or drop) the remembered identity
+            // from the post-set effective selection; pending raw indexes adopt
+            // nothing, so positional materialization is untouched.
+            _trackedSelection = raw < 0 ? null : SelectedData();
             if (SelectedIndex != old)
             {
                 PushRowSelection();
@@ -7958,10 +7972,13 @@ public class ListBox : Control
                 oldIncc.CollectionChanged -= _itemsSourceSubscription;
             _itemsSourceSubscription = null;
             _itemsSource = value;
+            // D2: a replaced source is a fresh selection context — drop the
+            // remembered identity so the slot/pending rules below apply.
+            _trackedSelection = null;
             SyncGeneratedRows();
             if (_itemsSource is INotifyCollectionChanged incc)
             {
-                NotifyCollectionChangedEventHandler handler = (_, _) => SyncGeneratedRows();
+                NotifyCollectionChangedEventHandler handler = (_, e) => SyncGeneratedRows(change: e);
                 _itemsSourceSubscription = handler;
                 incc.CollectionChanged += handler;
             }
@@ -8203,10 +8220,28 @@ public class ListBox : Control
     /// otherwise hand out orphaned, unprepared containers); the pool survives
     /// plain mutations but not template/selector changes.
     /// </summary>
-    private void SyncGeneratedRows(bool clearPool = false)
+    private void SyncGeneratedRows(bool clearPool = false, System.Collections.Specialized.NotifyCollectionChangedEventArgs? change = null)
     {
         var old = SelectedIndex;
+        // Insert-above parity on the live-source (virtualized) path: its
+        // anchor below reads the post-change source, so an insert at/above
+        // would anchor the wrong item; pre-shift the field so it anchors the
+        // selected one. The row-model path anchors the pre-change mapping
+        // and needs nothing. Guarded by an effective selection so pending
+        // positional selections still materialize. Removals keep the
+        // slide-onto-the-row-moving-in convention pinned by RemoveChild
+        // below. The re-seat below confirms the index; now-vs-old fires.
+        if (change?.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Add
+            && change.NewStartingIndex >= 0
+            && _customHost is VirtualizingPanel && _itemsSource is not null
+            && SelectedIndex >= 0 && change.NewStartingIndex <= SelectedIndex
+            && SelectedData() is not null)
+            _selectedIndex = SelectedIndex + (change.NewItems?.Count ?? 1);
         var selectedData = SelectedData();
+        // D2: remembered identity wins over the slot anchor for the re-seat
+        // lookup only; events below keep today's slot comparison, so no new
+        // event spam appears during refills.
+        var anchor = _trackedSelection ?? selectedData;
         // Virtualized rows re-enter through the generator on the next measure:
         // park them first so the rebuild reuses shells instead of minting a
         // fresh window per mutation. (Non-virtualized rows rebuild directly.)
@@ -8239,9 +8274,27 @@ public class ListBox : Control
                 }
             }
         }
-        if (_itemsSource is not null && old >= 0 && selectedData is not null
-            && TryIndexOfData(selectedData, out var restored))
+        var reseated = false;
+        if (_itemsSource is not null && old >= 0 && anchor is not null
+            && TryIndexOfData(anchor, out var restored))
+        {
             _selectedIndex = restored;
+            reseated = true;
+        }
+        // D2 lifecycle: genuine removal drops the track (the slot rules
+        // below then proceed exactly as today); a successful re-seat
+        // (re)adopts the anchor, so Clear-without-OldItems and sparing
+        // mutations keep it while transients never corrupt it.
+        var isRemoval = change?.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Remove
+            || change?.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Replace;
+        var removedTracked = false;
+        if (isRemoval && change!.OldItems is { Count: > 0 } removed)
+            foreach (var item in removed)
+                if (Equals(item, anchor)) { removedTracked = true; break; }
+        if (removedTracked)
+            _trackedSelection = null;
+        else if (reseated)
+            _trackedSelection = anchor;
         SyncBoundSelectedItem();
         var now = SelectedIndex;
         var nowData = SelectedData();
@@ -9589,8 +9642,41 @@ public class DataGridTextColumn : DataGridBoundColumn
     protected internal override FrameworkElement? GenerateElement(DataGridCell cell, object? dataItem) =>
         new TextBlock { Text = CellTextFor(dataItem) };
 
-    protected internal override FrameworkElement? GenerateEditingElement(DataGridCell cell, object? dataItem) =>
-        new TextBox { Text = CellTextFor(dataItem) };
+    protected internal override FrameworkElement? GenerateEditingElement(DataGridCell cell, object? dataItem)
+    {
+        // The row item rides as the editor DataContext (like WPF, where the
+        // editing element inherits the row DataContext), so CommitCellEdit
+        // can push the typed text back through the effective path.
+        var box = new TextBox { Text = CellTextFor(dataItem) };
+        if (dataItem is not null) box.DataContext = dataItem;
+        return box;
+    }
+
+    /// <summary>
+    /// Pushes the typed text back to the row item (matches
+    /// DataGridColumn.CommitCellEdit): converts through the binding engine
+    /// (string to int/double/enum like WPF), so <c>false</c> means the text
+    /// cannot land and the grid keeps the editor open. A pathless column
+    /// has nothing to push and reports success.
+    /// </summary>
+    protected internal override bool CommitCellEdit(FrameworkElement editingElement)
+    {
+        if (editingElement is not TextBox box) return base.CommitCellEdit(editingElement);
+        var path = EffectivePath;
+        if (string.IsNullOrEmpty(path)) return true;
+        if (box.DataContext is null) return false;
+        return BindingExpression.TrySetPath(box.DataContext, path, box.Text);
+    }
+
+    /// <summary>
+    /// Restores the pre-edit text (matches
+    /// DataGridColumn.CancelCellEdit): the model was never touched, so the
+    /// editor just shows the unedited value again.
+    /// </summary>
+    protected internal override void CancelCellEdit(FrameworkElement editingElement, object uneditedValue)
+    {
+        if (editingElement is TextBox box) box.Text = uneditedValue?.ToString() ?? string.Empty;
+    }
 }
 
 /// <summary>
@@ -9608,8 +9694,8 @@ public class DataGridTextColumn : DataGridBoundColumn
 /// ScreenToGif code performs. Generated rows stay out of the grid's own
 /// visual tree: the grid keeps painting itself. No internal scrolling
 /// (nest in a ScrollViewer or size to content); cell/column selection,
-/// editing, grouping layout, virtualization and auto-generated columns
-/// are out of scope.
+/// editing, grouping layout and virtualization are out of scope.
+/// Auto-generated columns land through <see cref="AutoGenerateColumns"/>.
 /// </summary>
 public class DataGrid : Control, IItemContainerOwner
 {
@@ -9726,6 +9812,156 @@ public class DataGrid : Control, IItemContainerOwner
     /// <summary>Columns in order (add via <see cref="AddColumn"/>).</summary>
     public IReadOnlyList<DataGridTextColumn> Columns => _columns;
 
+    /// <summary>
+    /// Header-band style identity (matches
+    /// System.Windows.Controls.DataGrid.ColumnHeaderStyleProperty; the DP
+    /// store is the value authority and the CLR wrapper dual-lands it so
+    /// GetValue readers see CLR-applied styles too, like
+    /// <see cref="ItemsSource"/>). Parsed from
+    /// &lt;DataGrid.ColumnHeaderStyle&gt;; applying it to the rendered
+    /// header band is a follow-up (headers keep the engine default look).
+    /// </summary>
+    public static readonly DependencyProperty ColumnHeaderStyleProperty =
+        DependencyProperty.Register("ColumnHeaderStyle", typeof(Style), typeof(DataGrid),
+            new FrameworkPropertyMetadata(null));
+
+    private Style? _columnHeaderStyle;
+
+    /// <summary>Style for the column-header band (retained; the
+    /// template-less painted band applies it via
+    /// <see cref="ResolveHeaderBandPaint"/>).</summary>
+    public Style? ColumnHeaderStyle
+    {
+        get => _columnHeaderStyle ?? (Style?)GetValue(ColumnHeaderStyleProperty);
+        set
+        {
+            if (ReferenceEquals(_columnHeaderStyle, value)) return;
+            _columnHeaderStyle = value;
+            SetValue(ColumnHeaderStyleProperty, value);
+        }
+    }
+
+    /// <summary>Effective header-band paint for template-less grids
+    /// (ColumnHeaderStyle application): band fill, header ink and header
+    /// font. Only Background/Foreground/FontFamily/FontSize/FontWeight/
+    /// FontStyle setters shape the painted band; other setters (Focusable,
+    /// FocusVisualStyle, ...) are retained but do not paint. Derived
+    /// setters win over BasedOn; a string BasedOn resource key resolves
+    /// against the grid scope when present and is skipped when missing (the
+    /// template path stays loud at ApplyTo). Null style keeps the engine
+    /// defaults, so grids without the style paint byte-identical.</summary>
+    public (uint BandFill, uint HeaderInk, string HeaderFont) ResolveHeaderBandPaint()
+    {
+        const uint DefaultFill = 0xEEEEEEFFu;
+        var style = ColumnHeaderStyle;
+        if (style is null) return (DefaultFill, ForegroundRgba, FontCss);
+        uint? fill = null;
+        uint? ink = null;
+        FontFamily? family = null;
+        double? size = null;
+        FontWeight? weight = null;
+        FontStyle? slant = null;
+        var current = style;
+        for (var depth = 0; current is not null && depth < 32; depth++)
+        {
+            foreach (var setterBase in current.Setters)
+            {
+                if (setterBase is not Setter setter || setter.Property is null || setter.TargetName is not null)
+                    continue;
+                switch (setter.Property.Name)
+                {
+                    case "Background" when fill is null:
+                        fill = CoerceBandBrush(setter);
+                        break;
+                    case "Foreground" when ink is null:
+                        ink = CoerceBandBrush(setter);
+                        break;
+                    case "FontFamily" when family is null:
+                        if (CoerceBandValue(setter) is FontFamily resolvedFamily) family = resolvedFamily;
+                        break;
+                    case "FontSize" when size is null:
+                        if (CoerceBandValue(setter) is double resolvedSize) size = resolvedSize;
+                        break;
+                    case "FontWeight" when weight is null:
+                        if (CoerceBandValue(setter) is FontWeight resolvedWeight) weight = resolvedWeight;
+                        break;
+                    case "FontStyle" when slant is null:
+                        if (CoerceBandValue(setter) is FontStyle resolvedStyle) slant = resolvedStyle;
+                        break;
+                }
+            }
+            current = current.BasedOn ?? ResolveBandBaseKey(current);
+        }
+        return (
+            fill ?? DefaultFill,
+            ink ?? ForegroundRgba,
+            TextBlock.ComposeSegmentCss(weight ?? FontWeight, slant ?? FontStyle, size ?? FontSize, family ?? FontFamily));
+    }
+
+    /// <summary>Resolves a band-shaping setter value: typed values land
+    /// directly, string literals convert like the style engine, resource
+    /// references look up the grid scope (missing keys keep the current
+    /// paint; the template path stays loud at ApplyTo).</summary>
+    private object? CoerceBandValue(Setter setter)
+    {
+        if (setter.RawValue is null) return setter.Value;
+        var raw = setter.RawValue.Trim();
+        if (string.Equals(raw, "{x:Null}", StringComparison.OrdinalIgnoreCase)) return null;
+        if (raw.StartsWith("{StaticResource ", StringComparison.Ordinal) && raw.EndsWith('}'))
+            return ResolveBandResource(raw, setter);
+        if (raw.StartsWith("{DynamicResource ", StringComparison.Ordinal) && raw.EndsWith('}'))
+            return ResolveBandResource(raw, setter);
+        if (raw.StartsWith("{", StringComparison.Ordinal)) return null;
+        return StyleValueConverter.Convert(raw, setter.Property!.PropertyType);
+    }
+
+    private object? ResolveBandResource(string raw, Setter setter)
+    {
+        var key = raw[(raw.IndexOf(' ') + 1)..^1].Trim();
+        if (!TryFindResource(key, out var resource) || resource is null) return null;
+        var propertyType = setter.Property!.PropertyType;
+        if (propertyType.IsInstanceOfType(resource)) return resource;
+        if (resource is string text) return StyleValueConverter.Convert(text, propertyType);
+        return null;
+    }
+
+    private Style? ResolveBandBaseKey(Style style)
+    {
+        if (style.BasedOnKey is not string key || string.IsNullOrWhiteSpace(key)) return null;
+        return TryFindResource(key, out var resource) && resource is Style based ? based : null;
+    }
+
+    /// <summary>Coerces a Background/Foreground setter to band RGBA
+    /// (solid brushes and colors encode directly, gradients and drawings
+    /// resolve their first fill like the renderer; anything else keeps the
+    /// current paint).</summary>
+    private uint? CoerceBandBrush(Setter setter) => CoerceBandBrushValue(CoerceBandValue(setter));
+
+    private static uint? CoerceBandBrushValue(object? value) => value switch
+    {
+        null => null,
+        SolidColorBrush solid => solid.ToRgba(),
+        Color color => ((uint)color.R << 24) | ((uint)color.G << 16) | ((uint)color.B << 8) | color.A,
+        uint rgba => rgba,
+        LinearGradientBrush linear => FirstBandStop(linear.GradientStops),
+        RadialGradientBrush radial => FirstBandStop(radial.GradientStops),
+        DrawingBrush drawing => FirstBandDrawing(drawing.Drawing),
+        _ => null,
+    };
+
+    private static uint? FirstBandStop(GradientStopCollection stops)
+    {
+        foreach (var stop in stops) return CoerceBandBrushValue(new SolidColorBrush(stop.Color));
+        return null;
+    }
+
+    private static uint? FirstBandDrawing(Drawing? drawing) => drawing switch
+    {
+        GeometryDrawing direct => CoerceBandBrushValue(direct.Brush),
+        DrawingGroup group => group.Children.Select(FirstBandDrawing).FirstOrDefault(fill => fill is not null),
+        _ => null,
+    };
+
     /// <summary>Row objects with grid sort/group state (plain CLR data, not visuals).</summary>
     public DataGridItemCollection Items => _items;
 
@@ -9777,6 +10013,7 @@ public class DataGrid : Control, IItemContainerOwner
                 _syncingFromSource = false;
             }
             AttachItemsSource(value);
+            MaybeAutoGenerateColumns();
             InvalidateMeasure();
         }
     }
@@ -9848,6 +10085,7 @@ public class DataGrid : Control, IItemContainerOwner
         {
             _syncingFromSource = false;
         }
+        MaybeAutoGenerateColumns();
         InvalidateMeasure();
     }
 
@@ -9980,7 +10218,8 @@ public class DataGrid : Control, IItemContainerOwner
     /// <summary>Delete-row affordance (parsed and retained; the engine has no inline row deletion).</summary>
     public bool CanUserDeleteRows { get; set; } = true;
 
-    /// <summary>Read-only gate (parsed and retained; the engine grid never opens cell editors).</summary>
+    /// <summary>Read-only gate (parsed and retained; blocks BeginEdit from
+    /// gestures and the API while selection and navigation keep working).</summary>
     public bool IsReadOnly { get; set; }
 
     /// <summary>Selection cardinality (parsed and retained; the engine selects single rows only).</summary>
@@ -9995,13 +10234,94 @@ public class DataGrid : Control, IItemContainerOwner
     /// <summary>Column recycling hint (parsed and retained; the engine renders all columns).</summary>
     public bool EnableColumnVirtualization { get; set; } = true;
 
+    private bool _autoGenerateColumns = true;
+    private readonly HashSet<DataGridTextColumn> _autoColumns = new();
+    private Type? _autoColumnItemType;
+
     /// <summary>
     /// Automatic columns (matches System.Windows.Controls.DataGrid.AutoGenerateColumns;
-    /// default true like real WPF; retained: the engine renders declared
-    /// <see cref="DataGridTextColumn"/> columns only, so the PC Space Map
-    /// grids set it False explicitly).
+    /// default true like real WPF): with no explicit columns, setting or
+    /// resetting <see cref="ItemsSource"/> mints one
+    /// <see cref="DataGridTextColumn"/> per public readable instance
+    /// property of the first data-item type (Header/SortMemberPath/BindingPath
+    /// all carry the property name, like real WPF; bool props degrade to
+    /// text cells because the engine has no checkbox column type, and
+    /// indexers are never columns). Any explicit column suppresses
+    /// generation; clearing the source drops the minted columns. Turning
+    /// this off drops the minted columns too. The loader's literal form
+    /// stays a boundary (the gallery pages that need this never set it).
     /// </summary>
-    public bool AutoGenerateColumns { get; set; } = true;
+    public bool AutoGenerateColumns
+    {
+        get => _autoGenerateColumns;
+        set
+        {
+            if (_autoGenerateColumns == value) return;
+            _autoGenerateColumns = value;
+            if (!value) RemoveAutoColumns();
+            else MaybeAutoGenerateColumns();
+            InvalidateMeasure();
+        }
+    }
+
+    /// <summary>First non-null data-item type in <see cref="Items"/> (null when empty).</summary>
+    private Type? FirstDataItemType()
+    {
+        foreach (var item in _items)
+            if (item is not null) return item.GetType();
+        return null;
+    }
+
+    /// <summary>Mints auto columns when the auto contract applies (see
+    /// <see cref="AutoGenerateColumns"/>); a no-op when explicit columns
+    /// exist or the minted set already matches the data-item type.</summary>
+    private void MaybeAutoGenerateColumns()
+    {
+        if (!_autoGenerateColumns) return;
+        if (_columns.Any(c => !_autoColumns.Contains(c))) return;
+        var itemType = FirstDataItemType();
+        if (itemType is null)
+        {
+            RemoveAutoColumns();
+            return;
+        }
+        if (_autoColumns.Count > 0 && _autoColumnItemType == itemType) return;
+        RemoveAutoColumns();
+        foreach (var property in itemType.GetProperties(
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
+        {
+            if (!property.CanRead || property.GetIndexParameters().Length > 0) continue;
+            var column = new DataGridTextColumn
+            {
+                Header = property.Name,
+                BindingPath = property.Name,
+                SortMemberPath = property.Name,
+            };
+            AddColumn(column);
+            _autoColumns.Add(column);
+        }
+        _autoColumnItemType = itemType;
+    }
+
+    /// <summary>Drops the minted auto columns (explicit columns untouched).</summary>
+    private void RemoveAutoColumns()
+    {
+        if (_autoColumns.Count == 0)
+        {
+            _autoColumnItemType = null;
+            return;
+        }
+        foreach (var column in _autoColumns)
+        {
+            _columns.Remove(column);
+            column.SetOwner(null);
+            column.DisplayIndex = -1;
+        }
+        _autoColumns.Clear();
+        _autoColumnItemType = null;
+        ReindexColumns();
+        SyncColumnsToRows();
+    }
 
     /// <summary>
     /// Double-press activation (matches System.Windows.Controls.Control.MouseDoubleClick;
@@ -10022,7 +10342,7 @@ public class DataGrid : Control, IItemContainerOwner
     /// Double-press tracker (mirrors Button's window/point gate): a second
     /// qualifying press raises <see cref="MouseDoubleClick"/>.
     /// </summary>
-    internal void TrackDoublePress(double x, double y)
+    internal bool TrackDoublePress(double x, double y)
     {
         var now = DateTime.UtcNow;
         if (now - _lastClickAt <= DoubleClickWindow &&
@@ -10035,11 +10355,13 @@ public class DataGrid : Control, IItemContainerOwner
                 MouseButtonState.Released, MouseButtonState.Released, MouseButtonState.Released,
                 MouseButtonState.Released, MouseButtonState.Released,
                 MouseButton.Left, MouseButtonState.Pressed, 2));
+            return true;
         }
         else
         {
             _lastClickAt = now;
             _lastClickAtPoint = new WpfPoint(x, y);
+            return false;
         }
     }
 
@@ -10091,6 +10413,9 @@ public class DataGrid : Control, IItemContainerOwner
         get => _currentCell;
         set
         {
+            // Moving the current cell settles a pending edit first (like
+            // WPF); a failed push holds the current cell.
+            if (_editingElement is not null && !CommitEdit()) return;
             _currentCell = value;
             CurrentColumn = value.Column;
         }
@@ -10098,6 +10423,34 @@ public class DataGrid : Control, IItemContainerOwner
 
     /// <summary>Current column (follows CurrentCell; independently settable).</summary>
     public DataGridColumn? CurrentColumn { get; set; }
+
+    /// <summary>Edit-entry diagnostics master switch (EDITENTRY H1). Off by
+    /// default; while off no counters advance, so behavior is unchanged. The
+    /// served status hook enables it to decide whether presses reach the
+    /// grid and whether BeginEdit runs.</summary>
+    public static bool EditDiagnosticsEnabled { get; set; }
+
+    /// <summary>Presses that reached the DataGrid press branch while
+    /// <see cref="EditDiagnosticsEnabled"/> was on.</summary>
+    public long EditPressCount { get; private set; }
+
+    /// <summary>Outcome of the last press handled while diagnostics were on:
+    /// None, EditingActive, NoCell, or CellSet.</summary>
+    public string LastPressOutcome { get; private set; } = "None";
+
+    /// <summary>Result of the last BeginEdit attempt while diagnostics were
+    /// on (null when none attempted yet).</summary>
+    public bool? LastBeginEditResult { get; private set; }
+
+    /// <summary>Hook-readable edit-state snapshot: compact JSON the status
+    /// hook Notes verbatim. Reads live state only; no behavior change.</summary>
+    public string GetEditDiagnostics() =>
+        "{\"currentCellValid\":" + (CurrentCell.IsValid ? "true" : "false") +
+        ",\"editorOpen\":" + (_editingElement is not null ? "true" : "false") +
+        ",\"pressCount\":" + EditPressCount +
+        ",\"lastPress\":\"" + LastPressOutcome + "\"" +
+        ",\"lastBeginEdit\":" + (LastBeginEditResult is bool began ? (began ? "true" : "false") : "null") +
+        "}";
 
     /// <summary>
     /// Realizes the row container for an item (no-op for null or unknown
@@ -10169,6 +10522,8 @@ public class DataGrid : Control, IItemContainerOwner
 
     private void OnSortDescriptionsChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
+        // A re-sort rebuilds the view: never carry a half-typed editor.
+        SettlePendingEdit();
         var oldIndex = _effIndex;
         var oldItem = _effItem;
         RefreshView();
@@ -10300,14 +10655,204 @@ public class DataGrid : Control, IItemContainerOwner
         InvalidateVisual();
     }
 
+    private DataGridCellInfo _editingCell = DataGridCellInfo.Unset;
+    private FrameworkElement? _editingElement;
+    private object _uneditedValue = string.Empty;
+
+    /// <summary>Whether a cell editor is currently open.</summary>
+    internal bool IsEditing => _editingElement is not null;
+
     /// <summary>
-    /// Commits the pending row/cell edit (matches
-    /// System.Windows.Controls.DataGrid.CommitEdit, which converted
-    /// HandyControl DataGridAttach code calls before clearing): the engine
-    /// grid never opens inline editors, so there is nothing pending and the
-    /// commit reports success like real WPF does with no active edit.
+    /// Edit-start gate (matches System.Windows.Controls.DataGrid.BeginningEdit).
     /// </summary>
-    public bool CommitEdit() => true;
+    public event DataGridBeginningEditEventHandler? BeginningEdit;
+
+    /// <summary>
+    /// Cell edit-end gate (matches System.Windows.Controls.DataGrid.CellEditEnding).
+    /// </summary>
+    public event DataGridCellEditEndingEventHandler? CellEditEnding;
+
+    /// <summary>
+    /// Row edit-end gate (matches System.Windows.Controls.DataGrid.RowEditEnding).
+    /// </summary>
+    public event DataGridRowEditEndingEventHandler? RowEditEnding;
+
+    /// <summary>
+    /// Edit-start entry (matches System.Windows.Controls.DataGrid.OnBeginningEdit,
+    /// protected virtual like real WPF): raises <see cref="BeginningEdit"/>.
+    /// </summary>
+    protected virtual void OnBeginningEdit(DataGridBeginningEditEventArgs e)
+    {
+        ArgumentNullException.ThrowIfNull(e);
+        BeginningEdit?.Invoke(this, e);
+    }
+
+    /// <summary>
+    /// Cell edit-end entry (matches
+    /// System.Windows.Controls.DataGrid.OnCellEditEnding, protected virtual
+    /// like real WPF): raises <see cref="CellEditEnding"/>.
+    /// </summary>
+    protected virtual void OnCellEditEnding(DataGridCellEditEndingEventArgs e)
+    {
+        ArgumentNullException.ThrowIfNull(e);
+        CellEditEnding?.Invoke(this, e);
+    }
+
+    /// <summary>
+    /// Row edit-end entry (matches
+    /// System.Windows.Controls.DataGrid.OnRowEditEnding, protected virtual
+    /// like real WPF): raises <see cref="RowEditEnding"/>.
+    /// </summary>
+    protected virtual void OnRowEditEnding(DataGridRowEditEndingEventArgs e)
+    {
+        ArgumentNullException.ThrowIfNull(e);
+        RowEditEnding?.Invoke(this, e);
+    }
+
+    /// <summary>
+    /// Opens the current cell for editing (matches
+    /// System.Windows.Controls.DataGrid.BeginEdit): generates the column's
+    /// editing element over the cell. False when read-only, with no current
+    /// cell/column/row, with no editor, or when a handler cancels.
+    /// Already editing reports success without replacing the editor.
+    /// </summary>
+    public bool BeginEdit()
+    {
+        if (IsReadOnly) return false;
+        if (_editingElement is not null) return true;
+        if (!CurrentCell.IsValid) return false;
+        var column = CurrentCell.Column;
+        var item = CurrentCell.Item;
+        if (column is null || item is null) return false;
+        if (ContainerForItem(item) is not DataGridRow row) return false;
+        var cell = row.CellsPresenter.ContainerForColumn(column);
+        if (cell is null) return false;
+        var editor = column.GenerateEditingElement(cell, item);
+        if (editor is null) return false;
+        var args = new DataGridBeginningEditEventArgs(column, row, editor);
+        OnBeginningEdit(args);
+        if (args.Cancel) return false;
+        _editingCell = new DataGridCellInfo(item, column);
+        _editingElement = editor;
+        _uneditedValue = ReadUneditedValue(column, item) ?? string.Empty;
+        cell.BeginCellEdit(editor);
+        // Genuine WPF moves keyboard focus into the editing element when
+        // editing begins: routed character keys travel the focused route,
+        // so without this the editor opens but typing never reaches it
+        // (served sh2 split: editorOpen true, pixels/typing/commit red).
+        // Best-effort only — editing still proceeds when focus cannot land.
+        if (editor is UIElement editorVisual)
+        {
+            Keyboard.Focus(editorVisual);
+            editorVisual.KeyDown += OnEditingElementKeyDown;
+        }
+        // Served frames render on grid-level invalidates (cell-level ones
+        // schedule nothing observable): without this, no frame ever shows
+        // the open editor (nextgen3 H1: editorOpen true, 0.0 diff on open).
+        InvalidateMeasure();
+        InvalidateVisual();
+        return true;
+    }
+
+    /// <summary>
+    /// Commits the pending cell edit (matches
+    /// System.Windows.Controls.DataGrid.CommitEdit, which converted
+    /// HandyControl DataGridAttach code calls before clearing): raises
+    /// <see cref="CellEditEnding"/> (Commit), pushes the editor through the
+    /// column, then raises <see cref="RowEditEnding"/> and restores the
+    /// display element. True with no active edit, like real WPF. A vetoed
+    /// or failed push keeps the editor open and reports false.
+    /// </summary>
+    public bool CommitEdit()
+    {
+        if (_editingElement is null || !_editingCell.IsValid) return true;
+        var item = _editingCell.Item;
+        var column = _editingCell.Column;
+        var editor = _editingElement;
+        var row = item is null ? null : ContainerForItem(item) as DataGridRow;
+        var cell = row is null || column is null ? null : row.CellsPresenter.ContainerForColumn(column);
+        if (item is null || column is null || row is null || cell is null)
+        {
+            DropEditState();
+            return false;
+        }
+        var cellEnding = new DataGridCellEditEndingEventArgs(column, row, editor, DataGridEditAction.Commit);
+        OnCellEditEnding(cellEnding);
+        if (cellEnding.Cancel) return false;
+        if (!column.CommitCellEdit(editor)) return false;
+        var rowEnding = new DataGridRowEditEndingEventArgs(row, DataGridEditAction.Commit);
+        OnRowEditEnding(rowEnding);
+        if (rowEnding.Cancel) return false;
+        cell.EndCellEdit(column.GenerateElement(cell, item));
+        RestoreFocusFromEditor();
+        DropEditState();
+        InvalidateMeasure();
+        InvalidateVisual();
+        return true;
+    }
+
+    /// <summary>
+    /// Discards the pending cell edit (matches
+    /// System.Windows.Controls.DataGrid.CancelEdit): raises
+    /// <see cref="CellEditEnding"/> (Cancel), restores the pre-edit value
+    /// through the column, then raises <see cref="RowEditEnding"/> and
+    /// restores the display element. True with no active edit, like real
+    /// WPF. A vetoed cancel keeps the editor open and reports false.
+    /// </summary>
+    public bool CancelEdit()
+    {
+        if (_editingElement is null || !_editingCell.IsValid) return true;
+        var item = _editingCell.Item;
+        var column = _editingCell.Column;
+        var editor = _editingElement;
+        var row = item is null ? null : ContainerForItem(item) as DataGridRow;
+        var cell = row is null || column is null ? null : row.CellsPresenter.ContainerForColumn(column);
+        if (item is null || column is null || row is null || cell is null)
+        {
+            DropEditState();
+            return false;
+        }
+        var cellEnding = new DataGridCellEditEndingEventArgs(column, row, editor, DataGridEditAction.Cancel);
+        OnCellEditEnding(cellEnding);
+        if (cellEnding.Cancel) return false;
+        column.CancelCellEdit(editor, _uneditedValue);
+        var rowEnding = new DataGridRowEditEndingEventArgs(row, DataGridEditAction.Cancel);
+        OnRowEditEnding(rowEnding);
+        if (rowEnding.Cancel) return false;
+        cell.EndCellEdit(column.GenerateElement(cell, item));
+        RestoreFocusFromEditor();
+        DropEditState();
+        InvalidateMeasure();
+        InvalidateVisual();
+        return true;
+    }
+
+    private static object? ReadUneditedValue(DataGridColumn column, object item)
+    {
+        string? path = column is DataGridTextColumn text
+            ? text.EffectivePath
+            : (column as DataGridBoundColumn)?.Binding?.Path?.Path;
+        if (string.IsNullOrEmpty(path)) return null;
+        return BindingExpression.TryRead(item, path, out var value) ? value : null;
+    }
+
+    private void DropEditState()
+    {
+        if (_editingElement is UIElement editor) editor.KeyDown -= OnEditingElementKeyDown;
+        _editingElement = null;
+        _editingCell = DataGridCellInfo.Unset;
+        _uneditedValue = string.Empty;
+    }
+
+    /// <summary>
+    /// Settles a pending edit before a rebuild (selection nav, sort or item
+    /// mutation): commits, falling back to cancel when the push fails, so a
+    /// rebuild never carries a half-typed editor.
+    /// </summary>
+    private void SettlePendingEdit()
+    {
+        if (_editingElement is not null && !CommitEdit()) CancelEdit();
+    }
 
     /// <summary>
     /// Sort-request entry (matches
@@ -10384,21 +10929,46 @@ public class DataGrid : Control, IItemContainerOwner
     public bool TrySortAt(double x, double y)
     {
         if (!CanUserSortColumns || !ShowColumnHeaders || _columns.Count == 0) return false;
+        var band = HeaderBandRect;
+        if (y < band.Y || y >= band.Y + band.Height) return false;
+        var column = ColumnAtX(x);
+        if (column is null) return false;
+        OnSorting(new DataGridSortingEventArgs(column));
+        return true;
+    }
+
+    /// <summary>Column under a horizontal hit (shared by sort and current-cell
+    /// resolution so both always agree); null when no column covers it.</summary>
+    private DataGridTextColumn? ColumnAtX(double x)
+    {
+        if (_columns.Count == 0) return null;
         var r = RenderRect;
-        if (y < r.Y + 1 || y >= r.Y + 1 + _headerHeight) return false;
-        var widths = _colWidths.Count == _columns.Count ? _colWidths : ResolveColumnWidths(Math.Max(0, r.Width - 2));
+        var widths = ResolvedColumnWidths();
         var cx = r.X + 1;
         for (var c = 0; c < _columns.Count; c++)
         {
             var cw = c < widths.Count ? widths[c] : 0;
-            if (x >= cx && x < cx + cw)
-            {
-                OnSorting(new DataGridSortingEventArgs(_columns[c]));
-                return true;
-            }
+            if (x >= cx && x < cx + cw) return _columns[c];
             cx += cw;
         }
-        return false;
+        return null;
+    }
+
+    /// <summary>Cell address under a pointer hit (row item + column);
+    /// Unset when no row or no column covers it.</summary>
+    private DataGridCellInfo CellFromPoint(double x, double y)
+    {
+        for (var i = 0; i < _rowRects.Count && i < _view.Count; i++)
+        {
+            var r = _rowRects[i];
+            if (x >= r.X && x < r.X + r.Width && y >= r.Y && y < r.Y + r.Height)
+            {
+                var column = ColumnAtX(x);
+                if (column is null) return DataGridCellInfo.Unset;
+                return new DataGridCellInfo(_view[i], column);
+            }
+        }
+        return DataGridCellInfo.Unset;
     }
 
     /// <summary>Selects a row by hit position; false when no row covers it.</summary>
@@ -10416,6 +10986,57 @@ public class DataGrid : Control, IItemContainerOwner
         return false;
     }
 
+    /// <summary>Row-press gesture follow-up (runs after a successful SelectAt):
+    /// establishes the current cell from the hit, and begins editing when the
+    /// press double-taps the already-current cell (genuine WPF begins edit on
+    /// double-click; single press stays select-only). Skipped while an editor
+    /// holds uncommitted text so a failed push keeps its cell.</summary>
+    private void PressRowCell(double x, double y)
+    {
+        var doublePress = TrackDoublePress(x, y);
+        if (_editingElement is not null)
+        {
+            if (EditDiagnosticsEnabled) LastPressOutcome = "EditingActive";
+            return;
+        }
+        var pressed = CellFromPoint(x, y);
+        if (!pressed.IsValid)
+        {
+            // Row hit but no column (pointer in row padding past the last
+            // column; v1 has no hidden-column concept, so column zero is the
+            // first visible one): fall back to the selected row's first
+            // column instead of leaving the current cell unset.
+            var fallbackItem = SelectedItem;
+            if (fallbackItem is null || _columns.Count == 0)
+            {
+                if (EditDiagnosticsEnabled) LastPressOutcome = "NoCell";
+                return;
+            }
+            pressed = new DataGridCellInfo(fallbackItem, _columns[0]);
+        }
+        var rePress = pressed == CurrentCell;
+        CurrentCell = pressed;
+        if (EditDiagnosticsEnabled) LastPressOutcome = "CellSet";
+        if (rePress && doublePress)
+        {
+            var began = BeginEdit();
+            if (EditDiagnosticsEnabled) LastBeginEditResult = began;
+        }
+    }
+
+    /// <summary>Moves the current cell with keyboard selection (EDITENTRY P1;
+    /// genuine WPF: arrows/Home/End move both selection and current cell,
+    /// keeping the current column when it still exists, else column zero.
+    /// Without this, keyboard-only users can never satisfy BeginEdit.</summary>
+    private void SyncCurrentCellToSelection()
+    {
+        var item = SelectedItem;
+        if (item is null || _columns.Count == 0) return;
+        var column = CurrentCell.Column as DataGridTextColumn;
+        if (column is null || !_columns.Contains(column)) column = _columns[0];
+        CurrentCell = new DataGridCellInfo(item, column);
+    }
+
     /// <summary>Cell text for a row object (missing path renders blank).</summary>
     internal string CellText(object? row, DataGridTextColumn column)
     {
@@ -10427,9 +11048,11 @@ public class DataGrid : Control, IItemContainerOwner
     {
         // The raw value is kept even when no row qualifies yet (markup
         // attributes arrive before rows, as in real WPF); the event fires
-        // only when the effective selection actually changes.
+        // only when the effective selection actually changes. A selection
+        // move settles a pending edit first; a failed push holds the row.
         if (raw < 0) raw = -1;
         if (_selectedIndex == raw) return;
+        if (_editingElement is not null && !CommitEdit()) return;
         var oldEff = SelectedIndex;
         var oldItem = SelectedItem;
         _selectedIndex = raw;
@@ -10469,6 +11092,8 @@ public class DataGrid : Control, IItemContainerOwner
 
     private void OnItemsChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
+        // A rebuild drops realized rows: never carry a half-typed editor.
+        SettlePendingEdit();
         // Cached pre-change effective state (the event fires post-change):
         // rows above the raw index shift it; identity decides the event.
         // Pending selections materialize on add; Reset drops everything.
@@ -10485,6 +11110,13 @@ public class DataGrid : Control, IItemContainerOwner
         }
         else switch (e.Action)
         {
+            case NotifyCollectionChangedAction.Add when _selectedItem is not null:
+                // Rows inserted at or above the selection shift it (WPF keeps
+                // the selected item, not the raw index); without an effective
+                // selection the pending raw index stands, so late rows still
+                // materialize positionally.
+                _selectedIndex = _view.IndexOf(_selectedItem);
+                break;
             case NotifyCollectionChangedAction.Remove when e.OldStartingIndex >= 0 && e.OldStartingIndex < _selectedIndex:
                 _selectedIndex -= e.OldItems?.Count ?? 1;
                 break;
@@ -10508,19 +11140,35 @@ public class DataGrid : Control, IItemContainerOwner
         switch (ev)
         {
             case Core.WasmInputEvent.Pointer pd when pd.Args.Kind == Core.WasmPointerKind.Down && e.IsLeftButtonDown:
-                if (TrySortAt(pd.Args.X, pd.Args.Y)) e.Handled = true;
-                else if (SelectAt(pd.Args.X, pd.Args.Y)) e.Handled = true;
-                TrackDoublePress(pd.Args.X, pd.Args.Y);
+                if (EditDiagnosticsEnabled) EditPressCount++;
+                if (TrySortAt(pd.Args.X, pd.Args.Y))
+                {
+                    e.Handled = true;
+                    TrackDoublePress(pd.Args.X, pd.Args.Y);
+                }
+                else if (SelectAt(pd.Args.X, pd.Args.Y))
+                {
+                    e.Handled = true;
+                    PressRowCell(pd.Args.X, pd.Args.Y);
+                }
+                else TrackDoublePress(pd.Args.X, pd.Args.Y);
                 break;
             case Core.WasmInputEvent.Key k when k.Args.IsDown && _focused:
                 var count = _view.Count;
                 if (count == 0) break;
                 switch (k.Args.Key)
                 {
-                    case "ArrowDown": SelectedIndex = SelectedIndex < 0 ? 0 : Math.Min(count - 1, SelectedIndex + 1); e.Handled = true; break;
-                    case "ArrowUp": SelectedIndex = SelectedIndex < 0 ? count - 1 : Math.Max(0, SelectedIndex - 1); e.Handled = true; break;
-                    case "Home": SelectedIndex = 0; e.Handled = true; break;
-                    case "End": SelectedIndex = count - 1; e.Handled = true; break;
+                    case "ArrowDown": SelectedIndex = SelectedIndex < 0 ? 0 : Math.Min(count - 1, SelectedIndex + 1); SyncCurrentCellToSelection(); e.Handled = true; break;
+                    case "ArrowUp": SelectedIndex = SelectedIndex < 0 ? count - 1 : Math.Max(0, SelectedIndex - 1); SyncCurrentCellToSelection(); e.Handled = true; break;
+                    case "Home": SelectedIndex = 0; SyncCurrentCellToSelection(); e.Handled = true; break;
+                    case "End": SelectedIndex = count - 1; SyncCurrentCellToSelection(); e.Handled = true; break;
+                    case "F2":
+                        var began = BeginEdit();
+                        if (EditDiagnosticsEnabled) LastBeginEditResult = began;
+                        if (began) e.Handled = true;
+                        break;
+                    case "Enter": if (_editingElement is not null) { CommitEdit(); e.Handled = true; } break;
+                    case "Escape": if (_editingElement is not null) { CancelEdit(); e.Handled = true; } break;
                 }
                 break;
         }
@@ -10529,6 +11177,43 @@ public class DataGrid : Control, IItemContainerOwner
     private bool _focused;
     public override void OnGotFocus() { _focused = true; InvalidateVisual(); }
     public override void OnLostFocus() { _focused = false; InvalidateVisual(); }
+
+    /// <summary>Editing-element key forward: the off-tree editor (rows stay
+    /// out of the visual tree by design, so grid-bubbled keys never reach
+    /// it back) reports the grid-owned keys directly. Enter commits,
+    /// Escape cancels, arrows/Home/End navigate exactly like grid-focused
+    /// keys (selection moves settle the edit first); caret/text keys are
+    /// consumed by the editor and skipped here. Detached on edit end.</summary>
+    private void OnEditingElementKeyDown(object sender, KeyEventArgs e)
+    {
+        if (!e.IsDown || _editingElement is null || !ReferenceEquals(sender, _editingElement)) return;
+        var count = _view.Count;
+        if (count == 0) return;
+        switch (e.Key)
+        {
+            case Key.F2:
+                var began = BeginEdit();
+                if (EditDiagnosticsEnabled) LastBeginEditResult = began;
+                if (began) e.Handled = true;
+                break;
+            case Key.Enter: CommitEdit(); e.Handled = true; break;
+            case Key.Escape: CancelEdit(); e.Handled = true; break;
+            case Key.Down: SelectedIndex = SelectedIndex < 0 ? 0 : Math.Min(count - 1, SelectedIndex + 1); SyncCurrentCellToSelection(); e.Handled = true; break;
+            case Key.Up: SelectedIndex = SelectedIndex < 0 ? count - 1 : Math.Max(0, SelectedIndex - 1); SyncCurrentCellToSelection(); e.Handled = true; break;
+            case Key.Home: SelectedIndex = 0; SyncCurrentCellToSelection(); e.Handled = true; break;
+            case Key.End: SelectedIndex = count - 1; SyncCurrentCellToSelection(); e.Handled = true; break;
+        }
+    }
+
+    /// <summary>Returns keyboard focus from a closing editor to the grid
+    /// (only when the editor actually holds it — never steals focus from
+    /// another control); without this, navigation dies on the removed
+    /// editor after commit/cancel.</summary>
+    private void RestoreFocusFromEditor()
+    {
+        if (_editingElement is UIElement editor && ReferenceEquals(Keyboard.FocusedElement, editor))
+            Keyboard.Focus(this);
+    }
 
     private (double Width, double Height) MeasureText(string text)
     {
@@ -10589,6 +11274,36 @@ public class DataGrid : Control, IItemContainerOwner
     private bool ShowColumnHeaders =>
         HeadersVisibility is DataGridHeadersVisibility.Column or DataGridHeadersVisibility.All;
 
+    /// <summary>Header text measure shared by MeasureCore/ArrangeCore (RT-ENGINE-2344:
+    /// single-sourced so the band height can never drift between passes).</summary>
+    private double ComputeHeaderHeight()
+    {
+        var (_, headerH) = MeasureText("Mg"); // body-height representative
+        return ShowColumnHeaders ? Math.Max(28, headerH + 10) : 0;
+    }
+
+    /// <summary>Painted header band in arranged coordinates (RT-ENGINE-2344:
+    /// single source shared by the band paint in OnRender and the band test
+    /// in TrySortAt, so a press on painted header pixels always reaches the
+    /// sort entry point).</summary>
+    private WpfRect HeaderBandRect
+    {
+        get
+        {
+            var r = RenderRect;
+            return new WpfRect(r.X + 1, r.Y + 1, Math.Max(0, r.Width - 2), _headerHeight);
+        }
+    }
+
+    /// <summary>Column widths for paint and hit testing (RT-ENGINE-2344:
+    /// single source; the arranged list when fresh, else a fresh resolve so
+    /// paint and hit-testing can never walk different widths).</summary>
+    private IReadOnlyList<double> ResolvedColumnWidths()
+    {
+        var r = RenderRect;
+        return _colWidths.Count == _columns.Count ? _colWidths : ResolveColumnWidths(Math.Max(0, r.Width - 2));
+    }
+
     /// <summary>Row slot height (explicit RowHeight wins, else content-sized like before).</summary>
     private double RowSlotHeight(object? row) =>
         !double.IsNaN(RowHeight) && RowHeight > 0 ? RowHeight : Math.Max(28, RowContentHeight(row) + 10);
@@ -10599,8 +11314,7 @@ public class DataGrid : Control, IItemContainerOwner
         // the custom grid math only measures template-less grids.
         if (TemplateRoot is not null) return base.MeasureCore(available);
         var widths = ResolveColumnWidths(Math.Max(0, available.Width));
-        var (_, headerH) = MeasureText("Mg"); // body-height representative
-        _headerHeight = ShowColumnHeaders ? Math.Max(28, headerH + 10) : 0;
+        _headerHeight = ComputeHeaderHeight();
         var w = 0.0; var h = _headerHeight;
         foreach (var width in widths) w += width;
         foreach (var row in _view) h += RowSlotHeight(row);
@@ -10614,8 +11328,7 @@ public class DataGrid : Control, IItemContainerOwner
         // Rows live inside the 1px border chrome (matches ScrollViewer).
         _colWidths = ResolveColumnWidths(Math.Max(0, finalRect.Width - 2));
         _rowRects = new List<WpfRect>(_view.Count);
-        var (_, headerH) = MeasureText("Mg");
-        _headerHeight = ShowColumnHeaders ? Math.Max(28, headerH + 10) : 0;
+        _headerHeight = ComputeHeaderHeight();
         var y = finalRect.Y + 1 + _headerHeight;
         foreach (var row in _view)
         {
@@ -10640,21 +11353,28 @@ public class DataGrid : Control, IItemContainerOwner
         // Overflow clip: v1 has no internal scroller (nest in a ScrollViewer).
         dc.PushClip((float)r.X + 1, (float)r.Y + 1, (float)Math.Max(0, r.Width - 2), (float)Math.Max(0, r.Height - 2));
         var enabled = IsEffectivelyEnabled;
-        var widths = _colWidths.Count == _columns.Count ? _colWidths : ResolveColumnWidths(Math.Max(0, r.Width - 2));
+        var widths = ResolvedColumnWidths();
         var showHorizontal = GridLinesVisibility is DataGridGridLinesVisibility.Horizontal or DataGridGridLinesVisibility.All;
         var showVertical = GridLinesVisibility is DataGridGridLinesVisibility.Vertical or DataGridGridLinesVisibility.All;
         var horizontalInk = BrushRender.ResolveFill(HorizontalGridLinesBrush, 0xD0D0D0FF);
         var verticalInk = BrushRender.ResolveFill(VerticalGridLinesBrush, 0xD0D0D0FF);
         if (ShowColumnHeaders)
         {
-            // Header band.
-            dc.DrawRectangle((float)r.X + 1, (float)r.Y + 1, (float)Math.Max(0, r.Width - 2), (float)_headerHeight, 0xEEEEEEFF);
+            // Header band (ColumnHeaderStyle Background/Foreground/font
+            // shape it; null style resolves the engine defaults below).
+            var band = ResolveHeaderBandPaint();
+            // Band geometry is HeaderBandRect (shared with TrySortAt); the
+            // float casts below are value-identical to the previous inline
+            // expressions at realistic layout magnitudes, so raster output
+            // is unchanged (pixel suites guard this).
+            var rect = HeaderBandRect;
+            dc.DrawRectangle((float)rect.X, (float)rect.Y, (float)rect.Width, (float)rect.Height, band.BandFill);
             var cx = (float)r.X + 1;
             for (var c = 0; c < _columns.Count; c++)
             {
                 var cw = (float)widths[c];
                 if (cw > 0 && !string.IsNullOrEmpty(_columns[c].Header))
-                    dc.DrawText(_columns[c].Header, cx + 6, (float)r.Y + 1 + (float)_headerHeight / 2, FontCss, ForegroundRgba, 0, 2, -1);
+                    dc.DrawText(_columns[c].Header, cx + 6, (float)rect.Y + (float)rect.Height / 2, band.HeaderFont, band.HeaderInk, 0, 2, -1);
                 cx += cw;
             }
         }
@@ -10680,6 +11400,18 @@ public class DataGrid : Control, IItemContainerOwner
             {
                 var cw = (float)widths[c];
                 var text = CellText(_view[i], _columns[c]);
+                // Editing parity: rows/cells (and the editing element) stay
+                // out of the visual tree by design, so the off-tree editor
+                // never paints itself; the grid paints the editor's live text
+                // at the editing cell (served H1 showed keystrokes otherwise
+                // never reaching the canvas while the model advanced).
+                if (_editingElement is not null && _editingCell.IsValid
+                    && ReferenceEquals(_editingCell.Item, _view[i])
+                    && ReferenceEquals(_editingCell.Column, _columns[c])
+                    && _editingElement is TextBox editorBox)
+                {
+                    text = editorBox.Text;
+                }
                 if (cw > 12 && !string.IsNullOrEmpty(text))
                     dc.DrawText(text, cellX + 6, (float)(rr.Y + rr.Height / 2), FontCss, ink, 0, 2, -1);
                 cellX += cw;

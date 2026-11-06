@@ -7,6 +7,8 @@ namespace WfWasm.PdnCpu.Tests;
 // TEMP-DIAG pin (rev266 VTable hunt): the one-shot loader matrix must run
 // exactly once per process and never throw (it runs on the thumbnail queue
 // path in vivo; a throw there would mask the real failure).
+// Shares the ConsoleCapture collection: Console.Out swaps are process-global.
+[Collection("ConsoleCapture")]
 public sealed class ProbeAdapterLoadsTests
 {
     [Fact]

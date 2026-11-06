@@ -623,6 +623,34 @@ public class DataGridCell : ContentControl
         // there and is reachable from inside the engine assembly.
         if (!ReferenceEquals(element.Parent, this) && element is UIElement visual) visual.Parent = this;
     }
+
+    /// <summary>
+    /// Shows an editing element (called by the owning grid's
+    /// <c>BeginEdit</c>): swaps the display content for the editor and
+    /// marks the cell editing. The previous display element is dropped;
+    /// the grid regenerates it on commit/cancel so it can never go stale.
+    /// </summary>
+    internal void BeginCellEdit(FrameworkElement editor)
+    {
+        ArgumentNullException.ThrowIfNull(editor);
+        Content = editor;
+        ParentToCell(editor);
+        IsEditing = true;
+        InvalidateMeasure();
+    }
+
+    /// <summary>
+    /// Restores the display element (called by the owning grid's
+    /// <c>CommitEdit</c>/<c>CancelEdit</c>): swaps the editor back out
+    /// and clears the editing flag.
+    /// </summary>
+    internal void EndCellEdit(FrameworkElement? display)
+    {
+        Content = display;
+        if (display is not null) ParentToCell(display);
+        IsEditing = false;
+        InvalidateMeasure();
+    }
 }
 
 /// <summary>

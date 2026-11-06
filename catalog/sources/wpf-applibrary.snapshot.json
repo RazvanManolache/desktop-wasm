@@ -1,6 +1,6 @@
 {
   "name": "wpf-applibrary",
-  "source": "<wpf-root>\\src\\DesktopWasm.BrowserHost\\wwwroot\\app-library.json",
+  "source": "E:\\AI\\Code\\WPF-wasm\\src\\DesktopWasm.BrowserHost\\wwwroot\\app-library.json",
   "sourceSha256": "16E0EC4C63246C72760F274C2E91E947FD594C4487622D511CF13F58A9C405A6",
   "extractedUtc": "2026-10-30T12:03:16Z",
   "data": {

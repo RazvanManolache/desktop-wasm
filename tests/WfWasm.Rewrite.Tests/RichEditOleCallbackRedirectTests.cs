@@ -17,6 +17,26 @@ using Xunit;
 // Neutralized_Body_Jits_Without_InvalidProgram test proves verifiability.
 public sealed class RichEditOleCallbackRedirectTests
 {
+    // TMPMOVE canonical-only: rewritten fixtures under retained/.
+    private static string RepoRoot =>
+        Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+    private static string RewrittenSmall
+    {
+        get
+        {
+            var canon = Path.Combine(RepoRoot, ".artifacts", "tmp", "retained", "rewritten-small");
+            return canon;
+        }
+    }
+    private static string RewrittenPaint
+    {
+        get
+        {
+            var canon = Path.Combine(RepoRoot, ".artifacts", "tmp", "retained", "rewritten-paint");
+            return canon;
+        }
+    }
+
     // callGeneric mirrors the real fork, whose original body calls the
     // generic DragAcceptFiles<T> wrapper; false calls the raw overload.
     private static void BuildSynthetic(string tempOut, bool callGeneric)
@@ -137,7 +157,7 @@ public sealed class RichEditOleCallbackRedirectTests
         // metadata, which self-locks a same-path write.
         byte[] bytes = File.ReadAllBytes(src);
         string? dir = Path.GetDirectoryName(src);
-        using var resolver = new FrameworkResolver(dir, [@"E:\tmp\rewritten-small", @"E:\tmp\rewritten-paint"]);
+        using var resolver = new FrameworkResolver(dir, [RewrittenSmall, RewrittenPaint]);
         var readerParams = new ReaderParameters { AssemblyResolver = resolver };
         using (var ms = new MemoryStream(bytes))
         using (var read = AssemblyDefinition.ReadAssembly(ms, readerParams))
@@ -233,7 +253,7 @@ public sealed class RichEditOleCallbackRedirectTests
     [Fact]
     public void Redirect_Real_Fork_OleCallback_Keeps_Only_DragAccept_Tail()
     {
-        string src = @"E:\tmp\rewritten-small\WfWasm.WinForms.dll";
+        string src = Path.Combine(RewrittenSmall, "WfWasm.WinForms.dll");
         string? tmp = null;
         try
         {

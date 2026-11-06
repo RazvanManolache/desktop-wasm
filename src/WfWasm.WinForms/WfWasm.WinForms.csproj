@@ -76,6 +76,13 @@
     <Compile Remove="..\..\inputs\winforms\runtimes\winforms\src\System.Windows.Forms\System\Windows\Forms\Controls\Unsupported\ContextMenu\MenuItem.cs" />
     <Compile Remove="..\..\inputs\winforms\runtimes\winforms\src\System.Windows.Forms\System\Windows\Forms\Controls\Unsupported\ContextMenu\ContextMenu.cs" />
     <Compile Remove="..\..\inputs\winforms\runtimes\winforms\src\System.Windows.Forms\System\Windows\Forms\Controls\Unsupported\MainMenu\MainMenu.cs" />
+    <!-- Legacy statusbar: upstream stub throws PNSE from .ctor and every
+         accessor; the StatusBar*.Wasm.cs overlays provide a working
+         in-memory model (Reflector MainForm create path). -->
+    <Compile Remove="..\..\inputs\winforms\runtimes\winforms\src\System.Windows.Forms\System\Windows\Forms\Controls\Unsupported\StatusBar\StatusBar.cs" />
+    <Compile Remove="..\..\inputs\winforms\runtimes\winforms\src\System.Windows.Forms\System\Windows\Forms\Controls\Unsupported\StatusBar\StatusBar.StatusBarPanelCollection.cs" />
+    <Compile Remove="..\..\inputs\winforms\runtimes\winforms\src\System.Windows.Forms\System\Windows\Forms\Controls\Unsupported\StatusBar\StatusBarPanel.cs" />
+    <Compile Remove="..\..\inputs\winforms\runtimes\winforms\src\System.Windows.Forms\System\Windows\Forms\Controls\Unsupported\StatusBar\StatusBarPanelClickEventArgs.cs" />
     <!-- Transparent paint: upstream DrawingEventArgs throws ANE on a
          null HDC; the DrawingEventArgs.Wasm.cs overlay tolerates it. -->
     <Compile Remove="..\..\inputs\winforms\runtimes\winforms\src\System.Windows.Forms\System\Windows\Forms\Rendering\DrawingEventArgs.cs" />

@@ -1,5 +1,5 @@
 """Gallery runner: pin one generation, run cases, emit machine-readable rows.
-Usage: python run.py --out E:/tmp/gal-run1 --cases smoke,todo [--negative]
+Usage: python run.py --out .artifacts/tmp/runs/gal-run1 --cases smoke,todo [--negative]
 """
 import argparse
 import hashlib

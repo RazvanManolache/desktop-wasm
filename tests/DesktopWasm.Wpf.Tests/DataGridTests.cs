@@ -411,4 +411,84 @@ public sealed class DataGridTests
         var ex = Assert.Throws<XamlLoadException>(() => XamlLoader.LoadComponent<Window>(stream));
         Assert.Contains("DataGridTextColumn", ex.Message);
     }
+
+    [Fact]
+    public void ColumnHeaderStyle_nested_style_parses_and_retains()
+    {
+        var root = (Window)XamlLoader.Load("""
+            <Window><DataGrid><DataGrid.ColumnHeaderStyle><Style TargetType="DataGridColumnHeader"><Setter Property="Focusable" Value="True"/></Style></DataGrid.ColumnHeaderStyle></DataGrid></Window>
+            """).Root;
+        var grid = Assert.IsType<DataGrid>(root.Content);
+        Assert.NotNull(grid.ColumnHeaderStyle);
+        Assert.Equal(typeof(DataGridColumnHeader), grid.ColumnHeaderStyle.TargetType);
+        Assert.Same(grid.ColumnHeaderStyle, grid.GetValue(DataGrid.ColumnHeaderStyleProperty));
+    }
+
+    [Fact]
+    public void ColumnHeaderStyle_gallery_BasedOn_static_resource_shape_parses()
+    {
+        // Served DataGridPage.xaml lines 60-65 shape: BasedOn through a
+        // nested {x:Type} key plus a StaticResource setter value. Values stay
+        // raw at load (resolved at apply); the load must retain the style.
+        var root = (Window)XamlLoader.Load("""
+            <Window><DataGrid><DataGrid.ColumnHeaderStyle><Style BasedOn="{StaticResource {x:Type DataGridColumnHeader}}" TargetType="DataGridColumnHeader"><Setter Property="Focusable" Value="True"/><Setter Property="FocusVisualStyle" Value="{StaticResource ColumnHeaderFocusVisualStyle}"/></Style></DataGrid.ColumnHeaderStyle></DataGrid></Window>
+            """).Root;
+        var grid = Assert.IsType<DataGrid>(root.Content);
+        Assert.NotNull(grid.ColumnHeaderStyle);
+        Assert.Equal(typeof(DataGridColumnHeader), grid.ColumnHeaderStyle.TargetType);
+        Assert.Equal(2, grid.ColumnHeaderStyle.Setters.Count);
+    }
+
+    [Fact]
+    public void ColumnHeaderStyle_absent_keeps_engine_header_defaults()
+    {
+        var grid = new DataGrid();
+        var paint = grid.ResolveHeaderBandPaint();
+        Assert.Equal(0xEEEEEEFFu, paint.BandFill);
+        Assert.Equal(grid.ForegroundRgba, paint.HeaderInk);
+        Assert.Equal(grid.FontCss, paint.HeaderFont);
+    }
+
+    [Fact]
+    public void ColumnHeaderStyle_typed_setters_drive_header_band_paint()
+    {
+        var grid = new DataGrid();
+        var style = new Style(typeof(DataGridColumnHeader));
+        style.Setters.Add(new Setter(Control.BackgroundProperty, new SolidColorBrush(Colors.Red)));
+        style.Setters.Add(new Setter(Control.ForegroundProperty, new SolidColorBrush(Colors.Yellow)));
+        style.Setters.Add(new Setter(Control.FontSizeProperty, 20.0));
+        style.Setters.Add(new Setter(Control.FontWeightProperty, FontWeights.Bold));
+        grid.ColumnHeaderStyle = style;
+        var paint = grid.ResolveHeaderBandPaint();
+        Assert.Equal(0xFF0000FFu, paint.BandFill);
+        Assert.Equal(0xFFFF00FFu, paint.HeaderInk);
+        Assert.StartsWith("bold 20px ", paint.HeaderFont);
+    }
+
+    [Fact]
+    public void ColumnHeaderStyle_raw_literals_convert_at_resolve_time()
+    {
+        var root = (Window)XamlLoader.Load("""
+            <Window><DataGrid><DataGrid.ColumnHeaderStyle><Style TargetType="DataGridColumnHeader"><Setter Property="Background" Value="Red"/><Setter Property="FontSize" Value="20"/></Style></DataGrid.ColumnHeaderStyle></DataGrid></Window>
+            """).Root;
+        var grid = Assert.IsType<DataGrid>(root.Content);
+        var paint = grid.ResolveHeaderBandPaint();
+        Assert.Equal(0xFF0000FFu, paint.BandFill);
+        Assert.StartsWith("20px ", paint.HeaderFont);
+    }
+
+    [Fact]
+    public void ColumnHeaderStyle_derived_setter_wins_over_based_on()
+    {
+        var grid = new DataGrid();
+        var baseStyle = new Style(typeof(DataGridColumnHeader));
+        baseStyle.Setters.Add(new Setter(Control.BackgroundProperty, new SolidColorBrush(Colors.Red)));
+        baseStyle.Setters.Add(new Setter(Control.FontSizeProperty, 18.0));
+        var derived = new Style(typeof(DataGridColumnHeader), baseStyle);
+        derived.Setters.Add(new Setter(Control.BackgroundProperty, new SolidColorBrush(Colors.Blue)));
+        grid.ColumnHeaderStyle = derived;
+        var paint = grid.ResolveHeaderBandPaint();
+        Assert.Equal(0x0000FFFFu, paint.BandFill);
+        Assert.StartsWith("18px ", paint.HeaderFont);
+    }
 }

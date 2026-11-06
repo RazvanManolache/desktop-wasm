@@ -937,21 +937,23 @@ namespace System.Drawing
                     TextRasterCounters.NoteBigFill(bigPx, TextRasterCounters.CaptureTelerikCaller(), bigFlat.ToArgb());
             }
             // Perf: flat-color fills (RTE per-block backgrounds: 46M px/frame
-            // through per-pixel PutPixel) take a memset path. Transparent
+            // through per-pixel PutPixel) take a bulk path. Transparent
             // SourceOver is a no-op (the old loop rewrote identical pixels);
-            // opaque-or-SourceCopy writes the clip intersection: with no
-            // clip (or an infinite one) that is the frame bounds, with a
-            // single integer device rect it is the rect intersection (the
-            // exact set the per-pixel loop would write: same Contains
-            // test per pixel, same half-open bounds). Multi-rect unions
-            // and fractional rects keep the exact per-pixel loop; empty
-            // intersections return with no writes and no version bump.
+            // opaque-or-SourceCopy memsets the clip intersection, translucent
+            // SourceOver blends it with a BlendOverInt row loop (the exact
+            // per-pixel BlendOver math without per-pixel Sample/bounds/clip
+            // calls). With no clip (or an infinite one) the intersection is
+            // the frame bounds, with a single integer device rect it is the
+            // rect intersection (the exact set the per-pixel loop would
+            // write: same Contains test per pixel, same half-open bounds).
+            // Multi-rect unions and fractional rects keep the exact
+            // per-pixel loop; empty intersections return with no writes
+            // and no version bump.
             if (prepared.TryGetFlatColor(out Color flat) && _target is not null)
             {
                 bool fillCopy = CompositingMode == CompositingMode.SourceCopy;
                 if (flat.A == 0 && !fillCopy)
                     return;
-                if (flat.A == 255 || fillCopy)
                 {
                     int mx0 = x0, my0 = y0, mx1 = x1, my1 = y1;
                     bool flatMemset = true;
@@ -973,22 +975,129 @@ namespace System.Drawing
                     {
                         int[] fillDst = _target.Pixels;
                         int fillW = _target.Width;
-                        int argb = flat.ToArgb();
                         int fw = mx1 - mx0;
-                        if (mx0 == 0 && mx1 == fillW)
-                            System.Array.Fill(fillDst, argb, my0 * fillW, (my1 - my0) * fillW);
+                        int rows = my1 - my0;
+                        if (flat.A == 255 || fillCopy)
+                        {
+                            int argb = flat.ToArgb();
+                            if (mx0 == 0 && mx1 == fillW)
+                                System.Array.Fill(fillDst, argb, my0 * fillW, rows * fillW);
+                            else
+                                for (int fy = my0; fy < my1; fy++)
+                                    System.Array.Fill(fillDst, argb, fy * fillW + mx0, fw);
+                        }
                         else
+                        {
+                            int sa = flat.A, sr = flat.R, sg = flat.G, sb = flat.B;
                             for (int fy = my0; fy < my1; fy++)
-                                System.Array.Fill(fillDst, argb, fy * fillW + mx0, fw);
-                        _target.PaintVersion += (my1 - my0) * fw;
+                            {
+                                int row = fy * fillW + mx0;
+                                for (int i = 0; i < fw; i++)
+                                    fillDst[row + i] = BlendOverInt(fillDst[row + i], sa, sr, sg, sb);
+                            }
+                        }
+                        _target.PaintVersion += rows * fw;
                         return;
                     }
+                    // Multi-rect unions of disjoint integer rects (the
+                    // clipped-repaint shape) take the same bulk row loops
+                    // per rect; overlapping or fractional clips keep the
+                    // exact per-pixel loop below.
+                    if (TryFillDisjointScans(flat, fillCopy, x0, y0, x1, y1))
+                        return;
                 }
             }
 
             for (int py = y0; py < y1; py++)
                 for (int px = x0; px < x1; px++)
                     PutPixel(px, py, prepared.Sample(px, py));
+        }
+
+        // Multi-rect bulk fills: when the clip is a set of pairwise-disjoint
+        // integer rects, each rect takes the same memset/BlendOverInt row loop
+        // as the single-rect path over its intersection with the fill bounds.
+        // Bit-identical to the per-pixel loop: disjoint integer rects
+        // partition the exact written set (same half-open Contains per pixel),
+        // opaque/SourceCopy rewrites are idempotent, and the version bump
+        // equals the written-pixel count. Overlapping or fractional rects
+        // return false so the caller keeps the exact slow path. Empty
+        // intersections contribute nothing, like the slow path's zero writes.
+        private bool TryFillDisjointScans(Color flat, bool fillCopy, int x0, int y0, int x1, int y1)
+        {
+            Region? clip = _clip;
+            if (clip is null || _target is null || clip.IsInfinite(null))
+                return false;
+            RectangleF[] scans;
+            using (var identity = new Matrix())
+            {
+                try { scans = clip.GetRegionScans(identity); }
+                catch { return false; }
+            }
+            if (scans.Length < 2)
+                return false;
+            var spans = new List<(int sx0, int sy0, int sx1, int sy1)>(scans.Length);
+            foreach (RectangleF rect in scans)
+            {
+                if (float.IsNaN(rect.X) || float.IsNaN(rect.Y) || float.IsNaN(rect.Width) || float.IsNaN(rect.Height))
+                    return false;
+                if (rect.Width <= 0 || rect.Height <= 0)
+                    continue;
+                if (rect.X != MathF.Floor(rect.X) || rect.Y != MathF.Floor(rect.Y) ||
+                    rect.Width != MathF.Floor(rect.Width) || rect.Height != MathF.Floor(rect.Height))
+                    return false;
+                double rx1 = (double)rect.X + (double)rect.Width;
+                double ry1 = (double)rect.Y + (double)rect.Height;
+                int ix0 = Math.Max(x0, (int)rect.X);
+                int iy0 = Math.Max(y0, (int)rect.Y);
+                int ix1 = (int)Math.Min(x1, rx1);
+                int iy1 = (int)Math.Min(y1, ry1);
+                if (ix1 <= ix0 || iy1 <= iy0)
+                    continue;
+                spans.Add((ix0, iy0, ix1, iy1));
+            }
+            for (int i = 0; i < spans.Count; i++)
+                for (int j = i + 1; j < spans.Count; j++)
+                {
+                    var (ax0, ay0, ax1, ay1) = spans[i];
+                    var (bx0, by0, bx1, by1) = spans[j];
+                    if (ax0 < bx1 && bx0 < ax1 && ay0 < by1 && by0 < ay1)
+                        return false;
+                }
+            if (spans.Count == 0)
+                return true;
+            int[] fillDst = _target.Pixels;
+            int fillW = _target.Width;
+            int total = 0;
+            if (flat.A == 255 || fillCopy)
+            {
+                int argb = flat.ToArgb();
+                foreach (var (sx0, sy0, sx1, sy1) in spans)
+                {
+                    int w = sx1 - sx0;
+                    if (sx0 == 0 && sx1 == fillW)
+                        System.Array.Fill(fillDst, argb, sy0 * fillW, (sy1 - sy0) * fillW);
+                    else
+                        for (int fy = sy0; fy < sy1; fy++)
+                            System.Array.Fill(fillDst, argb, fy * fillW + sx0, w);
+                    total += w * (sy1 - sy0);
+                }
+            }
+            else
+            {
+                int sa = flat.A, sr = flat.R, sg = flat.G, sb = flat.B;
+                foreach (var (sx0, sy0, sx1, sy1) in spans)
+                {
+                    for (int fy = sy0; fy < sy1; fy++)
+                    {
+                        int row = fy * fillW + sx0;
+                        for (int i = 0; i < sx1 - sx0; i++)
+                            fillDst[row + i] = BlendOverInt(fillDst[row + i], sa, sr, sg, sb);
+                    }
+                    total += (sx1 - sx0) * (sy1 - sy0);
+                }
+            }
+            _target.PaintVersion += total;
+            return true;
         }
 
         // Integer fast path for TextureBrush rect fills (the viewer-composite
@@ -1353,7 +1462,13 @@ namespace System.Drawing
         {
             ArgumentNullException.ThrowIfNull(brush);
             ArgumentNullException.ThrowIfNull(region);
-            foreach (RectangleF scan in region.GetRegionScans(DeviceMatrix()))
+            // World space: the region stores caller-space rects (Union /
+            // Intersect keep them as given) and FillRectCore applies the
+            // device transform itself exactly once. Flattening scans
+            // through DeviceMatrix() here transformed twice and pushed
+            // every translated fill off-surface (WC1718: ProgressBarAdv
+            // segments painted nowhere while the track filled fine).
+            foreach (RectangleF scan in region.GetRegionScans(new Matrix()))
                 FillRectCore(brush, scan);
         }
 
@@ -2358,16 +2473,24 @@ namespace System.Drawing
         // diagnosis). First paint-time preview+rect+NoWrap per text shape;
         // name-gated by text preview with a hard cap so the hot path stays
         // quiet; never throws; zero behavior change.
+        // WC1541 rekey: key on font+geometry+wrap (NOT text preview).
+        // Dynamic texts (counters, clocks) mint a fresh preview per draw
+        // and exhaust the 64-cap mid-session, silencing the log
+        // process-wide (seen in-suite at 64) -- same failure the
+        // LABEL-RECT key fixed via type+name+rect+font. No Control
+        // identity exists at the Graphics.DrawString level, so the
+        // stable shape here is font+rect+wrap; the preview stays in the
+        // LOG LINE only. HashSet+lock retained (equally bounded).
         private static readonly System.Collections.Generic.HashSet<string> s_dsRectLogged = new();
         private static int s_dsRectLoggedCount;
-        private static void NoteDrawStringRect(string? text, RectangleF layoutRectangle, StringFormat? format)
+        private static void NoteDrawStringRect(string? text, Font font, RectangleF layoutRectangle, StringFormat? format)
         {
             try
             {
                 if (s_dsRectLoggedCount >= 64) return;
                 bool noWrap = format is not null && (format.FormatFlags & StringFormatFlags.NoWrap) != 0;
                 string preview = text is not null && text.Length > 24 ? text.Substring(0, 24) : text ?? "";
-                string key = preview + "|" + (int)layoutRectangle.X + "," + (int)layoutRectangle.Y + " " + (int)layoutRectangle.Width + "x" + (int)layoutRectangle.Height + "|" + (noWrap ? "nw" : "w");
+                string key = font.Name + "," + font.Size + "," + (int)font.Style + "|" + (int)layoutRectangle.X + "," + (int)layoutRectangle.Y + " " + (int)layoutRectangle.Width + "x" + (int)layoutRectangle.Height + "|" + (noWrap ? "nw" : "w");
                 lock (s_dsRectLogged)
                 {
                     if (s_dsRectLoggedCount >= 64 || !s_dsRectLogged.Add(key)) return;
@@ -2400,7 +2523,7 @@ namespace System.Drawing
             s_dsCalls++;
             if (layoutRectangle.Width <= 0f || layoutRectangle.Height <= 0f) s_dsEmptyRect++;
             if (format is null) s_dsNullFormat++;
-            NoteDrawStringRect(text, layoutRectangle, format);
+            NoteDrawStringRect(text, font, layoutRectangle, format);
             long tDraw0 = TextRasterCounters.PerfEnabled ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
             if (tDraw0 != 0)
                 TextRasterCounters.NoteDraw(text?.Length ?? 0);
@@ -2736,10 +2859,100 @@ namespace System.Drawing
             MeasureReal(text, font, new SizeF(width, 0), WrapsText(format), format, true);
 
         public Region[] MeasureCharacterRanges(string? text, Font font, RectangleF layoutRect, StringFormat? format) =>
-            throw new NotSupportedException("Text measurement arrives with the text milestone.");
+            MeasureCharacterRanges(text, font, layoutRect, format, out _);
 
-        public Region[] MeasureCharacterRanges(string? text, Font font, RectangleF layoutRect, StringFormat? format, out int charsFitted) =>
-            throw new NotSupportedException("Text measurement arrives with the text milestone.");
+        // Scoped per-range measurement (Syncfusion HTMLUI BaseElement /
+        // SelectionManager shape): one Region per range stored via
+        // SetMeasurableCharacterRanges, each positioned by the tight
+        // single-line advance of its prefix through the shared MeasureReal
+        // core. Multi-line wrapping is not
+        // modeled (single line box at layoutRect.Y).
+        public Region[] MeasureCharacterRanges(string? text, Font font, RectangleF layoutRect, StringFormat? format, out int charsFitted)
+        {
+                ArgumentNullException.ThrowIfNull(font);
+                CharacterRange[] ranges = format?.GetMeasurableRanges() ?? [];
+                var regions = new Region[ranges.Length];
+                for (int i = 0; i < regions.Length; i++)
+                    regions[i] = EmptyRegion();
+                string s = text ?? string.Empty;
+                if (s.Length == 0 || ranges.Length == 0 || layoutRect.Width <= 0f || layoutRect.Height <= 0f)
+                {
+                    charsFitted = 0;
+                    return regions;
+                }
+                float lineH = LineBoxHeight(font);
+                if (!(lineH > 0f))
+                {
+                    charsFitted = 0;
+                    return regions;
+                }
+                float totalW = MeasureReal(s, font, SizeF.Empty, true, null, true).Width;
+                float originX = layoutRect.X;
+                float originY = layoutRect.Y;
+                if (format is not null && lineH < layoutRect.Height)
+                {
+                    if (format.LineAlignment == StringAlignment.Center)
+                        originY += (layoutRect.Height - lineH) / 2f;
+                    else if (format.LineAlignment == StringAlignment.Far)
+                        originY += layoutRect.Height - lineH;
+                }
+                if (format is not null && totalW < layoutRect.Width)
+                {
+                    if (format.Alignment == StringAlignment.Center)
+                        originX += (layoutRect.Width - totalW) / 2f;
+                    else if (format.Alignment == StringAlignment.Far)
+                        originX += layoutRect.Width - totalW;
+                }
+                for (int i = 0; i < ranges.Length; i++)
+                {
+                    int first = Math.Max(0, ranges[i].First);
+                    int len = Math.Max(0, ranges[i].Length);
+                    if (first >= s.Length || len == 0)
+                        continue;
+                    len = Math.Min(len, s.Length - first);
+                    float x = originX;
+                    if (first > 0)
+                        x += MeasureReal(s.Substring(0, first), font, SizeF.Empty, true, null, true).Width;
+                    // Prefix differences preserve the shaping/kerning context
+                    // at the beginning of the range (e.g. the V in AV).
+                    float endX = originX + MeasureReal(s.Substring(0, first + len), font, SizeF.Empty, true, null, true).Width;
+                    float w = endX - x;
+                    if (w <= 0f)
+                        continue;
+                    var bounds = new RectangleF(x, originY, w, lineH);
+                    if (format is null || (format.FormatFlags & StringFormatFlags.NoClip) == 0)
+                        bounds = RectangleF.Intersect(bounds, layoutRect);
+                    if (bounds.Width > 0f && bounds.Height > 0f)
+                        regions[i] = new Region(bounds);
+                }
+                charsFitted = FitPrefixChars(s, font, layoutRect.Width);
+                return regions;
+        }
+
+        private Region EmptyRegion()
+        {
+            var region = new Region();
+            region.MakeEmpty();
+            return region;
+        }
+
+        private int FitPrefixChars(string s, Font font, float width)
+        {
+            if (width <= 0f || s.Length == 0)
+                return 0;
+            if (MeasureReal(s, font, SizeF.Empty, true, null, true).Width <= width)
+                return s.Length;
+            int lo = 0, hi = s.Length;
+            while (lo < hi)
+            {
+                int mid = (lo + hi + 1) / 2;
+                if (MeasureReal(s.Substring(0, mid), font, SizeF.Empty, true, null, true).Width <= width)
+                    lo = mid;
+                else
+                    hi = mid - 1;
+            }
+            return lo;
+        }
 
         // Raster-backed measurement (mirrors the DrawString core above):
         // when the browser text raster is available its tight glyph bounds
@@ -3213,4 +3426,3 @@ namespace System.Drawing
         }
     }
 }
-

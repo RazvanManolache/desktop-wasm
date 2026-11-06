@@ -5,10 +5,24 @@ using Xunit;
 // BCL v2 reader (via reflection, no new refs) for v2.8 ground truth.
 public sealed class TempEnumerateBlob
 {
+    // TMPMOVE canonical-only: fixture under retained/.
+    private static string RepoRoot =>
+        System.IO.Path.GetFullPath(System.IO.Path.Combine(System.AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+    private static string FixturePath
+    {
+        get
+        {
+            var canon = System.IO.Path.Combine(RepoRoot, ".artifacts", "tmp", "retained", "controlbars-app.dll");
+            return canon;
+        }
+    }
+    private static string RunsDir =>
+        System.IO.Path.Combine(RepoRoot, ".artifacts", "tmp", "runs", "drawing-temp");
+
     [Fact]
     public void Temp_Enumerate_ControlBars_Blob()
     {
-        var asm = Assembly.LoadFrom(@"E:\tmp\controlbars-app.dll");
+        var asm = Assembly.LoadFrom(FixturePath);
         string? resName = null;
         foreach (string n in asm.GetManifestResourceNames())
             if (n.EndsWith("ControlBars.Form1.resources"))
@@ -65,7 +79,8 @@ public sealed class TempEnumerateBlob
         finally
         {
             sb.AppendLine($"TOTAL={nent}");
-            System.IO.File.WriteAllText(@"E:\tmp\blob-enum.txt", sb.ToString());
+            System.IO.Directory.CreateDirectory(RunsDir);
+            System.IO.File.WriteAllText(System.IO.Path.Combine(RunsDir, "blob-enum.txt"), sb.ToString());
         }
     }
 }

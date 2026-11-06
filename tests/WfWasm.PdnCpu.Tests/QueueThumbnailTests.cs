@@ -7,6 +7,10 @@ namespace WfWasm.PdnCpu.Tests;
 // non-generic operations (the 3-arg manager call itself cannot be
 // reflection-Invoked headless). Proves the contract the strip queue-site
 // reroute relies on.
+// Shares the ConsoleCapture collection: QueueThumbnail consumes the
+// process-wide one-shot ProbeAdapterLoads matrix, so it must never run
+// in parallel with (or before) ProbeAdapterLoadsTests.
+[Collection("ConsoleCapture")]
 public sealed class QueueThumbnailTests
 {
     public sealed class FakeManager

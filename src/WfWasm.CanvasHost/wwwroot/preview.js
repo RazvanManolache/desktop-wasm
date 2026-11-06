@@ -94,25 +94,3 @@ window.wfwasmFetchAssembly = function (app, name) {
     window.preview.demandAsset(text.length);
     return packet;
 };
-
-window.wfwasmPrefetch = function (app, names) {
-    // Parallel async warm of the exact appresolve URLs the sync demand
-    // hook (wfwasmFetchAssembly) will hit: same URL means the same
-    // browser-cache entry, so each fault becomes a cache hit instead of
-    // a transform + download stall. Failures are swallowed; the demand
-    // hook stays the fallback. Returns immediately (fire-and-forget).
-    try {
-        if (!Array.isArray(names) || !names.length) return;
-        let i = 0;
-        const lanes = Math.min(6, names.length);
-        const pump = () => {
-            if (i >= names.length) return;
-            const name = names[i++];
-            fetch("/api/appresolve?app=" + encodeURIComponent(app) + "&name=" + encodeURIComponent(name))
-                .then(r => { if (!r.ok) throw 0; return r.arrayBuffer(); })
-                .then(() => pump())
-                .catch(() => pump());
-        };
-        for (let k = 0; k < lanes; k++) pump();
-    } catch (e) { /* demand hook covers */ }
-};

@@ -56,6 +56,10 @@ public sealed class MaterialDesignDrawerPaintTests : IDisposable
         Assert.NotNull(package);
         using var loader = await ApplicationPackageLoader.CreateAsync(package!, "material-design",
             file => Task.FromResult(File.ReadAllBytes(System.IO.Path.Combine(dir, file))));
+        // Boot owns this UI thread. Earlier async tests may have left the
+        // process-wide dispatcher bound to a finished test's worker thread;
+        // converted controls use Invoke and otherwise wait for that dead pump.
+        WasmDispatcher.Current = new WasmDispatcher(new WasmDispatcherPump());
         var window = loader.Boot();
         Assert.NotNull(window);
         var host = new WasmWpfHost(new WasmDispatcherPump(), new WasmInputRouter());

@@ -8906,7 +8906,8 @@ public static class BamlReader
                 KnownStackPanel => new StackPanel(),
                 KnownDataTemplate => new DataTemplate(),
                 KnownImage => new Image(),
-                _ => Fail<UIElement>(offset, $"unknown well-known BAML type id {typeId} (v1 maps Window/Grid/TextBlock/TextBox/ScrollViewer/ListBox/TreeView/Menu/MenuItem/Separator/DockPanel/DataTemplate/Image/StackPanel only)"),
+                KnownBorder => new Border(),
+                _ => Fail<UIElement>(offset, $"unknown well-known BAML type id {typeId} (v1 maps Window/Grid/TextBlock/TextBox/ScrollViewer/ListBox/TreeView/Menu/MenuItem/Separator/DockPanel/DataTemplate/Image/StackPanel/Border only)"),
             };
         }
 
@@ -9604,5 +9605,3 @@ public static class BamlReader
         private UIElement Fail(int offset, string message) => Fail<UIElement>(offset, message);
     }
 }
-
-

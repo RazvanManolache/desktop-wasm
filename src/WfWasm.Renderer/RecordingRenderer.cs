@@ -65,6 +65,12 @@ public sealed record ShiftBitmapCommand(
 public sealed record RetainLayersCommand(
     IReadOnlyList<string> LiveIds) : DrawCommand;
 
+/// <summary>Intersect the native drawing clip until the matching pop.</summary>
+public sealed record PushClipCommand(float X, float Y, float Width, float Height) : DrawCommand;
+
+/// <summary>Restore the clip preceding the matching push.</summary>
+public sealed record PopClipCommand : DrawCommand;
+
 /// <summary>Frame end marker.</summary>
 public sealed record EndFrameCommand : DrawCommand
 {
@@ -76,7 +82,7 @@ public sealed record EndFrameCommand : DrawCommand
 }
 
 /// <summary>In-memory backend: records commands for tests and future replay.</summary>
-public sealed class RecordingRenderer : ICanvasRenderer
+public sealed class RecordingRenderer : ICanvasRenderer, ICanvasClipping
 {
     private readonly List<DrawCommand> _commands = new();
 
@@ -128,6 +134,12 @@ public sealed class RecordingRenderer : ICanvasRenderer
         float clipX = 0, float clipY = 0, float clipWidth = 0, float clipHeight = 0) =>
         _commands.Add(new DrawTextCommand(text, x, y, fontCss, rgba, hAlign, vAlign, mnemonicIndex,
             clipX, clipY, clipWidth, clipHeight));
+
+    public IDisposable PushClip(float x, float y, float width, float height)
+    {
+        _commands.Add(new PushClipCommand(x, y, Math.Max(0, width), Math.Max(0, height)));
+        return new CanvasClipScope(() => _commands.Add(new PopClipCommand()));
+    }
 
     public void EndFrame() => _commands.Add(EndFrameCommand.Instance);
 }

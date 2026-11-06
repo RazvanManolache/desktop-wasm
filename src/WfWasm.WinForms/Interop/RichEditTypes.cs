@@ -52,15 +52,6 @@ namespace Windows.Win32.UI.Controls.RichEdit
         SEL_MULTIOBJECT = 8,
     }
 
-    internal enum RECO_FLAGS
-    {
-        RECO_PASTE = 0,
-        RECO_DROP = 1,
-        RECO_COPY = 2,
-        RECO_CUT = 3,
-        RECO_DRAG = 4,
-    }
-
     [Guid("00020D03-0000-0000-C000-000000000046")]
     internal unsafe partial struct IRichEditOleCallback : IComIID, IVTable<IRichEditOleCallback, IRichEditOleCallback.Vtbl>
     {

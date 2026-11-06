@@ -1,6 +1,19 @@
 namespace DesktopWasm.Core;
 
-public sealed record PackageAssembly(string Name, string File, string Sha256, string[] References, string? InputSha256 = null);
+public sealed record PackageAssembly(string Name, string File, string Sha256, string[] References, string? InputSha256 = null)
+{
+    /// <summary>A URI- and MSBuild-safe disk leaf; percent escapes in physical
+    /// filenames are unescaped by MSBuild's item handling during publish.</summary>
+    public static string AssetFileName(string name, string sha256)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentNullException.ThrowIfNull(sha256);
+        if (sha256.Length != 64 || !sha256.All(Uri.IsHexDigit))
+            throw new ArgumentException("Expected a SHA-256 digest.", nameof(sha256));
+        var stem = Uri.EscapeDataString(name).Replace("~", "%7E", StringComparison.Ordinal).Replace('%', '~');
+        return stem + "." + sha256.ToLowerInvariant() + ".bin";
+    }
+}
 public sealed record PackageGap(string Assembly, string Kind, string Detail);
 
 /// <summary>Selected application's referenced dependency closure, not a folder inventory.</summary>

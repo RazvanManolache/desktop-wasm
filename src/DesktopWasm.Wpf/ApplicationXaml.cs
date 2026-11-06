@@ -157,7 +157,8 @@ public static partial class XamlLoader
             lookupName = shortName[..plus];
             nestedName = shortName[(plus + 1)..];
         }
-        foreach (var candidate in new[] { FindEngineType(lookupName), FindConvertedType(lookupName) })
+        foreach (var candidate in new[] { FindEngineType(lookupName), FindConvertedType(lookupName),
+            Type.GetType("System." + lookupName, throwOnError: false) })
         {
             if (candidate is null || !seen.Add(candidate)) continue;
             if (TryReadNestedStatic(candidate, nestedName, memberName, flags, out var member)) return member;
@@ -4798,6 +4799,12 @@ public static partial class XamlLoader
         var target = ClrNamespaceTarget(uri, name);
         if (target is not null)
         {
+            // An assembly-less clr-namespace belongs to the dictionary's
+            // source assembly. Old converted copies elsewhere in the process
+            // must not make that exact, scoped type ambiguous.
+            if (!uri.Contains(";assembly=", StringComparison.OrdinalIgnoreCase) &&
+                CustomElementSource is { } source && SafeGetConvertedType(source, target) is { } scoped)
+                return CheckTemplateBehaviorType(scoped, name, line, original);
             Type? direct = null;
             foreach (var assembly in ConvertedSearchAssemblies())
             {

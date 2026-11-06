@@ -1,13 +1,18 @@
 $ErrorActionPreference = 'Stop'
 Set-Location (Join-Path $PSScriptRoot '../..')
+New-Item -ItemType Directory -Force .ci-temp | Out-Null
+$env:TEMP = (Resolve-Path .ci-temp).Path
+$env:TMP = $env:TEMP
 New-Item -ItemType Directory -Force .ci-results | Out-Null
-& dotnet build DesktopWasm.slnx -c Release --nologo 2>&1 | Tee-Object .ci-results/build.log
+# The fork-regeneration target builds its source prerequisites. Serialize the
+# outer graph so it cannot compile the same DLL concurrently with that target.
+& dotnet build DesktopWasm.slnx -c Release --nologo -m:1 2>&1 | Tee-Object .ci-results/build.log
 if ($LASTEXITCODE) { throw 'Solution build failed.' }
 
 # These complete suites need only tracked source and generated fixtures.
 # Tests requiring separately staged app binaries are outside source-only CI.
 foreach ($suite in @(
-    'DesktopWasm.Catalog', 'DesktopWasm.Shell', 'WfWasm.Rendering.Gles',
+    'DesktopWasm.Core', 'DesktopWasm.Catalog', 'DesktopWasm.Shell', 'WfWasm.Rendering.Gles',
     'WfWasm.Renderer', 'WfWasm.Platform', 'WfWasm.IsolatedStorage',
     'WfWasm.Skia', 'WfWasm.Shim', 'WfWasm.Rendering',
     'WfWasm.AppIntegration', 'WfWasm.ErrorLog'

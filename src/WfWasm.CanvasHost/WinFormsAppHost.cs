@@ -132,6 +132,113 @@ public sealed partial class WinFormsAppHost : IDisposable
 
 	private static readonly MethodInfo? s_onKeyUpMethod = typeof(System.Windows.Forms.Control).GetMethod("OnKeyUp", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
 
+	private static readonly MethodInfo? s_onTextChangedMethod = typeof(System.Windows.Forms.Control).GetMethod("OnTextChanged", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+
+	private static readonly MethodInfo? s_windowTextSetter = typeof(System.Windows.Forms.Control).GetProperty("WindowText", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.GetSetMethod(true);
+
+	private static readonly MethodInfo? s_getStyleMethod = typeof(System.Windows.Forms.Control).GetMethod("GetStyle", BindingFlags.Instance | BindingFlags.NonPublic);
+
+	// RVW-9594 Job1: native-delegating text boxes. A masked/numeric vendor
+	// box overrides OnPaint for decoration only (watermark/border/disabled)
+	// and toggles ControlStyles.UserPaint per WM_PAINT: false whenever text
+	// is present or the box is focused, meaning "the native EDIT paints the
+	// glyphs" (desktop contract). Headless there is no native EDIT, so the
+	// self-painted raster carries everything EXCEPT the text. The host is
+	// the glyph renderer of last resort for exactly these boxes: UserPaint
+	// false + non-empty text. Boxes that paint their own text (UserPaint
+	// true, e.g. empty watermark/disabled states the vendor draws itself)
+	// are untouched, as are stock TextBox (canvas fast path above) and
+	// non-self-painted boxes (the !flag8 fallback below already draws).
+	// Fail-closed throughout: any reflection miss skips the host draw.
+	private static bool NeedsHostTextGlyphs(System.Windows.Forms.Control control)
+	{
+		try
+		{
+			if (control is not System.Windows.Forms.TextBoxBase tb)
+			{
+				return false;
+			}
+			if (string.IsNullOrEmpty(tb.Text))
+			{
+				return false;
+			}
+			object? styled = s_getStyleMethod?.Invoke(control, new object[1] { System.Windows.Forms.ControlStyles.UserPaint });
+			return styled is false;
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
+	private static readonly ConcurrentDictionary<Type, PropertyInfo?> s_textAlignByType = new();
+
+	private void PaintHostTextGlyphs(ICanvas canvas, System.Windows.Forms.Control control, int x, int y, int w, int h)
+	{
+		// Host glyph rendering for native-delegating text boxes (see
+		// NeedsHostTextGlyphs). Mirrors the canvas TextBox fast path:
+		// single-line runs are vertically centered with the box's own
+		// alignment (mirrored under RTL, like the vendor's watermark
+		// branches); multiline boxes stack Top-anchored runs; the focused
+		// box gets the fast-path caret marker. Fail-open: any miss skips
+		// the draw, leaving the vendor raster as today.
+		try
+		{
+			var tb = (System.Windows.Forms.TextBoxBase)control;
+			string text = tb.Text ?? "";
+			if (text.Length == 0)
+			{
+				return;
+			}
+			if (control == _focusedTextBox)
+			{
+				text += "|";
+			}
+			uint ink = ToRgba(tb.ForeColor, 255u);
+			string fontCss = GetFontCss(tb.Font);
+			if (tb.Multiline)
+			{
+				float lineH = 12f;
+				try { lineH = Math.Max(1f, tb.Font.GetHeight()); } catch { }
+				string[] lines = text.Split(new string[2] { "\r\n", "\n" }, StringSplitOptions.None);
+				for (int i = 0; i < lines.Length; i++)
+				{
+					canvas.DrawTextAligned(lines[i], x + 5, (float)(y + 2) + (float)i * lineH, fontCss, ink, TextHAlign.Left, TextVAlign.Top);
+				}
+				return;
+			}
+			System.Windows.Forms.HorizontalAlignment align = System.Windows.Forms.HorizontalAlignment.Left;
+			try
+			{
+				PropertyInfo? p = s_textAlignByType.GetOrAdd(control.GetType(), static t =>
+					t.GetProperty("TextAlign", BindingFlags.Instance | BindingFlags.Public));
+				if (p?.GetValue(control) is System.Windows.Forms.HorizontalAlignment ha)
+				{
+					align = ha;
+				}
+			}
+			catch
+			{
+			}
+			try
+			{
+				if (control.RightToLeft == System.Windows.Forms.RightToLeft.Yes)
+				{
+					align = align == System.Windows.Forms.HorizontalAlignment.Left ? System.Windows.Forms.HorizontalAlignment.Right : align == System.Windows.Forms.HorizontalAlignment.Right ? System.Windows.Forms.HorizontalAlignment.Left : align;
+				}
+			}
+			catch
+			{
+			}
+			float tx = align == System.Windows.Forms.HorizontalAlignment.Center ? (float)x + (float)w / 2f : align == System.Windows.Forms.HorizontalAlignment.Right ? (float)(x + w) - 5f : (float)(x + 5);
+			TextHAlign hAlign = align == System.Windows.Forms.HorizontalAlignment.Center ? TextHAlign.Center : align == System.Windows.Forms.HorizontalAlignment.Right ? TextHAlign.Right : TextHAlign.Left;
+			canvas.DrawTextAligned(text, tx, (float)y + (float)h / 2f, fontCss, ink, hAlign, TextVAlign.Middle);
+		}
+		catch
+		{
+		}
+	}
+
 	private static readonly MethodInfo? s_itemMouseEnterMethod = typeof(System.Windows.Forms.ToolStripItem).GetMethod("OnMouseEnter", BindingFlags.Instance | BindingFlags.NonPublic);
 
 	private static readonly MethodInfo? s_itemMouseMoveMethod = typeof(System.Windows.Forms.ToolStripItem).GetMethod("OnMouseMove", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -161,6 +268,8 @@ public sealed partial class WinFormsAppHost : IDisposable
 	private System.Windows.Forms.TextBox? _shiftAnchorBox;
 
 	private System.Windows.Forms.Control? _focusedControl;
+
+	private System.Windows.Forms.Control? _focusArmedControl;
 
 	private System.Windows.Forms.Control? _pressedButton;
 
@@ -244,6 +353,10 @@ public sealed partial class WinFormsAppHost : IDisposable
 	private static int _compositedDiagCount;
 
 	private System.Windows.Forms.Control? _hoverControl;
+	// REBOOT1555: hwnds with a live TrackMouseEvent registration observed
+	// during the current hover episode. A vanished entry means cancel:
+	// suppress the baseline fallback until the episode ends (control change).
+	private readonly HashSet<nint> _trackObserved = new HashSet<nint>();
 
 	private System.Windows.Forms.ToolStripItem? _hoverItem;
 
@@ -446,18 +559,133 @@ public sealed partial class WinFormsAppHost : IDisposable
 		}
 	}
 
+	// MASKED-EDIT-0430: Syncfusion AutoLabel declares multiple OnPaint
+	// overloads, so a name-only GetMethod throws AmbiguousMatchException and
+	// kills the whole EditorStateProbe.Dump (served masked-edit oracle).
+	// Resolve the exact PaintEventArgs override instead; any reflection
+	// failure reads as "not a self-painter" (fail-closed).
+	private static System.Reflection.MethodInfo? FindPaintOverride(Type type, string name)
+	{
+		try
+		{
+			return type.GetMethod(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, new Type[] { typeof(System.Windows.Forms.PaintEventArgs) }, null);
+		}
+		catch
+		{
+			return null;
+		}
+	}
 	internal static bool TypeSelfPaints(Type type)
 	{
 		return s_selfPaints.GetOrAdd(type, (Type type2) =>
 		{
-			MethodInfo method = type2.GetMethod("OnPaint", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+			MethodInfo method = FindPaintOverride(type2, "OnPaint");
 			if ((object)method != null && method.DeclaringType != typeof(System.Windows.Forms.Control))
 			{
 				return true;
 			}
-			MethodInfo method2 = type2.GetMethod("OnPaintBackground", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+			MethodInfo method2 = FindPaintOverride(type2, "OnPaintBackground");
 			return (object)method2 != null && method2.DeclaringType != typeof(System.Windows.Forms.Control);
 		});
+	}
+
+	// WC1746: event-painted controls (e.g. Syncfusion ProgressBarAdv, which has
+	// no OnPaint/OnPaintBackground override and instead subscribes its private
+	// OnBarPaint to its own Paint event in InitializeComponent) are invisible
+	// to the TypeSelfPaints gate. Control.OnPaint raises the Paint event, so
+	// admitting a subscribed instance to the self-paint path yields the
+	// vendor's own pixels instead of the BackColor+Text fallback. Paint is a
+	// custom event backed by the Events list under the s_paintEvent key (real
+	// WinForms sources; verified present in served/test builds), so the check
+	// reads that entry.
+	// WC1955: demand-loaded vendor assemblies redeclare/hide members across
+	// deep Telerik hierarchies, so the key and the Events property are
+	// resolved by walking the instance's own type hierarchy (most-derived
+	// wins) with an EventPaint fallback for fork revisions that renamed the
+	// key. A base-only lookup silently misses a shadowed subscriber and
+	// falls back forever. MemberInfos are cached per exact runtime type;
+	// only the per-instance lookup runs per call. Fail-closed throughout.
+	private static readonly ConcurrentDictionary<Type, PropertyInfo?> s_eventsPropertyByType = new();
+	private static readonly ConcurrentDictionary<Type, FieldInfo[]> s_paintKeysByType = new();
+
+	private static readonly string[] s_paintKeyNames = { "s_paintEvent", "EventPaint" };
+
+	internal static PropertyInfo? FindEventsProperty(Type type)
+	{
+		return s_eventsPropertyByType.GetOrAdd(type, (Type t) =>
+		{
+			try
+			{
+				for (Type? walk = t; walk is not null; walk = walk.BaseType)
+				{
+					PropertyInfo? property = walk.GetProperty("Events", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
+					if (property is not null && property.CanRead && property.PropertyType == typeof(System.ComponentModel.EventHandlerList))
+						return property;
+				}
+			}
+			catch
+			{
+			}
+			return null;
+		});
+	}
+
+	// Candidate Paint keys, most-derived type first: a redeclared (shadowed)
+	// Paint event in a vendor hierarchy carries its own key, and the served
+	// subscription lands on it — not on the base key. Any subscribed
+	// candidate admits the control; key names stay the only convention used.
+	internal static FieldInfo[] FindPaintKeyFields(Type type)
+	{
+		return s_paintKeysByType.GetOrAdd(type, (Type t) =>
+		{
+			var found = new System.Collections.Generic.List<FieldInfo>();
+			try
+			{
+				for (Type? walk = t; walk is not null; walk = walk.BaseType)
+				{
+					foreach (string name in s_paintKeyNames)
+					{
+						FieldInfo? field = walk.GetField(name, BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
+						if (field is not null)
+							found.Add(field);
+					}
+				}
+			}
+			catch
+			{
+			}
+			return found.ToArray();
+		});
+	}
+
+	internal static bool ControlHasPaintSubscribers(System.Windows.Forms.Control c)
+	{
+		try
+		{
+			if (c is null) return false;
+			Type type = c.GetType();
+			PropertyInfo? eventsProperty = FindEventsProperty(type);
+			if (eventsProperty is null) return false;
+			if (eventsProperty.GetValue(c) is not System.ComponentModel.EventHandlerList events) return false;
+			foreach (FieldInfo keyField in FindPaintKeyFields(type))
+			{
+				object? key;
+				try { key = keyField.GetValue(null); }
+				catch { continue; }
+				if (key is null) continue;
+				if (events[key] is Delegate d)
+				{
+					Delegate[] list = d.GetInvocationList();
+					if (list is not null && list.Length > 0)
+						return true;
+				}
+			}
+			return false;
+		}
+		catch
+		{
+			return false;
+		}
 	}
 
 	internal static bool ButtonPaintsItself(Type type)
@@ -467,12 +695,12 @@ public sealed partial class WinFormsAppHost : IDisposable
 		{
 			return false;
 		}
-		MethodInfo method = type.GetMethod("OnPaint", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+		MethodInfo method = FindPaintOverride(type, "OnPaint");
 		if (method != null && method.DeclaringType != null && method.DeclaringType != typeFromHandle && typeFromHandle.IsAssignableFrom(method.DeclaringType))
 		{
 			return true;
 		}
-		MethodInfo method2 = type.GetMethod("OnPaintBackground", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+		MethodInfo method2 = FindPaintOverride(type, "OnPaintBackground");
 		return method2 != null && method2.DeclaringType != null && method2.DeclaringType != typeFromHandle && typeFromHandle.IsAssignableFrom(method2.DeclaringType);
 	}
 
@@ -550,9 +778,10 @@ public sealed partial class WinFormsAppHost : IDisposable
 	{
 		if (Interlocked.Exchange(ref s_firstChanceHooked, 1) == 0)
 		{
-			EventHandler<FirstChanceExceptionEventArgs> value = (s_firstChanceHandler = (object? _, FirstChanceExceptionEventArgs _) =>
+			EventHandler<FirstChanceExceptionEventArgs> value = (s_firstChanceHandler = (object? _, FirstChanceExceptionEventArgs args) =>
 			{
 				Interlocked.Increment(ref s_firstChanceCount);
+				DialogFunnelNre.TryRecord(args.Exception);
 			});
 			AppDomain.CurrentDomain.FirstChanceException += value;
 		}
@@ -703,6 +932,14 @@ public sealed partial class WinFormsAppHost : IDisposable
 	private static string DescribeControl(System.Windows.Forms.Control? c)
 	{
 		return (c == null) ? "null" : (c.GetType().Name + " '" + c.Name + "'");
+	}
+
+	// FOREMAN KEYLOG-runtime-0856-c4e8: UTC stamp for per-press Tab/Enter
+	// flow lines (post-serve correlation with funnel/diagnostic stamps).
+	private static string KeyLogUtc()
+	{
+		try { return DateTime.UtcNow.ToString("HH:mm:ss.fff"); }
+		catch { return "?"; }
 	}
 
 	private static string DescribeItem(System.Windows.Forms.ToolStripItem? item)
@@ -932,6 +1169,27 @@ public sealed partial class WinFormsAppHost : IDisposable
 		{
 			return "";
 		}
+	}
+
+	private static string SiteChain(Exception ex, int maxDepth)
+	{
+		StringBuilder stringBuilder = new StringBuilder();
+		int depth = 0;
+		for (Exception ex2 = ex; ex2 != null && depth < maxDepth; ex2 = ex2.InnerException)
+		{
+			if (stringBuilder.Length > 0)
+			{
+				stringBuilder.Append(" <- ");
+			}
+			stringBuilder.Append(ex2.GetType().Name);
+			string text = SiteOf(ex2);
+			if (text.Length > 0)
+			{
+				stringBuilder.Append('@').Append(text);
+			}
+			depth++;
+		}
+		return stringBuilder.ToString();
 	}
 
 	private static string SiteChain(Exception ex)
@@ -1694,7 +1952,10 @@ public sealed partial class WinFormsAppHost : IDisposable
 	// WF-R-NRE-0730 lane A: pure first-chance formatter, extracted from the
 	// EnsurePaintDotNetInitialized probe so it is unit-testable and can
 	// never throw. The format matches the historical console lines exactly
-	// ([1ST-EST] stack-text estimate, [1ST-N] 400-char chunks, top frame).
+	// ([1ST-EST] stack-text estimate, [1ST-N] 400-char chunks, top frame)
+	// plus the additive [1ST-TS] TargetSite line (ROT-1105-SectionA: TargetSite
+	// is populated at the throw site without a frame walk, unlike StackTrace
+	// which is null pre-unwind and GetFrames which is unreliable under WASM).
 	// Guards added over the inline version: null Message (previously the
 	// formatter itself threw NRE here, filing handler noise and masking
 	// the real report), null frames, and null frame elements.
@@ -1708,6 +1969,19 @@ public sealed partial class WinFormsAppHost : IDisposable
 			string? stackTrace = null;
 			try { stackTrace = exception.StackTrace; } catch { }
 			lines.Add("[1ST-EST] " + (((stackTrace == null) ? "null" : stackTrace.Substring(0, Math.Min(600, stackTrace.Length))).Replace('\r', ' ').Replace('\n', ' ')));
+		string targetSite = "?";
+		try
+		{
+			MethodBase? site = exception.TargetSite;
+			if (site is not null)
+			{
+				targetSite = (site.DeclaringType?.Name ?? "?") + "." + site.Name;
+			}
+		}
+		catch
+		{
+		}
+		lines.Add("[1ST-TS] " + targetSite);
 			string value = ((frames == null) ? "" : string.Join(" <- ", frames.Take(12).Where(f => f is not null).Select(f => f.GetMethod()?.DeclaringType?.Name + "." + f.GetMethod()?.Name)));
 			string message = exception.Message ?? "";
 			int nl = message.IndexOf('\n');
@@ -2132,6 +2406,15 @@ public sealed partial class WinFormsAppHost : IDisposable
 		try
 		{
 			CultureInfo.DefaultThreadCurrentUICulture = CultureInfo.InvariantCulture;
+		}
+		catch
+		{
+		}
+		// Legacy codepage provider for subtitle-style apps (G5-bench
+		// subtitleedit 28606). Idempotent, additive; never throws out.
+		try
+		{
+			System.Windows.Forms.WasmEncodingBoot.EnsureRegistered();
 		}
 		catch
 		{
@@ -3649,8 +3932,6 @@ public sealed partial class WinFormsAppHost : IDisposable
 			throw new NotSupportedException("GPU rendering is required (WfWasm.RequireGpuRendering) but no GPU render target is available; the software target is rejected before painting.");
 		}
 		s_frameGlobal = WasmRepaintGate.DrainDirty(out Dictionary<System.Windows.Forms.Control, Rectangle?> dirty);
-		PollGridScrollWatches();
-		s_rteScrollWatch.Poll();
 		s_frameDirty = dirty;
 		if (WasmFrameCounters.PerfEnabled)
 		{
@@ -3672,6 +3953,17 @@ public sealed partial class WinFormsAppHost : IDisposable
 			s_frameDirty = null;
 			s_frameGlobal = false;
 			return;
+		}
+		// RVW3293-NEXT: scroll-watch polls feed only NoteScroll, which a
+		// dirty frame consumes via TakeScrollShift. A provably-idle frame
+		// (empty dirty map, not global) has no consumer, so the polls run
+		// only when this frame will actually paint. A Value delta observed
+		// across skipped idle frames still accumulates in full on the next
+		// dirty frame (NoteScroll displacements add), so no scroll is lost.
+		lock (ScrollPollGate)
+		{
+			PollGridScrollWatches();
+			s_rteScrollWatch.Poll();
 		}
 		lock (s_liveLayers)
 		{
@@ -4045,8 +4337,11 @@ public sealed partial class WinFormsAppHost : IDisposable
 								num3 = Math.Max(num3, control.Bottom);
 							}
 						}
-						int num4 = Math.Max(form.Width, num2);
-						int num5 = Math.Max(form.Height, num3);
+						// Fixed-size dialogs can intentionally keep visible controls
+						// outside the client area (collapsed tool palettes). Expanding
+						// them to their children's extents defeats the app's clipping.
+						int num4 = form.AutoSize ? Math.Max(form.Width, num2) : form.Width;
+						int num5 = form.AutoSize ? Math.Max(form.Height, num3) : form.Height;
 						if (num4 != form.Width || num5 != form.Height)
 						{
 							form.Size = new Size(num4, num5);
@@ -4449,7 +4744,14 @@ public sealed partial class WinFormsAppHost : IDisposable
 			// Some vendor dialogs hide/dispose themselves in their OK handler,
 			// bypassing FormClosed. Complete the noted async continuation once.
 			if (modal.DialogResult != System.Windows.Forms.DialogResult.None && (!modal.Visible || modal.IsDisposed))
+			{
 				CpuPaint.ResumeEffectApplyIfNoted(modal);
+				// UNSTALL1510: a closed dialog exposes the canvas behind it,
+				// but fork Close marks nothing, so the dead dialog's pixels
+				// persist until an unrelated repaint. The frame recomposes
+				// from a cleared canvas on any dirty, so go global.
+				WasmRepaintGate.MarkGlobalDirty();
+			}
 		}
 		catch (Exception ex)
 		{
@@ -4739,6 +5041,7 @@ public sealed partial class WinFormsAppHost : IDisposable
 	}
 	private void ModalOnClick(System.Windows.Forms.Form modal, int x, int y, string tag = "modal", System.Windows.Forms.MouseButtons clickedButton = System.Windows.Forms.MouseButtons.Left, int clicks = 1)
 	{
+		using var funnelScope = DialogFunnelNre.Enter("modal:" + tag + ":" + modal.Name);
 		int x2 = modal.Location.X;
 		int y2 = modal.Location.Y;
 		if (ChromeHeight(modal) > 0 && x >= x2 + modal.Width - 28 && x <= x2 + modal.Width - 10 && y >= y2 + 6 && y <= y2 + 24)
@@ -4751,6 +5054,9 @@ public sealed partial class WinFormsAppHost : IDisposable
 					modal.DialogResult = System.Windows.Forms.DialogResult.Cancel;
 				}
 				modal.Close();
+				// UNSTALL1510: X-close exposes the canvas behind the dialog;
+				// fork Close marks nothing, so force the recompose here too.
+				WasmRepaintGate.MarkGlobalDirty();
 				return;
 			}
 			catch (Exception ex)
@@ -4850,6 +5156,13 @@ public sealed partial class WinFormsAppHost : IDisposable
 			RaiseMouseEvent(s_onMouseDownMethod, control, clickedButton, clicks, x, y);
 			s_onClickMethod?.Invoke(control, new object[1] { EventArgs.Empty });
 			RaiseMouseEvent(s_onMouseClickMethod, control, clickedButton, clicks, x, y);
+			// PUSH1106-MODAL: custom-painted push buttons (PDN PdnPushButton:
+			// Control-derived, no Button/IButtonControl) reach this generic
+			// arm. Their Click handler sets DialogResult, but without the
+			// Button arm's CloseModalIfSettled the modal stayed open despite
+			// a direct OK-center hit. Settle here too; no-op when no dialog
+			// result was assigned, mirroring the Button/pushbutton arms.
+			CloseModalIfSettled(modal);
 		}
 		catch (Exception ex4)
 		{
@@ -4900,17 +5213,19 @@ public sealed partial class WinFormsAppHost : IDisposable
 			int num2 = parentAbsY + control.Top;
 			int width = control.Width;
 			int height = control.Height;
-			// Native client clipping: children fully outside the ancestor
-			// client rectangle never paint (floating-window collapse relies
-			// on this, not on hiding every child). ICanvas has no clip
-			// primitive, so fully-outside skips; partial overlap keeps
-			// today's full paint.
+			// A parent resize can leave visible children outside its client
+			// area. Skip fully outside children and natively clip partial
+			// overlaps, including their text, bitmaps and nested children.
 			Rectangle bounds = new Rectangle(num, num2, width, height);
 			bounds.Intersect(clientClip);
 			if (bounds.IsEmpty)
 			{
 				continue;
 			}
+			using IDisposable? controlClip = bounds != new Rectangle(num, num2, width, height)
+				&& canvas is ICanvasClipping clipping
+				? clipping.PushClip(clientClip.X, clientClip.Y, clientClip.Width, clientClip.Height)
+				: null;
 			if (TryRenderPortablePropertyControl(canvas, control, num, num2, width, height)) continue;
 			else if (IsRenderedAsButton(control))
 			{
@@ -5072,8 +5387,17 @@ public sealed partial class WinFormsAppHost : IDisposable
 				// WC1241 grant: Label-branch rect census - log shape, never throws.
 				LogLabelRect(label, num, num2, width, height, fontCss3);
 				// WC1307 grant: clip Label ink to the label rect (desktop GDI parity).
-				canvas.DrawTextAligned(label.Text, num + 2, (float)num2 + (float)height / 2f, fontCss3, rgba6, TextHAlign.Left, TextVAlign.Middle,
-					-1, num, num2, width, height);
+				// CREDIT1300-WPF4: one-line labels (rect fits a single text line)
+				// paint UNCLIPPED: gen3 overflow parity for over-wide single-line
+				// titles (wizard label5 376x52). Taller rects and multiline text
+				// keep the rect clip (WC1256: no inking past the form).
+				bool oneLineLabel = label.Text.IndexOf('\n') < 0 && label.Text.IndexOf('\r') < 0
+					&& height < 2 * TextRules.EstimateLineHeight(fontCss3);
+				if (oneLineLabel)
+					canvas.DrawTextAligned(label.Text, num + 2, (float)num2 + (float)height / 2f, fontCss3, rgba6, TextHAlign.Left, TextVAlign.Middle);
+				else
+					canvas.DrawTextAligned(label.Text, num + 2, (float)num2 + (float)height / 2f, fontCss3, rgba6, TextHAlign.Left, TextVAlign.Middle,
+						-1, num, num2, width, height);
 			}
 			else if (control is System.Windows.Forms.ListView listView)
 			{
@@ -5377,6 +5701,16 @@ public sealed partial class WinFormsAppHost : IDisposable
 			else
 			{
 				bool flag8 = !IsD2DControl(control) && TryRenderSelfPainted(canvas, control, num, num2, width, height);
+				// RVW-9594 Job1: the self-painted raster of a
+				// native-delegating text box carries its decoration but
+				// never its text (the vendor OnPaint leaves glyphs to the
+				// absent native EDIT). Draw the display text here, mirroring
+				// the canvas TextBox fast path (bg/border already painted by
+				// the vendor itself).
+				if (flag8 && NeedsHostTextGlyphs(control))
+				{
+					PaintHostTextGlyphs(canvas, control, num, num2, width, height);
+				}
 				if (!flag8 && !control.BackColor.IsEmpty && control.BackColor != Color.Transparent)
 				{
 					canvas.FillRectangle(num, num2, width, height, ToRgba(control.BackColor, 4042322175u));
@@ -5414,6 +5748,10 @@ public sealed partial class WinFormsAppHost : IDisposable
 					canvas.DrawImage(array, bitmap.Width, bitmap.Height, absX, absY, bitmap.Width, bitmap.Height);
 				}
 			}
+			// RVW-9594 SF02 ghost: active drag session paints its cursor
+			// chip here (last, on top); no-op without one, so idle frames
+			// are unchanged and no extra invalidates are issued per move.
+			RowDragLoopSession.PaintDragGhost(canvas, control, absX, absY);
 		}
 		catch
 		{
@@ -5463,6 +5801,11 @@ public sealed partial class WinFormsAppHost : IDisposable
 			{
 				Console.WriteLine($"[Host] OnMouseDown hit document canvas: {_documentPageBounds}");
 				RecordInput("down", $"{x},{y} {buttons} doc tool={GetActiveDocToolName()}");
+				// F1 (DIRECT-1105): a document press moves focus to the
+				// canvas. Clear any stale dialog-editor focus first, or the
+				// widened KeyTarget below would keep sending canvas keys
+				// to the previously clicked floating editor.
+				NoteFocus(null);
 				_isDrawingOnDocument = true;
 				WasmRepaintGate.MarkGlobalDirty();
 				Console.WriteLine("[Host] OnMouseDown doc tool=" + GetActiveDocToolName());
@@ -5510,6 +5853,15 @@ public sealed partial class WinFormsAppHost : IDisposable
 		}
 		Console.WriteLine($"[Host] form loc={_activeForm.Location} size={_activeForm.Width}x{_activeForm.Height} kids={_activeForm.Controls.Count} chrome={ChromeHeight(_activeForm)} view={ViewWidth}x{ViewHeight}");
 		Console.WriteLine("[Host] kids=" + DescribeKids(_activeForm.Controls, 0));
+		// CREDIT1300-WPF6: deep-button oracle (unlisted-depth buttons only;
+		// silent when the listings are complete).
+		StringBuilder deepButtons = new StringBuilder();
+		int deepButtonCount = 0;
+		AppendDeepButtons(deepButtons, _activeForm.Controls, 0, x2, parentAbsY, ref deepButtonCount);
+		if (deepButtonCount > 0)
+		{
+			Console.WriteLine("[Host] deepbuttons=" + deepButtons.ToString());
+		}
 		if (control != null && (control is System.Windows.Forms.Button || control is System.Windows.Forms.IButtonControl || control.GetType().Name == "PdnPushButton"))
 		{
 			_pressedButton = control;
@@ -5529,12 +5881,15 @@ public sealed partial class WinFormsAppHost : IDisposable
 		if (_mouseTarget != null)
 		{
 			MarkCursorNeighborhood(_mouseTarget, x, y, 128);
+			// RVW-9594 SF02 host ghost: record the press in the drag
+			// target's client coords (client coords, like the move path).
+			try { NoteHostPressFor(_mouseTarget, x, y, x2, parentAbsY); } catch { }
 		}
 		RecordInput("down", $"{x},{y} {buttons} target={DescribeControl(control)}");
 		if (control != null && !(control is System.Windows.Forms.ToolStrip))
 		{
 			Console.WriteLine("[Host] Invoking RaiseMouseEvent OnMouseDown on " + control.Name);
-						if (control is System.Windows.Forms.ComboBox fcombo)
+						if (OwnerComboOf(control) is System.Windows.Forms.ComboBox fcombo)
 			{
 				// ADGV-COMBO hookup (items 2+4): open/commit/dismiss via
 				// the fork state machine; skip the native mouse dispatch.
@@ -5550,7 +5905,12 @@ public sealed partial class WinFormsAppHost : IDisposable
 					return;
 				}
 			}
-				if (control.GetType().Name == "TableControl")
+				if (TryOpenVendorDropDown(control, x, y, x2, parentAbsY))
+			{
+				WasmRepaintGate.MarkGlobalDirty();
+				return;
+			}
+			if (control.GetType().Name == "TableControl")
 			{
 				// SF02-R2: arm the headless row-drag loop for Syncfusion grids;
 				// no-op unless a row-drag controller is present.
@@ -5559,6 +5919,201 @@ public sealed partial class WinFormsAppHost : IDisposable
 			RaiseMouseEvent(s_onMouseDownMethod, control, buttons, 1, x, y);
 			Console.WriteLine("[Host] RaiseMouseEvent OnMouseDown done");
 		}
+	}
+
+	internal static System.Windows.Forms.ComboBox? OwnerComboOf(System.Windows.Forms.Control? c)
+	{
+		int hops = 0;
+		while (c is not null && hops++ < 12)
+		{
+			if (c is System.Windows.Forms.ComboBox combo)
+				return combo;
+			try { c = c.Parent; } catch { return null; }
+		}
+		return null;
+	}
+
+	private static readonly string[] s_dropOpenMethods = new[] { "ShowPopup", "ShowDropDown", "OpenPopup", "PerformClick" };
+	private static readonly string[] s_dropOpenFlags = new[] { "DroppedDown", "IsDroppedDown", "IsPopupOpen" };
+
+	private static bool TryInvokeDropDownOpen(object target)
+	{
+		try
+		{
+			Type t = target.GetType();
+			foreach (string name in s_dropOpenMethods)
+			{
+				MethodInfo? m = null;
+				try
+				{
+					foreach (MethodInfo cand in t.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+					{
+						if (cand.Name != name || cand.ContainsGenericParameters) continue;
+						if (cand.GetParameters().Length != 0) continue;
+						m = cand; break;
+					}
+				}
+				catch { continue; }
+				if (m is null) continue;
+				try { m.Invoke(target, null); return true; } catch { }
+			}
+			foreach (string name in s_dropOpenFlags)
+			{
+				PropertyInfo? p = null;
+				try { p = t.GetProperty(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic); } catch { continue; }
+				if (p is null || !p.CanWrite || p.PropertyType != typeof(bool)) continue;
+				try { p.SetValue(target, true); return true; } catch { }
+			}
+		}
+		catch { }
+		return false;
+	}
+
+	private static bool TryDriveDropDownAffordance(object? el, out object? driven)
+	{
+		driven = null;
+		try
+		{
+			object? cur = el;
+			int hops = 0;
+			while (cur is not null && hops++ < 12)
+			{
+				if (TryInvokeDropDownOpen(cur))
+				{
+					driven = cur;
+					return true;
+				}
+				object? parent = null;
+				try { parent = cur.GetType().GetProperty("Parent", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(cur); } catch { }
+				if (parent is null || ReferenceEquals(parent, cur)) break;
+				cur = parent;
+			}
+		}
+		catch { }
+		return false;
+	}
+
+	internal bool TryOpenVendorDropDownByFocus(System.Windows.Forms.Control control, System.Windows.Forms.KeyEventArgs e)
+	{
+		try
+		{
+			if (e is null || e.Handled || e.Control) return false;
+			bool chord = (e.Alt && e.KeyCode == System.Windows.Forms.Keys.Down)
+				|| (e.KeyCode == System.Windows.Forms.Keys.F4 && !e.Alt);
+			if (!chord) return false;
+			string tname;
+			try { tname = control.GetType().Name ?? string.Empty; } catch { return false; }
+			if (!tname.Contains("Hosted", StringComparison.Ordinal)) return false;
+			System.Windows.Forms.Control? owner = control.Parent;
+			object? tree = null;
+			System.Windows.Forms.Control? treeOwner = null;
+			int hops = 0;
+			while (owner is not null && hops++ < 12)
+			{
+				try
+				{
+					bool vendor = false;
+					try { vendor = IsVendorControl(owner); } catch { }
+					var prop = owner.GetType().GetProperty("ElementTree", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+					if ((vendor || prop is not null) && prop?.GetValue(owner) is object found)
+					{ tree = found; treeOwner = owner; break; }
+				}
+				catch { }
+				try { owner = owner.Parent; } catch { break; }
+			}
+			if (tree is null || treeOwner is null) return false;
+			int offX = 0, offY = 0;
+			try
+			{
+				System.Windows.Forms.Control? up = control;
+				int hops2 = 0;
+				while (up is not null && !ReferenceEquals(up, treeOwner) && hops2++ < 12)
+				{ offX += up.Left; offY += up.Top; up = up.Parent; }
+				if (!ReferenceEquals(up, treeOwner)) return false;
+			}
+			catch { return false; }
+			int bw = 0, bh = 0;
+			try { bw = control.Width; bh = control.Height; } catch { return false; }
+			int lx = offX + Math.Max(0, bw - 8);
+			int ly = offY + Math.Max(0, bh / 2);
+			object? el = null;
+			try
+			{
+				MethodInfo? pt = ResolvePointOverload(tree);
+				if (pt is not null)
+					el = pt.Invoke(tree, new object[] { new Point(lx, ly) });
+			}
+			catch { }
+			try { el ??= WalkElementAt(tree, lx, ly); } catch { }
+			if (el is null) return false;
+			if (TryDriveDropDownAffordance(el, out object? driven))
+			{
+				try { Console.WriteLine("[Host][vendordrop-focus] opened " + driven?.GetType().FullName); } catch { }
+				return true;
+			}
+			return false;
+		}
+		catch { return false; }
+	}
+
+	internal bool TryOpenVendorDropDown(System.Windows.Forms.Control control, int x, int y, int formX, int formClientY)
+	{
+		try
+		{
+			string tname;
+			try { tname = control.GetType().Name ?? string.Empty; } catch { return false; }
+			bool hosted = tname.Contains("Hosted", StringComparison.Ordinal);
+			bool parentTree = false;
+			try
+			{
+				System.Windows.Forms.Control? par = control.Parent;
+				parentTree = par is not null && par.GetType().GetProperty("ElementTree", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic) is not null;
+			}
+			catch { }
+			if (!hosted && !parentTree)
+				return false;
+			System.Windows.Forms.Control? owner = control.Parent;
+			object? tree = null;
+			System.Windows.Forms.Control? treeOwner = null;
+			int hops = 0;
+			while (owner is not null && hops++ < 12)
+			{
+				try
+				{
+					bool vendor = false;
+					try { vendor = IsVendorControl(owner); } catch { }
+					bool hasTree = owner.GetType().GetProperty("ElementTree", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic) is not null;
+					if ((vendor || hasTree) && owner.GetType().GetProperty("ElementTree", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(owner) is object found)
+					{ tree = found; treeOwner = owner; break; }
+				}
+				catch { }
+				try { owner = owner.Parent; } catch { break; }
+			}
+			if (tree is null || treeOwner is null)
+				return false;
+			int absX, absY;
+			try { absX = GetControlAbsX(treeOwner, formX); absY = GetControlAbsY(treeOwner, formClientY); } catch { return false; }
+			int lx = x - absX, ly = y - absY;
+			object? el = null;
+			try
+			{
+				MethodInfo? pt = ResolvePointOverload(tree);
+				if (pt is not null)
+					el = pt.Invoke(tree, new object[] { new Point(lx, ly) });
+			}
+			catch { }
+			try { el ??= WalkElementAt(tree, lx, ly); } catch { }
+			if (el is null)
+				return false;
+			if (TryDriveDropDownAffordance(el, out object? driven))
+			{
+				try { Console.WriteLine("[Host][vendordrop] opened " + driven?.GetType().FullName + " at=" + lx + "," + ly); } catch { }
+				return true;
+			}
+			try { Console.WriteLine("[Host][vendordrop] no-affordance " + el.GetType().FullName + " at=" + lx + "," + ly); } catch { }
+			return false;
+		}
+		catch { return false; }
 	}
 
 	public void OnMouseUp(int x, int y, System.Windows.Forms.MouseButtons buttons = System.Windows.Forms.MouseButtons.Left, bool shift = false, bool ctrl = false, bool alt = false)
@@ -5590,6 +6145,9 @@ public sealed partial class WinFormsAppHost : IDisposable
 			if (!SkipButtonMouseUp(_mouseTarget))
 				RaiseMouseEvent(s_onMouseUpMethod, _mouseTarget, buttons, 1, x, y);
 			_mouseTarget = null;
+			// RVW-9594 SF02 host ghost: gesture over, drop the chip and
+			// end any drag session the control-event path may have missed.
+			try { WinFormsAppHost.NoteHostUp(); WinFormsAppHost.AbortAllDragSessions(); } catch { }
 		}
 		FeedInput(x, y, _mouseButtons, ToKeys(shift, ctrl, alt));
 		PairClick(x, y, buttons);
@@ -5654,6 +6212,16 @@ public sealed partial class WinFormsAppHost : IDisposable
 			else if (_mouseTarget != null)
 			{
 				MarkCursorNeighborhood(_mouseTarget, x, y);
+				// RVW-9594 SF02 host ghost: held-move on an armed grid
+				// shows the chip; region-dirty only, same frame as move.
+				try
+				{
+					int ghostAbsX = GetControlAbsX(_mouseTarget, _activeForm.Location.X);
+					int ghostAbsY = GetControlAbsY(_mouseTarget, _activeForm.Location.Y + ChromeHeight(_activeForm));
+					bool leftHeld = (_mouseButtons & System.Windows.Forms.MouseButtons.Left) != 0;
+					WinFormsAppHost.NoteHostMove(_mouseTarget, x - ghostAbsX, y - ghostAbsY, leftHeld);
+				}
+				catch { }
 				RaiseMouseEvent(s_onMouseMoveMethod, _mouseTarget, _mouseButtons, 0, x, y);
 			}
 			else
@@ -5791,10 +6359,53 @@ public sealed partial class WinFormsAppHost : IDisposable
 		}
 	}
 
+	// RVW3293-WPF5: nearest-vendor-override focus events (mirrors
+	// TryArmVendorEditMode resolution): stock Control/TextBoxBase/
+	// TextBox declarers are skipped so stock behavior is unchanged.
+	// Events fire on every transfer (no once-per-session gate):
+	// desktop raises them per WM_KILLFOCUS/WM_SETFOCUS. Fail-open.
+	private static bool TryRaiseFocusEvent(System.Windows.Forms.Control? control, bool lost)
+	{
+		if (control == null)
+		{
+			return false;
+		}
+		try
+		{
+			if (control.IsDisposed)
+			{
+				return false;
+			}
+			string name = lost ? "OnLostFocus" : "OnGotFocus";
+			for (Type? w = control.GetType(); w != null && w != typeof(System.Windows.Forms.Control); w = w.BaseType)
+			{
+				MethodInfo? m = w.GetMethod(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
+				if (m == null)
+				{
+					continue;
+				}
+				if (m.DeclaringType == typeof(System.Windows.Forms.Control) || m.DeclaringType == typeof(System.Windows.Forms.TextBoxBase) || m.DeclaringType == typeof(System.Windows.Forms.TextBox))
+				{
+					continue;
+				}
+				m.Invoke(control, new object[1] { System.EventArgs.Empty });
+				return true;
+			}
+			return false;
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
 	private void NoteFocus(System.Windows.Forms.Control? control)
 	{
-		if (!ReferenceEquals(_focusedControl, control))
+		bool focusChanged = !ReferenceEquals(_focusedControl, control);
+		if (focusChanged)
 		{
+			// A new focus session invalidates any vendor edit-mode arming.
+			_focusArmedControl = null;
 			// The headless focus router does not receive native WM_KILLFOCUS.
 			// Commit numeric text before a dialog's OK handler reads its token.
 			for (var previous = _focusedControl; previous is not null; previous = previous.Parent)
@@ -5804,8 +6415,15 @@ public sealed partial class WinFormsAppHost : IDisposable
 					for (var next = control; next is not null; next = next.Parent)
 						if (ReferenceEquals(next, previous)) { inside = true; break; }
 					if (!inside) { if (previous is System.Windows.Forms.NumericUpDown numeric) _ = numeric.Value; else _ = previous.GetType().GetProperty("Value")?.GetValue(previous); }
-					break;
-				}
+				break;
+			}
+			// RVW3293-WPF5: desktop focus-event contract headless (no
+			// WM_KILLFOCUS loop): OnLostFocus on the previous control
+			// BEFORE the switch. Nearest-vendor-override, fail-open.
+			if (_focusedControl != null)
+			{
+				TryRaiseFocusEvent(_focusedControl, lost: true);
+			}
 		}
 		_focusedControl = control;
 		_focusedTextBox = control as System.Windows.Forms.TextBox;
@@ -5814,6 +6432,15 @@ public sealed partial class WinFormsAppHost : IDisposable
 		if (control == null)
 		{
 			return;
+		}
+		// RVW3293-WPF5: OnGotFocus on the new control AFTER the switch.
+		// Vendor redirect overrides (outer editor -> inner.Focus()) run
+		// here, unblocking the handler-less-outer keystroke loss. Only
+		// on an actual transfer: re-firing Got on a same-control note
+		// would re-run vendor redirects every click.
+		if (focusChanged)
+		{
+			TryRaiseFocusEvent(control, lost: false);
 		}
 		try
 		{
@@ -5864,7 +6491,24 @@ public sealed partial class WinFormsAppHost : IDisposable
 			WasmRepaintGate.MarkDirtyChain(hoverControl);
 			if (hoverControl != null)
 			{
-				RaiseSimpleEvent(s_onMouseLeaveMethod, hoverControl);
+				// REBOOT1555: tracker-directed leave. An explicit registration
+				// owns this control's leave: LEAVE fires once, anything else
+				// suppresses (wrong-event dup none); tracking ends either way.
+				// No entry and never observed: framework auto-track equivalent
+				// baseline, unchanged. Entry vanished after observe: canceled.
+				nint leaveHwnd = TrackMouseBridge.HandleOf(hoverControl);
+				_trackObserved.Remove(leaveHwnd);
+				if (leaveHwnd != IntPtr.Zero
+					&& TrackMouseBridge.TryGetTrack(leaveHwnd, out uint leaveFlags, out _))
+				{
+					if ((leaveFlags & TrackMouseBridge.TME_LEAVE) != 0)
+						RaiseSimpleEvent(s_onMouseLeaveMethod, hoverControl);
+					TrackMouseBridge.Consume(leaveHwnd);
+				}
+				else if (leaveHwnd == IntPtr.Zero || !_trackObserved.Contains(leaveHwnd))
+				{
+					RaiseSimpleEvent(s_onMouseLeaveMethod, hoverControl);
+				}
 			}
 			if (next != null)
 			{
@@ -6345,8 +6989,12 @@ public sealed partial class WinFormsAppHost : IDisposable
 	}
 
 	private static readonly ConditionalWeakTable<System.Windows.Forms.Control, GridScrollWatch> s_gridScrollWatches = new();
+	// RVW3293-NEXT: serializes the two scroll-watch polls below (and
+	// lets tests hold out concurrent hosts while asserting poll
+	// counts). Uncontended in production; behavior unchanged.
+	internal static readonly object ScrollPollGate = new object();
 
-	private static readonly RichTextScrollWatch s_rteScrollWatch = new();
+	private static RichTextScrollWatch s_rteScrollWatch = new(); // non-readonly: tests swap in a fake-source watch (restored in finally)
 
 	// Subscribes a grid's smooth pixel scrollbar for displacement polling:
 	// the pump diffs VScrollBar.Value per frame and notes exact pixel
@@ -6490,7 +7138,11 @@ public sealed partial class WinFormsAppHost : IDisposable
 			System.Windows.Forms.Control control2 = HitTestDeep(_activeForm.Controls, _activeForm.Location.X, _activeForm.Location.Y + ChromeHeight(_activeForm), x, y);
 			if (control2 is System.Windows.Forms.ListView lv && num2 != 0 && ScrollListView(lv, num2 * System.Windows.Forms.SystemInformation.MouseWheelScrollLines))
 			{
-				WasmRepaintGate.MarkGlobalDirty();
+				// RVW3293: scope to the scrolled subtree. The previous
+				// MarkGlobalDirty forced every visible self-painted
+				// control through the full-bitmap vendor fallback;
+				// ancestors/siblings hold retained layers and re-blit.
+				WinFormsAppHostWheelClip.MarkWheelScrolledSubtree(lv);
 			}
 			if (control2 != null)
 			{
@@ -6546,11 +7198,42 @@ public sealed partial class WinFormsAppHost : IDisposable
 	internal void CheckHover(long nowMs)
 	{
 		System.Windows.Forms.Control hoverControl = _hoverControl;
-		if (!_hoverFired && _mouseButtons == System.Windows.Forms.MouseButtons.None && hoverControl != null && nowMs - _hoverMs >= System.Windows.Forms.SystemInformation.MouseHoverTime)
+		if (!_hoverFired && _mouseButtons == System.Windows.Forms.MouseButtons.None && hoverControl != null)
 		{
-			_hoverFired = true;
-			Console.WriteLine("[Host] OnMouseHover control=" + DescribeControl(hoverControl));
-			RaiseSimpleEvent(s_onMouseHoverMethod, hoverControl);
+			// REBOOT1555: tracker-directed hover. A live HOVER registration
+			// sets the timeout (HOVER_DEFAULT falls back to the system
+			// MouseHoverTime); delivery consumes one-shot. A live entry
+			// without HOVER (LEAVE-only, pure NONCLIENT) suppresses: the
+			// tracker claims this control. A vanished entry previously
+			// observed is a cancel: suppress, no baseline fallback.
+			nint hoverHwnd = TrackMouseBridge.HandleOf(hoverControl);
+			uint timeoutMs = (uint)System.Windows.Forms.SystemInformation.MouseHoverTime;
+			bool directed = false;
+			if (hoverHwnd != IntPtr.Zero
+				&& TrackMouseBridge.TryGetTrack(hoverHwnd, out uint hoverFlags, out uint hoverWaitMs))
+			{
+				_trackObserved.Add(hoverHwnd);
+				if ((hoverFlags & TrackMouseBridge.TME_HOVER) == 0)
+					return;
+				directed = true;
+				if (hoverWaitMs != TrackMouseBridge.HOVER_DEFAULT)
+					timeoutMs = hoverWaitMs;
+			}
+			else if (hoverHwnd != IntPtr.Zero && _trackObserved.Contains(hoverHwnd))
+			{
+				return;
+			}
+			if (nowMs - _hoverMs >= timeoutMs)
+			{
+				_hoverFired = true;
+				Console.WriteLine("[Host] OnMouseHover control=" + DescribeControl(hoverControl));
+				RaiseSimpleEvent(s_onMouseHoverMethod, hoverControl);
+				if (directed)
+				{
+					TrackMouseBridge.Consume(hoverHwnd);
+					_trackObserved.Remove(hoverHwnd);
+				}
+			}
 		}
 	}
 
@@ -7131,6 +7814,35 @@ public sealed partial class WinFormsAppHost : IDisposable
 		catch (Exception ex) { Console.WriteLine("[VAPI] keysub-throw " + ex.GetType().Name); }
 	}
 	
+	// RVW3293-WPF9: inward key routing. The vendor's own focus redirect
+	// (outer OnGotFocus -> get_EditingTextBox().Focus()) names the true
+	// key owner for composite editors (SfDateTimeEdit). Mirror it: when
+	// the focused control exposes an EditingTextBox control, character
+	// and Return dispatch go there, behaving exactly as if the inner
+	// editor were focused (fork splice commits, Validating chain runs).
+	// Anything else returns null and dispatch is byte-identical to today.
+	// No Visible gate: desktop delivers keys to the focused window, and
+	// the served inner starts hidden until the vendor OnMouseDown shows it.
+	private static System.Windows.Forms.Control? InnerKeyEditor(System.Windows.Forms.Control control)
+	{
+		try
+		{
+			object? inner = control.GetType().GetProperty("EditingTextBox",
+			System.Reflection.BindingFlags.Instance
+			| System.Reflection.BindingFlags.Public
+			| System.Reflection.BindingFlags.NonPublic)?.GetValue(control);
+			if (inner is System.Windows.Forms.Control c && !ReferenceEquals(c, control) && !c.IsDisposed)
+			{
+				return c;
+			}
+			return null;
+		}
+		catch
+		{
+			return null;
+		}
+	}
+
 	private static System.Windows.Forms.Control OuterKeyControl(System.Windows.Forms.Control c)
 	{
 		// Hosted editors (Telerik HostedTextBoxBase): focus sits on the
@@ -7528,6 +8240,7 @@ public sealed partial class WinFormsAppHost : IDisposable
 		Console.WriteLine($"[Host] ItemClick enter: '{item.Name}' at {DateTime.UtcNow:HH:mm:ss.fff}");
 		try
 		{
+			using var funnelScope = DialogFunnelNre.Enter("toolstrip:" + item.Name);
 			item.PerformClick();
 		}
 		catch (Exception ex)
@@ -7820,6 +8533,9 @@ public sealed partial class WinFormsAppHost : IDisposable
 		{
 			return;
 		}
+		// RVW3293-WPF9: inward target; plain controls resolve to
+		// themselves, so every use below is behavior-identical for them.
+		System.Windows.Forms.Control keyControl = InnerKeyEditor(control) ?? control;
 		System.Windows.Forms.TextBox snapshotBox = _focusedTextBox;
 		_arrowCaretSnapshot = -1;
 		_arrowCaretLength = -1;
@@ -7889,10 +8605,61 @@ public sealed partial class WinFormsAppHost : IDisposable
 			if (TopModalWindow(out System.Windows.Forms.Form modal2) && modal2 != null)
 			{
 				CloseModalIfSettled(modal2);
+				System.Windows.Forms.Control? dialogButton = (keys == System.Windows.Forms.Keys.Escape ? modal2.CancelButton : modal2.AcceptButton) as System.Windows.Forms.Control;
+				Console.WriteLine("[Host] " + (keys == System.Windows.Forms.Keys.Return ? "Enter" : "Escape") + " dialog modal=" + DescribeControl(modal2) + " button=" + DescribeControl(dialogButton) + " focus=" + DescribeControl(_focusedControl) + " utc=" + KeyLogUtc());
 			}
 			e.Handled = true;
 			e.SuppressKeyPress = true;
 			return;
+		}
+		// RVW-1105-0900-runtime Job2b (Twist Tab focus-trap, vendor FP-0735):
+		// Tab/Shift+Tab inside a modal dialog must run the REAL
+		// Control.ProcessDialogKey chain (target-first, desktop dispatch:
+		// ContainerControl Tab case -> ProcessTabKey -> SelectNextControl
+		// with Form wrap). Headless has no modal message loop, so without
+		// this Tab dies in focused-control default handling (Tabs 2-10
+		// swallowed, OK/Cancel unreachable). Modal-scoped only: Ctrl/Alt
+		// chords and non-modal routing are untouched. No-op when the
+		// chain declines (e.g. AcceptsTab editors consume Tab first).
+		System.Windows.Forms.Form? tabModal = null;
+		bool tabAdvance = !flag
+			&& keys == System.Windows.Forms.Keys.Tab
+			&& (item & (System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.Alt)) == 0
+			&& TopModalWindow(out tabModal) && tabModal != null
+			&& IsInForm(control, tabModal);
+		if (tabAdvance && tabModal != null)
+		{
+			System.Windows.Forms.Control? beforeTab = null;
+			try { beforeTab = tabModal.ActiveControl; } catch { }
+			if (EmulateProcessDialogKey(control, item))
+			{
+				KeyTrace.Mark("down:tab-advance-in");
+				System.Windows.Forms.Control? advanced = null;
+				try
+				{
+					advanced = tabModal.ActiveControl;
+					if (advanced != null && !advanced.IsDisposed && advanced.Visible)
+					{
+						NoteFocus(advanced);
+					}
+				}
+				catch
+				{
+				}
+				if (advanced != null && advanced != beforeTab)
+				{
+					Console.WriteLine("[Host] Tab advance from=" + DescribeControl(beforeTab) + " to=" + DescribeControl(advanced) + " modal=" + DescribeControl(tabModal) + " utc=" + KeyLogUtc());
+				}
+				else
+				{
+					Console.WriteLine("[Host] Tab consumed target=" + DescribeControl(control) + " modal=" + DescribeControl(tabModal) + " utc=" + KeyLogUtc());
+				}
+				KeyTrace.Mark("down:tab-advance-out");
+				e.Handled = true;
+				e.SuppressKeyPress = true;
+				return;
+			}
+			Console.WriteLine("[Host] Tab declined target=" + DescribeControl(control) + " modal=" + DescribeControl(tabModal) + " utc=" + KeyLogUtc());
 		}
 		KeyTrace.Mark("down:esc-in");
 		if (!flag && (item & System.Windows.Forms.Keys.KeyCode) == System.Windows.Forms.Keys.Escape && TryCloseVendorPopupForEscape())
@@ -7920,10 +8687,19 @@ public sealed partial class WinFormsAppHost : IDisposable
 					return;
 				}
 			}
-			RaiseKey(s_onKeyDownMethod, control, e, "down");
+			if (!(control is System.Windows.Forms.ComboBox) && TryOpenVendorDropDownByFocus(control, e))
+			{
+				e.Handled = true;
+				e.SuppressKeyPress = true;
+				KeyTrace.Mark("down:vendordrop-focus-handled");
+				WasmRepaintGate.MarkGlobalDirty();
+				return;
+			}
+			RaiseKey(s_onKeyDownMethod, keyControl, e, "down");
 		KeyTrace.Mark("down:raise-out");
 		if (e.Handled || e.SuppressKeyPress)
 		{
+			KeyTrace.Mark("down:handled-out");
 			return;
 		}
 		switch (item & System.Windows.Forms.Keys.KeyCode)
@@ -7972,8 +8748,12 @@ public sealed partial class WinFormsAppHost : IDisposable
 				Console.WriteLine("[VAPI] return-override OnKeyDown decl=" + (od?.DeclaringType?.Name ?? "?") + " keycode=" + item);
 			}
 			catch { }
-			if (outer != control)
-				RaiseKey(s_onKeyDownMethod, outer, new System.Windows.Forms.KeyEventArgs(item), "down");
+			System.Windows.Forms.Control raiseTarget = keyControl != control ? keyControl : outer;
+			// The regular Down raise above already ran for keyControl: only
+			// re-raise when the target is a different control (hosted-inner
+			// owner). Re-raising to the same inner would double-deliver.
+			if (raiseTarget != control && raiseTarget != keyControl)
+				RaiseKey(s_onKeyDownMethod, raiseTarget, new System.Windows.Forms.KeyEventArgs(item), "down");
 		}
 		{
 			System.Windows.Forms.TextBox focusedTextBox = _focusedTextBox;
@@ -7988,11 +8768,13 @@ public sealed partial class WinFormsAppHost : IDisposable
 				{
 					button.PerformClick();
 					CloseModalIfSettled(modal3);
+					Console.WriteLine("[Host] Enter accept button=" + DescribeControl(button) + " modal=" + DescribeControl(modal3) + " focus=" + DescribeControl(_focusedControl) + " utc=" + KeyLogUtc());
 				}
 			}
 			else if (_activeForm?.AcceptButton is System.Windows.Forms.Button button2)
 			{
 				button2.PerformClick();
+				Console.WriteLine("[Host] Enter accept button=" + DescribeControl(button2) + " form=" + DescribeControl(_activeForm) + " focus=" + DescribeControl(_focusedControl) + " utc=" + KeyLogUtc());
 			}
 			return;
 		}
@@ -8203,6 +8985,7 @@ public sealed partial class WinFormsAppHost : IDisposable
 		}
 		if ((alt && !item2.HasValue && key.Length == 1 && (PumpKeyFilters(control, 262, key[0], 536870912) || PumpMenuMnemonic(key[0]))) || !item2.HasValue)
 		{
+			KeyTrace.Mark("down:nochar-out");
 			return;
 		}
 		char valueOrDefault = item2.GetValueOrDefault();
@@ -8213,20 +8996,36 @@ public sealed partial class WinFormsAppHost : IDisposable
 		// post-raise flag tells the next served run whether the host raised
 		// into a running override (downstream storage/paint, vendor) or the
 		// gate consumed the char (route the consumer by this line's gate=).
-		bool richLink = control is System.Windows.Forms.TextBoxBase && control is not System.Windows.Forms.TextBox;
-		bool pressGate = PumpKeyFilters(control, alt ? 262 : 258, valueOrDefault, (!alt) ? 1 : 536870912);
+		bool richLink = keyControl is System.Windows.Forms.TextBoxBase && keyControl is not System.Windows.Forms.TextBox;
+		bool pressGate = PumpKeyFilters(keyControl, alt ? 262 : 258, valueOrDefault, (!alt) ? 1 : 536870912);
 		if (richLink)
 		{
 			Console.WriteLine("[Host][richkey] press gate=" + (pressGate ? "consumed" : "pass") + " char=" + (int)valueOrDefault + " target=" + DescribeControl(control));
 		}
+		KeyTrace.Mark("down:press-gate=" + (pressGate ? "consumed" : "pass"));
 		if (true && !pressGate)
 		{
+			// Vendor-char seam: editors that override ProcessKeyMessage
+			// (Syncfusion numeric/mask boxes) own their display-text sync.
+			// The manual Text splice below parses Value but leaves the
+			// vendor display text empty (typed pixels 0, watermark persists),
+			// so route the char through the vendor override first; when it
+			// consumes, display + value commit together. Otherwise (and for
+			// stock editors) the exact manual path below runs unchanged.
+			bool vendorChar = TryVendorCharCommit(keyControl, valueOrDefault);
+			if (vendorChar)
+			{
+				KeyTrace.Mark("down:vendor-char");
+			}
+			else
+			{
 			System.Windows.Forms.KeyPressEventArgs pressArgs = new System.Windows.Forms.KeyPressEventArgs(valueOrDefault);
-			RaiseKey(s_onKeyPressMethod, control, pressArgs, "press");
+			RaiseKey(s_onKeyPressMethod, keyControl, pressArgs, "press");
 			if (richLink)
 			{
 				Console.WriteLine("[Host][richkey] raised handled=" + pressArgs.Handled + " char=" + (int)valueOrDefault);
 			}
+			KeyTrace.Mark("down:commit-gate focusEq=" + (control == _focusedTextBox) + " boxNull=" + (_focusedTextBox == null));
 			if (control == _focusedTextBox && _focusedTextBox != null && valueOrDefault >= ' ')
 			{
 				System.Windows.Forms.TextBox targetBox = _focusedTextBox;
@@ -8254,7 +9053,200 @@ public sealed partial class WinFormsAppHost : IDisposable
 					{
 					}
 				}
+				// Post-manual retry: a vendor override may decline the pristine
+				// char yet accept it once Value is parsed (display then syncs
+				// from the committed value). Only when the manual graft is
+				// visibly missing, so stock editors never re-enter the seam.
+				// A still-declining seam gets one edit-mode arm per focus
+				// session (the vendor's own OnEnter/OnGotFocus, which never
+				// run headless) before the char is re-offered.
+				try
+				{
+					if (!targetBox.Text.Contains(next))
+					{
+						if (TryArmVendorEditMode(control))
+						{
+							KeyTrace.Mark("down:vendor-edit-arm");
+						}
+						if (TryVendorCharCommit(control, valueOrDefault))
+						{
+							KeyTrace.Mark("down:vendor-char-retry");
+						}
+						else if (!targetBox.Text.Contains(next) && TryEditInsertFallback(targetBox, next))
+						{
+							KeyTrace.Mark("down:vendor-edit-insert");
+							// The manual caret advance above ran against the stale
+							// length; re-anchor past the fallback graft so the
+							// next keystroke appends instead of prepending.
+							try
+							{
+								int inserted = Math.Max(1, next.Length - (text2.Length - num4));
+								int caret = Math.Min(num3 + inserted, targetBox.Text.Length);
+								_shiftAnchor = caret;
+								_shiftAnchorBox = targetBox;
+								targetBox.SelectionStart = caret;
+								targetBox.SelectionLength = 0;
+							}
+							catch
+							{
+							}
+						}
+					}
+				}
+				catch
+				{
+				}
+				KeyTrace.Mark("down:commit-done");
 			}
+			else
+			{
+				KeyTrace.Mark("down:commit-skipped");
+			}
+			}
+		}
+	}
+
+	private static readonly ConcurrentDictionary<Type, MethodInfo?> s_vendorCharSeams = new();
+
+	private static MethodInfo? VendorCharSeamFor(Type t)
+	{
+		return s_vendorCharSeams.GetOrAdd(t, static u =>
+		{
+			for (Type? w = u; w != null && w != typeof(System.Windows.Forms.Control); w = w.BaseType)
+			{
+				MethodInfo? m = w.GetMethod("ProcessKeyMessage", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
+				if (m != null && m.DeclaringType != typeof(System.Windows.Forms.Control) && m.DeclaringType != typeof(System.Windows.Forms.TextBoxBase) && m.DeclaringType != typeof(System.Windows.Forms.TextBox))
+				{
+					return m;
+				}
+			}
+			return null;
+		});
+	}
+
+	private bool TryArmVendorEditMode(System.Windows.Forms.Control control)
+	{
+		// Vendor edit-mode arm: a masked editor whose char seam declined may
+		// still be out of edit mode headless (no native focus transition ever
+		// runs its OnEnter/OnGotFocus). Route those two calls through the
+		// vendor's own overrides once per focus session so a subsequent char
+		// offer sees an armed editor. Runs only for seam-possessing controls
+		// on the manual-desync path, so stock editors never observe it.
+		// Fail-open throughout.
+		try
+		{
+			if (ReferenceEquals(_focusArmedControl, control) || control.IsDisposed)
+			{
+				return false;
+			}
+			Type t = control.GetType();
+			if (VendorCharSeamFor(t) == null)
+			{
+				return false;
+			}
+			MethodInfo? enter = null;
+			MethodInfo? got = null;
+			for (Type? w = t; w != null && w != typeof(System.Windows.Forms.Control); w = w.BaseType)
+			{
+				enter ??= w.GetMethod("OnEnter", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
+				if (enter != null && enter.DeclaringType != null && (enter.DeclaringType == typeof(System.Windows.Forms.Control) || enter.DeclaringType == typeof(System.Windows.Forms.TextBoxBase) || enter.DeclaringType == typeof(System.Windows.Forms.TextBox)))
+				{
+					enter = null;
+				}
+				got ??= w.GetMethod("OnGotFocus", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
+				if (got != null && got.DeclaringType != null && (got.DeclaringType == typeof(System.Windows.Forms.Control) || got.DeclaringType == typeof(System.Windows.Forms.TextBoxBase) || got.DeclaringType == typeof(System.Windows.Forms.TextBox)))
+				{
+					got = null;
+				}
+				if (enter != null && got != null)
+				{
+					break;
+				}
+			}
+			if (enter == null && got == null)
+			{
+				return false;
+			}
+			enter?.Invoke(control, new object[1] { System.EventArgs.Empty });
+			got?.Invoke(control, new object[1] { System.EventArgs.Empty });
+			_focusArmedControl = control;
+			return true;
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
+	private static bool TryEditInsertFallback(System.Windows.Forms.TextBox targetBox, string next)
+	{
+		// EDIT-insert fallback: replicate the native EDIT control insert for a
+		// vendor editor whose own Text setter drops the graft (LostFocus-mode
+		// masked editors defer display to the mask engine while focused, so a
+		// programmatic Text set parses Value but leaves the display stale).
+		// Writes fork storage directly via WindowText (the native EDIT text),
+		// bypassing the vendor setter override, then raises TextChanged like
+		// EN_CHANGE so the vendor syncs IntermediateText from the new text.
+		// Runs only when the manual graft is visibly missing, so stock
+		// editors and consuming seams never reach it. Fail-open throughout.
+		try
+		{
+			if (targetBox.IsDisposed || s_windowTextSetter == null)
+			{
+				return false;
+			}
+			s_windowTextSetter.Invoke(targetBox, new object[1] { next });
+			s_onTextChangedMethod?.Invoke(targetBox, new object[1] { System.EventArgs.Empty });
+			// The write bypassed the normal key/message channels, so no
+			// invalidation was queued: force the retained layer to rebuild
+			// or the fresh text never rasterizes.
+			try
+			{
+				targetBox.Invalidate();
+			}
+			catch
+			{
+			}
+			return targetBox.Text.Contains(next);
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
+	private static bool TryVendorCharCommit(System.Windows.Forms.Control control, char ch)
+	{
+		// Vendor-char seam for masked/numeric editors: route a printable char
+		// through the control's own ProcessKeyMessage override (WM_CHAR) so
+		// the vendor updates display text and value together. True = consumed
+		// (manual splice skipped); false = no vendor override or declined, so
+		// the caller runs the stock manual commit. Fail-open throughout.
+		try
+		{
+			if (control is not System.Windows.Forms.TextBoxBase || control.IsDisposed)
+			{
+				return false;
+			}
+			MethodInfo? seam = VendorCharSeamFor(control.GetType());
+			if (seam == null)
+			{
+				return false;
+			}
+			nint hWnd = IntPtr.Zero;
+			try
+			{
+				hWnd = control.Handle;
+			}
+			catch
+			{
+			}
+			System.Windows.Forms.Message msg = System.Windows.Forms.Message.Create(hWnd, 258, (int)ch, 1);
+			return (bool)(seam.Invoke(control, new object[1] { msg }) ?? false);
+		}
+		catch
+		{
+			return false;
 		}
 	}
 
@@ -8379,7 +9371,14 @@ public sealed partial class WinFormsAppHost : IDisposable
 			{
 				try
 				{
-					if (s_processDialogKeyMethod.Invoke(control, new object[1] { keyData }) is int num && num != 0)
+					// RVW-1105-0900-runtime Job2b: ProcessDialogKey returns
+					// bool (desktop dispatch stops at the first handler
+					// that returns true). The old `is int` pattern could
+					// never match a boxed bool, so the walk never stopped:
+					// Tab advanced once per chain level (f0->f2 on a single
+					// press). Accept bool (and int, defensively) and stop.
+					object? handled = s_processDialogKeyMethod.Invoke(control, new object[1] { keyData });
+					if ((handled is bool b && b) || (handled is int num && num != 0))
 					{
 						return true;
 					}
@@ -8412,6 +9411,15 @@ public sealed partial class WinFormsAppHost : IDisposable
 				return _focusedControl;
 			}
 			if (IsInsideTrackedPopup(_focusedControl))
+			{
+				return _focusedControl;
+			}
+			// F1 (DIRECT-1105): floating modeless dialogs (Paint Colors,
+			// Tools, History, Layers) are neither the active form nor a
+			// tracked popup, so clicks into their editors were dropped on
+			// the way to KeyTarget. Honor a focused control that lives in
+			// any visible top-level form.
+			if (IsInVisibleTopLevelForm(_focusedControl))
 			{
 				return _focusedControl;
 			}
@@ -8461,6 +9469,16 @@ public sealed partial class WinFormsAppHost : IDisposable
 			}
 		}
 		return false;
+	}
+
+	private static bool IsInVisibleTopLevelForm(System.Windows.Forms.Control control)
+	{
+		System.Windows.Forms.Control top = control;
+		while (top.Parent != null)
+		{
+			top = top.Parent;
+		}
+		return top is System.Windows.Forms.Form form && !form.IsDisposed && form.Visible;
 	}
 
 	private static int VkForPump(System.Windows.Forms.Keys keyData, bool shift, bool ctrl, bool alt)
@@ -8656,21 +9674,69 @@ public sealed partial class WinFormsAppHost : IDisposable
 		{
 			method.Invoke(target, new object[1] { args });
 		}
-		catch (Exception ex)
+		catch (Exception ex) when (IsCultureZeroDispatchFailure(ex))
 		{
-			Console.WriteLine("[WinFormsAppHost] Key " + kind + " error: " + ex.GetType().Name + ": " + ex.Message.Split('\n')[0] + " site=" + SiteOf(ex));
-			Console.WriteLine("[WinFormsAppHost] Key " + kind + " error: root=" + RootCause(ex).GetType().Name + " site=" + SiteOf(RootCause(ex)) + " msg=" + (RootCause(ex).Message ?? "").Split('\n')[0]);
+			// RT-C1-KEYPRESS-1512-d5n8 joint runtime half: a vendor/app key
+			// handler resolving culture id 0 (served c1: GetCultureInfo(0)
+			// under the invoke). Retry once with invariant cultures pinned
+			// for the invoke duration only (restored in finally). If the
+			// retry also fails, report the ORIGINAL error (today's behavior)
+			// — never swallow, no loop.
+			Exception? retryError = null;
+			System.Globalization.CultureInfo savedCulture = System.Threading.Thread.CurrentThread.CurrentCulture;
+			System.Globalization.CultureInfo savedUiCulture = System.Threading.Thread.CurrentThread.CurrentUICulture;
 			try
 			{
-				// WD-1740-IMP: null-frames diagnostic (no live method resolution over hostile frames).
-				foreach (string diagLine in FormatFirstChance(RootCause(ex), frames: null).ConsoleLines)
-				    Console.WriteLine("[diagstack] " + diagLine);
+				System.Threading.Thread.CurrentThread.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
+				System.Threading.Thread.CurrentThread.CurrentUICulture = System.Globalization.CultureInfo.InvariantCulture;
+				try
+				{
+					method.Invoke(target, new object[1] { args });
+				}
+				catch (Exception retryEx)
+				{
+					retryError = retryEx;
+				}
 			}
-			catch
+			finally
 			{
+				try { System.Threading.Thread.CurrentThread.CurrentCulture = savedCulture; }
+				catch { }
+				try { System.Threading.Thread.CurrentThread.CurrentUICulture = savedUiCulture; }
+				catch { }
 			}
-			BrowserErrorReporter.Report("key", ex, SiteOf(RootCause(ex)));
+			if (retryError != null)
+			{
+				ReportKeyInvokeError(ex, kind);
+			}
 		}
+		catch (Exception ex)
+		{
+			ReportKeyInvokeError(ex, kind);
+		}
+	}
+
+	private static bool IsCultureZeroDispatchFailure(Exception ex)
+	{
+		return ex is System.Reflection.TargetInvocationException
+			&& RootCause(ex) is System.ArgumentOutOfRangeException aoore
+			&& string.Equals(aoore.ParamName, "culture", System.StringComparison.OrdinalIgnoreCase);
+	}
+
+	private void ReportKeyInvokeError(Exception ex, string kind)
+{
+		Console.WriteLine("[WinFormsAppHost] Key " + kind + " error: " + ex.GetType().Name + ": " + ex.Message.Split('\n')[0] + " site=" + SiteOf(ex));
+		Console.WriteLine("[WinFormsAppHost] Key " + kind + " error: root=" + RootCause(ex).GetType().Name + " site=" + SiteOf(RootCause(ex)) + " msg=" + (RootCause(ex).Message ?? "").Split('\n')[0]);
+		try
+		{
+			// WD-1740-IMP: null-frames diagnostic (no live method resolution over hostile frames).
+			foreach (string diagLine in FormatFirstChance(RootCause(ex), frames: null).ConsoleLines)
+				Console.WriteLine("[diagstack] " + diagLine);
+		}
+		catch
+		{
+		}
+		BrowserErrorReporter.Report("key", ex, SiteOf(RootCause(ex)));
 	}
 
 	private static string Mods(bool shift, bool ctrl, bool alt)
@@ -8802,18 +9868,52 @@ public sealed partial class WinFormsAppHost : IDisposable
 		return stringBuilder.ToString();
 	}
 
-	private System.Windows.Forms.Control? HitTestDeep(System.Windows.Forms.Control.ControlCollection controls, int parentAbsX, int parentAbsY, int x, int y)
+	// CREDIT1300-WPF6: deep-button oracle. DescribeKids stops expanding
+	// at depth 2, so buttons nested deeper (wizard Next inside page/panel
+	// stacks) never appear in kids= dumps. This walker lists button-like
+	// controls at depth >= 3 with click-space-absolute bounds. Telemetry
+	// only: no hit/dispatch/paint effect. Bounded to 32 entries.
+	private static bool IsDeepButtonControl(System.Windows.Forms.Control control) =>
+		control is System.Windows.Forms.Button
+		|| control is System.Windows.Forms.IButtonControl
+		|| control.GetType().Name.Contains("Button");
+
+	private static void AppendDeepButtons(StringBuilder sb, System.Windows.Forms.Control.ControlCollection controls, int depth, int absX, int absY, ref int count)
 	{
-		for (int num = controls.Count - 1; num >= 0; num--)
+		foreach (System.Windows.Forms.Control control in controls)
 		{
-			System.Windows.Forms.Control control = controls[num];
+			int cx = absX + control.Left;
+			int cy = absY + control.Top;
+			if (depth >= 3 && count < 32 && IsDeepButtonControl(control))
+			{
+				if (count > 0)
+				{
+					sb.Append(";");
+				}
+				sb.Append(control.GetType().Name + " '" + control.Name + "' v=" + control.Visible + " e=" + control.Enabled + " b=" + cx + "," + cy + "," + control.Width + "x" + control.Height);
+				count++;
+			}
+			if (control.Controls.Count > 0)
+			{
+				AppendDeepButtons(sb, control.Controls, depth + 1, cx, cy, ref count);
+			}
+		}
+	}
+
+	// RT-OVERLAY-1451-a3k9 pre-pass: an open fork-combo list floats above
+	// opaque siblings (real drop-down windows are topmost), so row clicks
+	// must reach the combo even when a later sibling covers the list area
+	// (served: textBox_sort shadows memory-combo rows at form y>=60).
+	// Runs before the sibling loop at every level; nested containers are
+	// searched depth-first so lists overflowing their parent keep priority.
+	// Mirrors WfWasm.Shim ComboBox.HitTestDeep overlay logic.
+	private System.Windows.Forms.Control? HitTestOpenComboOverlay(System.Windows.Forms.Control.ControlCollection controls, int parentAbsX, int parentAbsY, int x, int y)
+	{
+		for (int pre = 0; pre < controls.Count; pre++)
+		{
+			System.Windows.Forms.Control control = controls[pre];
 			if (control.Visible && control.Enabled && control.Width > 0 && control.Height > 0 && !(control.GetType().Name == "CaptionControl"))
 			{
-								// ADGV-COMBO hookup: the open list overflows the field
-				// bounds (cf. drop-down window), so row clicks would miss.
-				// Mirrors WfWasm.Shim ComboBox.HitTestDeep overlay logic.
-				// Runs before the bounds test: an open list floats above
-				// earlier siblings; later siblings already returned above.
 				if (control is System.Windows.Forms.ComboBox fc && fc.DroppedDown)
 				{
 					bool fcSimple = false;
@@ -8827,6 +9927,33 @@ public sealed partial class WinFormsAppHost : IDisposable
 							return control;
 					}
 				}
+				if (control.Controls.Count > 0)
+				{
+					System.Windows.Forms.Control? deep = HitTestOpenComboOverlay(control.Controls, parentAbsX + control.Left, parentAbsY + control.Top, x, y);
+					if (deep != null)
+					{
+						return deep;
+					}
+				}
+			}
+		}
+		return null;
+	}
+
+	private System.Windows.Forms.Control? HitTestDeep(System.Windows.Forms.Control.ControlCollection controls, int parentAbsX, int parentAbsY, int x, int y)
+	{
+		System.Windows.Forms.Control? overlay = HitTestOpenComboOverlay(controls, parentAbsX, parentAbsY, x, y);
+		if (overlay != null)
+		{
+			return overlay;
+		}
+		for (int num = controls.Count - 1; num >= 0; num--)
+		{
+			System.Windows.Forms.Control control = controls[num];
+			if (control.Visible && control.Enabled && control.Width > 0 && control.Height > 0 && !(control.GetType().Name == "CaptionControl"))
+			{
+				// Open-combo overlay handled by the HitTestOpenComboOverlay
+				// pre-pass above (topmost priority across sibling orders).
 				int num2 = parentAbsX + control.Left;
 				int num3 = parentAbsY + control.Top;
 				if (x >= num2 && x <= num2 + control.Width && y >= num3 && y <= num3 + control.Height)
@@ -8981,6 +10108,14 @@ public sealed partial class WinFormsAppHost : IDisposable
 
 	private static bool TryPaintRegion(ICanvas canvas, System.Windows.Forms.Control c, int absX, int absY, int w, int h, bool clearFlag)
 	{
+		// RVW-9594 Job1: region patches re-invoke the vendor OnPaint,
+		// which carries no text glyphs; a patch over a native-delegating
+		// text box would erase the host-drawn text from the retained
+		// layer. Take the full path (which draws the glyphs) instead.
+		if (NeedsHostTextGlyphs(c))
+		{
+			return false;
+		}
 		if (!FrameDirtyRect(c, out var rc) || !rc.HasValue)
 		{
 			return false;
@@ -9345,6 +10480,135 @@ public sealed partial class WinFormsAppHost : IDisposable
 	// the full bitmap, and register the fresh surface as retained+hash so
 	// later dedupe and browser state stay aligned. Any doubt returns
 	// false: the caller uploads the full bitmap as today.
+	// Chronic-overlap backoff (RVW-1096 runtime): the pixel proof below fails
+	// structurally for controls with embedded moving pixels (scrollbar
+	// thumb/caret travel with every scroll, so fresh never equals
+	// retained<<shift — measured 28/28 overlap-mismatch on the RTE editor
+	// with NScrollShift=0). Each failed proof burns a retained extract plus
+	// a full-surface memcmp for zero wins. After OverlapBackoffAfter
+	// consecutive mismatches the proof is skipped for OverlapBackoffSkips
+	// paints (the pending shift is still consumed; the caller uploads full
+	// as today); one paint in K re-proves, so a newly-clean control
+	// re-enables the shift path by itself. Every exit here returns false,
+	// so served pixels are identical to today's fallback by construction.
+	internal const int OverlapBackoffAfter = 3;
+	internal const int OverlapBackoffSkips = 30;
+
+	private sealed class OverlapStreak
+	{
+		public int Mismatch;
+		public int Skips;
+		public bool ProofSuppressed;
+	}
+
+	private static readonly ConditionalWeakTable<System.Windows.Forms.Control, OverlapStreak> s_overlapStreaks = new();
+	private static readonly ConcurrentDictionary<string, long> s_shiftVetoCounts = new();
+
+	internal static void CountShiftVeto(string? reason)
+	{
+		try
+		{
+			string family = string.IsNullOrEmpty(reason) ? "none" : reason;
+			int cut = family.IndexOf(':');
+			if (cut > 0)
+				family = family.Substring(0, cut);
+			s_shiftVetoCounts.AddOrUpdate(family, 1, (_, old) => old + 1);
+		}
+		catch
+		{
+		}
+	}
+
+	public static System.Collections.Generic.Dictionary<string, long> SnapshotShiftVetoCounts()
+	{
+		return new System.Collections.Generic.Dictionary<string, long>(s_shiftVetoCounts);
+	}
+
+	// Backoff gate for the proof site below: when a chronic-mismatch streak
+	// is cooling down, consume the pending shift (so retries never see an
+	// accumulated stale displacement) and report backoff instead of paying
+	// the retained extract + memcmp. Fail-open: any doubt runs the proof.
+	private static bool TryEnterOverlapBackoff(System.Windows.Forms.Control c)
+	{
+		try
+		{
+			if (!s_overlapStreaks.TryGetValue(c, out OverlapStreak? streak) || streak is null)
+				return false;
+			lock (streak)
+			{
+				if (streak.Skips <= 0)
+					return false;
+				streak.Skips--;
+				streak.ProofSuppressed = true;
+			}
+			try { WasmRepaintGate.TakeScrollShift(c, out _, out _); } catch { }
+			return true;
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
+	private static void NoteOverlapMismatch(System.Windows.Forms.Control c)
+	{
+		try
+		{
+			OverlapStreak streak = s_overlapStreaks.GetValue(c, _ => new OverlapStreak());
+			lock (streak)
+			{
+				streak.ProofSuppressed = false;
+				streak.Mismatch++;
+				if (streak.Mismatch >= OverlapBackoffAfter && streak.Skips <= 0)
+					streak.Skips = OverlapBackoffSkips;
+			}
+		}
+		catch
+		{
+		}
+	}
+
+	private static void NoteOverlapSuccess(System.Windows.Forms.Control c)
+	{
+		try
+		{
+			if (s_overlapStreaks.TryGetValue(c, out OverlapStreak? streak) && streak is not null)
+			{
+				lock (streak)
+				{
+					streak.Mismatch = 0;
+					streak.Skips = 0;
+					streak.ProofSuppressed = false;
+				}
+			}
+		}
+		catch
+		{
+		}
+	}
+
+	// Store gate for the full-path fallthrough: while the proof is cooling
+	// down, the retained surface is stale by design (the retry re-proves and
+	// refreshes it), so cloning the fresh raster over it is pure churn.
+	// Any paint whose proof actually ran (retry, first mismatch cycle, or a
+	// control that never backed off) still stores exactly as today.
+	private static bool OverlapStoreSuppressed(System.Windows.Forms.Control c)
+	{
+		try
+		{
+			if (!s_overlapStreaks.TryGetValue(c, out OverlapStreak? streak) || streak is null)
+				return false;
+			lock (streak)
+			{
+				return streak.ProofSuppressed;
+			}
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
 	private static bool TryShiftUploadFromFresh(ICanvas canvas, System.Windows.Forms.Control c, byte[] fresh, int w, int h, int absX, int absY, out long stripPx, out string? vetoReason)
 	{
 		stripPx = 0;
@@ -9352,16 +10616,25 @@ public sealed partial class WinFormsAppHost : IDisposable
 		if (ScrollShiftUploadDisabled)
 		{
 			vetoReason = "disabled";
+			CountShiftVeto(vetoReason);
+			return false;
+		}
+		if (TryEnterOverlapBackoff(c))
+		{
+			vetoReason = "overlap-backoff";
+			CountShiftVeto(vetoReason);
 			return false;
 		}
 		if (!WasmRepaintGate.TakeScrollShift(c, out int dx, out int dy))
 		{
 			vetoReason = "no-shift-taken";
+			CountShiftVeto(vetoReason);
 			return false;
 		}
 		if (!(canvas is ICanvasRenderer { SupportsBitmapLayers: not false } renderer))
 		{
 			vetoReason = "no-bitmap-layers";
+			CountShiftVeto(vetoReason);
 			return false;
 		}
 		string id = LayerIdFor(c);
@@ -9373,20 +10646,24 @@ public sealed partial class WinFormsAppHost : IDisposable
 		if (retained is null || retained.Width != w || retained.Height != h)
 		{
 			vetoReason = retained is null ? "retained-miss:null" : $"retained-miss:size:{retained.Width}x{retained.Height}-vs-{w}x{h}";
+			CountShiftVeto(vetoReason);
 			return false;
 		}
 		byte[]? old;
 		try { old = retained.ToRgbaBytes(); }
-		catch (Exception readEx) { vetoReason = $"retained-read:{readEx.GetType().Name}"; return false; }
+		catch (Exception readEx) { vetoReason = $"retained-read:{readEx.GetType().Name}"; CountShiftVeto(vetoReason); return false; }
 		if (old is null || !ScrollOverlapEqual(fresh, old, w, h, dx, dy))
 		{
 			vetoReason = old is null ? "retained-read:null" : $"overlap-mismatch:dx={dx},dy={dy}";
+			CountShiftVeto(vetoReason);
+			if (vetoReason.StartsWith("overlap-mismatch", StringComparison.Ordinal))
+				NoteOverlapMismatch(c);
 			return false;
 		}
 		Rectangle strip = ScrollExposedStrip(w, h, dx, dy);
 		byte[] stripBytes;
 		try { stripBytes = SliceRgba(fresh, w, strip); }
-		catch (Exception sliceEx) { vetoReason = $"strip-slice:{sliceEx.GetType().Name}"; return false; }
+		catch (Exception sliceEx) { vetoReason = $"strip-slice:{sliceEx.GetType().Name}"; CountShiftVeto(vetoReason); return false; }
 		try
 		{
 			renderer.ShiftBitmap(id, dx, dy);
@@ -9395,6 +10672,7 @@ public sealed partial class WinFormsAppHost : IDisposable
 		catch (Exception shiftEx)
 		{
 			vetoReason = $"shift-patch:{shiftEx.GetType().Name}";
+			CountShiftVeto(vetoReason);
 			// A renderer may have queued the shift before failing the patch.
 			// Force the caller's full upload instead of hash-deduping against
 			// a browser layer whose pixels may now be partially changed.
@@ -9413,6 +10691,8 @@ public sealed partial class WinFormsAppHost : IDisposable
 		}
 		stripPx = (long)strip.Width * (long)strip.Height;
 		vetoReason = "ok";
+		NoteOverlapSuccess(c);
+		CountShiftVeto(vetoReason);
 		return true;
 	}
 
@@ -9990,7 +11270,7 @@ public sealed partial class WinFormsAppHost : IDisposable
 		{
 			return false;
 		}
-		if (!TypeSelfPaints(type) && c.BackgroundImage == null)
+		if (!TypeSelfPaints(type) && c.BackgroundImage == null && !ControlHasPaintSubscribers(c))
 		{
 			return false;
 		}
@@ -10222,7 +11502,12 @@ public sealed partial class WinFormsAppHost : IDisposable
 				else
 					WasmFrameCounters.CountRasterFull((long)w * (long)h);
 			}
-			StoreRetainedPaint(c, bitmap);
+			// Backoff store gate: a suppressed proof leaves the retained
+			// surface stale by design (the retry re-proves and refreshes);
+			// cloning over it here would be pure churn. Unsuppressed paints
+			// store exactly as today.
+			if (!OverlapStoreSuppressed(c))
+				StoreRetainedPaint(c, bitmap);
 			return true;
 		}
 		catch (Exception ex)
@@ -10234,7 +11519,7 @@ public sealed partial class WinFormsAppHost : IDisposable
 			string text = type.FullName ?? type.Name;
 			if (s_selfPaintLogged.TryAdd(text, 1))
 			{
-				string value = ((ex.InnerException == null) ? "none" : (ex.InnerException.GetType().FullName + ":" + ex.InnerException.Message + ((ex.InnerException is TypeLoadException ex2 && !string.IsNullOrEmpty(ex2.TypeName)) ? (" TYPENAME=" + ex2.TypeName) : "") + StackHead(ex.InnerException, 6) + " OSTACK=" + StackHead(ex, 14).Replace(" STACK=", "")));
+				string value = ((ex.InnerException == null) ? "none" : (ex.InnerException.GetType().FullName + ":" + ex.InnerException.Message + ((ex.InnerException is TypeLoadException ex2 && !string.IsNullOrEmpty(ex2.TypeName)) ? (" TYPENAME=" + ex2.TypeName) : "") + StackHead(ex.InnerException, 6) + " OSTACK=" + StackHead(ex, 14).Replace(" STACK=", "") + " SITES=" + SiteChain(ex.InnerException ?? ex, 12)));
 				Console.WriteLine($"[WinFormsAppHost] Self-paint failed for {text}: TYPE={ex.GetType().FullName} MSG={ex.Message} site={SiteOf(ex)} INNER={value}");
 			}
 			return false;

@@ -26,10 +26,22 @@ public sealed class CpuDrawingContextContractTests
         return dll;
     }
 
+    // TMPMOVE canonical-only: rewritten fixtures under retained/.
+    private static string RepoRoot =>
+        Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+    private static string RewrittenSmall
+    {
+        get
+        {
+            var canon = Path.Combine(RepoRoot, ".artifacts", "tmp", "retained", "rewritten-small");
+            return canon;
+        }
+    }
+
     private static string ForkDll()
     {
-        string dll = @"E:\tmp\rewritten-small\WfWasm.WinForms.dll";
-        Assert.True(File.Exists(dll), "migrated fork not built (run rewrite-small.ps1): " + dll);
+        string dll = Path.Combine(RewrittenSmall, "WfWasm.WinForms.dll");
+        Assert.True(File.Exists(dll), "missing rewritten fixture (expected at retained/rewritten-small): " + dll);
         return dll;
     }
 

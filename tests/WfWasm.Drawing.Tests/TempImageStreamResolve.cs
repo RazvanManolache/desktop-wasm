@@ -13,14 +13,27 @@ using Xunit;
 // code 65, fmt 1, 7-bit len, NRBF-with-MS-Im...).
 public sealed class TempImageStreamResolve
 {
-    private const string FixturePath = @"E:\tmp\controlbars-app.dll";
+    // TMPMOVE canonical-only: fixture under retained/.
+    private static string RepoRoot =>
+        System.IO.Path.GetFullPath(System.IO.Path.Combine(System.AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+    private static string FixturePath
+    {
+        get
+        {
+            var canon = System.IO.Path.Combine(RepoRoot, ".artifacts", "tmp", "retained", "controlbars-app.dll");
+            return canon;
+        }
+    }
+    private static string RunsDir =>
+        System.IO.Path.Combine(RepoRoot, ".artifacts", "tmp", "runs", "drawing-temp");
 
     [Fact]
     public void Temp_ControlBars_ImageStream_Resolves()
     {
         if (!System.IO.File.Exists(FixturePath))
         {
-            System.IO.File.WriteAllText(@"E:\tmp\imagestream-resolve.txt",
+            System.IO.Directory.CreateDirectory(RunsDir);
+            System.IO.File.WriteAllText(System.IO.Path.Combine(RunsDir, "imagestream-resolve.txt"),
                 "ok=SKIPPED missing-fixture");
             return; // explicit missing-input report, not a pass
         }
@@ -28,7 +41,8 @@ public sealed class TempImageStreamResolve
         var rm = new System.Resources.ResourceManager("ControlBars.Form1", asm);
         bool ok = WfDraw::WfWasm.Drawing.ResourceHelper.TryGetImageListStreamerBytes(
             rm, "imageList1.ImageStream", out byte[]? msft);
-        System.IO.File.WriteAllText(@"E:\tmp\imagestream-resolve.txt",
+        System.IO.Directory.CreateDirectory(RunsDir);
+        System.IO.File.WriteAllText(System.IO.Path.Combine(RunsDir, "imagestream-resolve.txt"),
             $"ok={ok} len={(msft is null ? -1 : msft.Length)} head={(msft is null || msft.Length < 8 ? "" : System.BitConverter.ToString(msft, 0, 8))}");
         Assert.True(ok, "entry did not resolve");
         Assert.NotNull(msft);

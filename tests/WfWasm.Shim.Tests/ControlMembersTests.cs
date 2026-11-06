@@ -340,6 +340,7 @@ public sealed class ControlMembersTests
     public void Run_Pumps_Posted_Work_On_Run_Thread()
     {
         var form = new Form("pump");
+        form.Visible = false; // The worker must observe Run showing it, not its construction default.
         var ctx = new WindowsFormsSynchronizationContext();
         SynchronizationContext.SetSynchronizationContext(ctx);
         try
@@ -374,6 +375,7 @@ public sealed class ControlMembersTests
     {
         var control = new Control("m");
         var form = new Form("host");
+        form.Visible = false;
         int createThread = Environment.CurrentManagedThreadId;
         _marshalWorkThread = -1;
         ThreadPool.QueueUserWorkItem(_ =>
@@ -394,6 +396,7 @@ public sealed class ControlMembersTests
     public void Run_Returns_When_MainForm_Closes()
     {
         var form = new Form("closer");
+        form.Visible = false;
         ThreadPool.QueueUserWorkItem(_ =>
         {
             SpinWait.SpinUntil(() => form.Visible, TimeSpan.FromSeconds(5));

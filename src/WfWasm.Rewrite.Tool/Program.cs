@@ -83,6 +83,7 @@ string? drawing = null;
 string? mapFile = null;
 string? outFile = null;
 string? pdnCpu = null;
+string? forkPath = null;
 int top = 30;
 for (int i = 0; i < args.Length; i++)
 {
@@ -100,16 +101,18 @@ for (int i = 0; i < args.Length; i++)
         outFile = args[++i];
     else if (args[i] == "--pdncp" && i + 1 < args.Length)
         pdnCpu = args[++i];
+    else if (args[i] == "--forkPath" && i + 1 < args.Length)
+        forkPath = args[++i];
     else
     {
-        Console.Error.WriteLine("usage: gap --app <dll> --forms <WfWasm.WinForms.dll> [--drawing <WfWasm.Drawing.dll>] [--map handmap.txt] [--top N] [--out rewritten.dll] [--pdncp WfWasm.PdnCpu.dll]");
+        Console.Error.WriteLine("usage: gap --app <dll> --forms <WfWasm.WinForms.dll> [--drawing <WfWasm.Drawing.dll>] [--map handmap.txt] [--top N] [--out rewritten.dll] [--pdncp WfWasm.PdnCpu.dll] [--forkPath WfWasm.WinForms.dll]");
         return 2;
     }
 }
 
 if (app is null || forms is null)
 {
-    Console.Error.WriteLine("usage: gap --app <dll> --forms <WfWasm.WinForms.dll> [--drawing <WfWasm.Drawing.dll>] [--map handmap.txt] [--top N] [--out rewritten.dll] [--pdncp WfWasm.PdnCpu.dll]");
+    Console.Error.WriteLine("usage: gap --app <dll> --forms <WfWasm.WinForms.dll> [--drawing <WfWasm.Drawing.dll>] [--map handmap.txt] [--top N] [--out rewritten.dll] [--pdncp WfWasm.PdnCpu.dll] [--forkPath WfWasm.WinForms.dll]");
     return 2;
 }
 
@@ -201,7 +204,7 @@ foreach (var group in byType)
 
 if (outFile is not null)
 {
-    AssemblyRewriter.Rewrite(app, outFile, assemblyMap, typeMap, pdnCpu);
+    AssemblyRewriter.Rewrite(app, outFile, assemblyMap, typeMap, pdnCpu, forkPath);
     Console.WriteLine($"rewrote: {outFile}");
 }
 

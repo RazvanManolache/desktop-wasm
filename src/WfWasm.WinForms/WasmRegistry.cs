@@ -57,10 +57,18 @@ public static class WasmRegistry
     public static void SetValue(RegistryKey? key, string? name, object value, RegistryValueKind kind) { }
     public static void SetValue(string keyName, string? valueName, object value) { }
     public static void SetValue(string keyName, string? valueName, object value, RegistryValueKind kind) { }
-    public static RegistryKey? CreateSubKey(RegistryKey? key, string subkey) => null;
-    public static RegistryKey? CreateSubKey(RegistryKey? key, string subkey, RegistryKeyPermissionCheck permissionCheck, RegistryOptions options) => null;
-    public static RegistryKey? CreateSubKey(RegistryKey? key, string subkey, bool writable, RegistryOptions options) => null;
-    public static RegistryKey? CreateSubKey(RegistryKey? key, string subkey, RegistryKeyPermissionCheck permissionCheck, System.Security.AccessControl.RegistrySecurity security) => null;
+    // Create semantics differ from open semantics: creating a key in the
+    // headless hive always succeeds, and apps (e.g. Krypton) throw their
+    // own Exception on a null create-result. The handle carries no state;
+    // it flows only through retargeted WasmRegistry calls (reads default,
+    // writes no-op, enumerations empty), so an uninitialized instance is
+    // sufficient and safe. Opens intentionally stay null (missing-key).
+    private static RegistryKey NewHeadlessKey() =>
+        (RegistryKey)System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(RegistryKey));
+    public static RegistryKey? CreateSubKey(RegistryKey? key, string subkey) => NewHeadlessKey();
+    public static RegistryKey? CreateSubKey(RegistryKey? key, string subkey, RegistryKeyPermissionCheck permissionCheck, RegistryOptions options) => NewHeadlessKey();
+    public static RegistryKey? CreateSubKey(RegistryKey? key, string subkey, bool writable, RegistryOptions options) => NewHeadlessKey();
+    public static RegistryKey? CreateSubKey(RegistryKey? key, string subkey, RegistryKeyPermissionCheck permissionCheck, System.Security.AccessControl.RegistrySecurity security) => NewHeadlessKey();
     public static void Close(RegistryKey? key) { }
     public static void Dispose(RegistryKey? key) { }
     public static void Flush(RegistryKey? key) { }

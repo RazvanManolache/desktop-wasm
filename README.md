@@ -14,6 +14,13 @@ stacks inside one app session) is work in progress.
 
 Full scope, remaining limitations, and attribution: [progress 2026-11-03](docs/progress/2026-11-03.md).
 
+**Latest source progress:** [6 November integration fixes and validation](docs/progress/2026-11-06.md).
+Download replaceable development builds from [ci-latest](https://github.com/RazvanManolache/desktop-wasm/releases/tag/ci-latest).
+
+| November 6: tested local builds | |
+|---|---|
+| <a href="docs/progress/images/planner-20261106.png"><img src="docs/progress/images/planner-20261106.png" width="400" alt="Project planner rendered after mounted WPF app navigation"/></a><br/>**WPF planner** — app navigation retains the `/wpf` mount | <a href="docs/progress/images/paint-colors-less-20261106.png"><img src="docs/progress/images/paint-colors-less-20261106.png" width="400" alt="Paint.NET Colors window after clicking Less, with the RGB controls clipped"/></a><br/>**Paint.NET Colors** — More/Less sizing and clipping verified |
+
 Origin: this repository is the successor of
 [winforms-wasm](https://github.com/RazvanManolache/winforms-wasm). Standalone
 WinForms development ends at that repository's final checkpoint; future
@@ -29,9 +36,8 @@ development and releases happen here.
   (see `inputs/README.md`).
 - Pure-framework paths are the proven slice. Mixed sessions, full control
   parity, and performance work remain open and are tracked as gaps, not
-  claims. This repository publishes no release tags; development builds are available as GitHub Actions artifacts;
-  the initial commit is a source snapshot, and any future release will be
-  cut explicitly — never implied by this checkout.
+  claims. Replaceable development downloads are published under `ci-latest`;
+  these previews are separate from any future stable versioned release.
 
 ## Layout
 

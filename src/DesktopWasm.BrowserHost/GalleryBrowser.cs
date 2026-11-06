@@ -114,6 +114,8 @@ public static class GalleryBrowser
                     AutomationProperties.GetName(l),
                     l.Items.Count, l.SelectedIndex,
                     l.SelectedItem?.Content ?? "")).ToList();
+            var datagrids = page is null ? [] : FindVisuals<DataGrid>(page).Take(4).ToList();
+            if (datagrids.Count > 0) DataGrid.EditDiagnosticsEnabled = true;
             var menus = page is null ? [] : FindVisuals<Menu>(page)
                 .Take(4).Select(m => new MenuState(
                     m.Items.Select(MenuItemState.For).ToList())).ToList();
@@ -209,6 +211,7 @@ public static class GalleryBrowser
             Note("groupboxes", JsonSerializer.Serialize(groups));
             Note("grids", JsonSerializer.Serialize(grids));
             Note("listboxes", JsonSerializer.Serialize(lists));
+            Note("datagrid-edit", JsonSerializer.Serialize(datagrids.Select(g => g.GetEditDiagnostics()).ToList()));
             Note("menus", JsonSerializer.Serialize(menus));
             Note("calendars", JsonSerializer.Serialize(calendars));
             Note("richtexts", JsonSerializer.Serialize(richtexts));

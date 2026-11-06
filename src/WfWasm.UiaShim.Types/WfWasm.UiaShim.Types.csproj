@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <AssemblyName>UIAutomationTypes</AssemblyName>
+    <RootNamespace>System.Windows.Automation</RootNamespace>
+    <SignAssembly>false</SignAssembly>
+    <!-- Version is stamped per consuming app: C1 v10 / IG v8 (build with -p:AssemblyVersion= / -p:Version=). -->
+    <AssemblyVersion>10.0.0.0</AssemblyVersion>
+    <Version>10.0.0.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App" />
+  </ItemGroup>
+
+  <!-- See WfWasm.UiaShim.Provider.csproj: shared compile for self-containment. -->
+  <ItemGroup>
+    <Compile Include="..\WfWasm.UiaShim.Provider\Generated\UiaProviderStubs.g.cs" Link="UiaProviderStubs.g.cs" />
+  </ItemGroup>
+
+</Project>

@@ -157,12 +157,3 @@ internal struct MSG
     public uint time;
     public Point pt;
 }
-
-[StructLayout(LayoutKind.Sequential)]
-internal struct NMHDR
-{
-    public HWND hwndFrom;
-    public nuint idFrom;
-    public uint code;
-}
-

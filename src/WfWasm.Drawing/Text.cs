@@ -70,6 +70,9 @@ namespace System.Drawing
             _measurableRanges = (CharacterRange[])ranges.Clone();
         }
 
+        internal CharacterRange[] GetMeasurableRanges() =>
+            (CharacterRange[])_measurableRanges.Clone();
+
         public override string ToString() =>
             $"StringFormat(align={Alignment}, line={LineAlignment}, trim={Trimming})";
 

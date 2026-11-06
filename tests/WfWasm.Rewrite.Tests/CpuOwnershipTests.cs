@@ -14,6 +14,18 @@ using System.Runtime.Loader;
 // stale handle otherwise recycles and kills the finalizer thread.
 public sealed class CpuOwnershipTests
 {
+    // TMPMOVE canonical-only: rewritten fixtures under retained/.
+    private static string RepoRoot =>
+        Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+    private static string RewrittenSmall
+    {
+        get
+        {
+            var canon = Path.Combine(RepoRoot, ".artifacts", "tmp", "retained", "rewritten-small");
+            return canon;
+        }
+    }
+
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
     private static (object Bitmap, WeakReference Effect) RetainTwoInputs(Assembly core, Assembly cpu)
     {
@@ -46,7 +58,7 @@ public sealed class CpuOwnershipTests
         {
             alc.Resolving += (context, name) =>
             {
-                foreach (string dir in new[] { paintDir, Path.GetDirectoryName(cpuDll)!, Path.GetDirectoryName(drawingDll)!, @"E:\AI\Code\DesktopWasm\inputs\winforms\rewritten-small" })
+                foreach (string dir in new[] { paintDir, Path.GetDirectoryName(cpuDll)!, Path.GetDirectoryName(drawingDll)!, Path.Combine(RepoRoot, "inputs", "winforms", "rewritten-small") })
                 {
                     string path = Path.Combine(dir, name.Name + ".dll");
                     if (File.Exists(path)) return context.LoadFromAssemblyPath(path);
@@ -162,7 +174,7 @@ public sealed class CpuOwnershipTests
     {
         string paintDir = PaintDir();
         string cpuDll = BinDll("WfWasm.PdnCpu", "net9.0", "WfWasm.PdnCpu");
-        string forkDll = @"E:\tmp\rewritten-small\WfWasm.WinForms.dll";
+        string forkDll = Path.Combine(RewrittenSmall, "WfWasm.WinForms.dll");
         string drawingDll = BinDll("WfWasm.Drawing", "net9.0", "WfWasm.Drawing");
         string corePath = Path.Combine(paintDir, "PaintDotNet.Windows.Core.dll");
         Assert.True(File.Exists(corePath), "pristine PDN core missing: " + corePath);
@@ -207,7 +219,7 @@ public sealed class CpuOwnershipTests
     {
         string paintDir = PaintDir();
         string cpuDll = BinDll("WfWasm.PdnCpu", "net9.0", "WfWasm.PdnCpu");
-        string forkDll = @"E:\tmp\rewritten-small\WfWasm.WinForms.dll";
+        string forkDll = Path.Combine(RewrittenSmall, "WfWasm.WinForms.dll");
         string drawingDll = BinDll("WfWasm.Drawing", "net9.0", "WfWasm.Drawing");
         string corePath = Path.Combine(paintDir, "PaintDotNet.Windows.Core.dll");
         Assert.True(File.Exists(corePath), "pristine PDN core missing: " + corePath);

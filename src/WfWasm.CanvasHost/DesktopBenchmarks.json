@@ -92,6 +92,7 @@
     "assembly": "GitExtensions",
     "entryFile": "GitExtensions.dll",
     "formType": "GitUI.CommandsDialogs.FormBrowse",
+    "startupAdapter": "GitExtensions",
     "formAssembly": "GitUI",
     "build": "dotnet",
     "buildArguments": [],
@@ -103,7 +104,7 @@
       "Menus"
     ],
     "license": "GPL-3.0",
-    "notes": "Requires upstream submodules, .NET 10, application initialization and a virtual/proxied Git service. FormBrowse requires startup services.",
+    "notes": "Requires upstream submodules and .NET 10. FormBrowse requires startup arguments/services: the host startup adapter builds a minimal GitUICommands graph and invokes the commands constructor; a virtual/proxied Git service remains out of scope.",
     "downloadUrl": null,
     "sha256": null
   },
@@ -137,7 +138,7 @@
   {
     "scene": "BenchmarkDockPanel",
     "slug": "benchmark-dockpanel",
-    "label": "DockPanel Suite — DockSample",
+    "label": "DockPanel Suite â€” DockSample",
     "family": "Layout and docking",
     "sourceFolder": "dockpanel",
     "sourceUrl": "https://github.com/dockpanelsuite/dockpanelsuite",
@@ -164,7 +165,7 @@
   {
     "scene": "BenchmarkKrypton",
     "slug": "benchmark-krypton",
-    "label": "Krypton Toolkit — TestForm",
+    "label": "Krypton Toolkit â€” TestForm",
     "family": "Layout and docking",
     "sourceFolder": "krypton",
     "sourceUrl": "https://github.com/Krypton-Suite/Standard-Toolkit",
@@ -221,7 +222,7 @@
   {
     "scene": "BenchmarkTreemap",
     "slug": "benchmark-treemap",
-    "label": "Disk treemap — DS-step",
+    "label": "Disk treemap â€” DS-step",
     "family": "Quick start",
     "sourceFolder": "treemap-winforms",
     "sourceUrl": "https://github.com/klzk-myy/DS-step",
@@ -248,7 +249,7 @@
   {
     "scene": "BenchmarkChip8",
     "slug": "benchmark-chip8",
-    "label": "CHIP-8 — ChocolateCHIP",
+    "label": "CHIP-8 â€” ChocolateCHIP",
     "family": "Quick start",
     "sourceFolder": "chip8",
     "sourceUrl": "https://github.com/JOBBIN9422/ChocolateCHIP",
@@ -370,6 +371,7 @@
     "assembly": "mRemoteNG",
     "entryFile": "mRemoteNG.dll",
     "formType": "mRemoteNG.UI.Forms.FrmMain",
+    "startupAdapter": "mRemoteNG",
     "formAssembly": "mRemoteNG",
     "build": "msbuild",
     "buildArguments": [

@@ -21,7 +21,7 @@ Hardening contract (adversarial brief):
   launch passed requires the consoles artifact on disk;
 - negative runs (generation['negative']) are rejected as acceptance
   unless --expect-negative is given.
-Usage: python verify.py --run E:/tmp/gal-run1 [--expect-run ID] [--expect-rev N]
+Usage: python verify.py --run .artifacts/tmp/runs/gal-run1 [--expect-run ID] [--expect-rev N]
        [--expect-cases smoke-click-keys,...] [--allow-blocked case,...]
        [--expect-negative]
 """

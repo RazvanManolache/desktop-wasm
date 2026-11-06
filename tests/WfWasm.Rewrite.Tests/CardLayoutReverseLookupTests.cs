@@ -1,3 +1,4 @@
+using System;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 using WfWasm.Rewrite;
@@ -12,8 +13,18 @@ using Xunit;
 // path (V_0 non-null, right before MakeDirty).
 public sealed class CardLayoutReverseLookupTests
 {
-    private const string RealDll =
-        @"E:\tmp\wfwasm-syncfusion-apps\syncfusion-calendar\Syncfusion.Shared.Base.dll";
+    // TMPMOVE canonical-only: fixtures under retained/.
+    private static string RepoRoot =>
+        Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+    private static string RealDll
+    {
+        get
+        {
+            var rel = Path.Combine("wfwasm-syncfusion-apps", "syncfusion-calendar", "Syncfusion.Shared.Base.dll");
+            var canon = Path.Combine(RepoRoot, ".artifacts", "tmp", "retained", rel);
+            return canon;
+        }
+    }
 
     private static DefaultAssemblyResolver FxResolver()
     {
@@ -59,6 +70,31 @@ public sealed class CardLayoutReverseLookupTests
                 && ReferenceEquals(i.Operand, instrs[^3]));
             // Single MakeDirty call site preserved.
             Assert.Single(instrs, i => i.Operand is MethodReference mr && mr.Name == "MakeDirty");
+            // Served-verified shape: every short branch fits its sbyte
+            // window (the 0037 beq.s -> ret overflow died served as
+            // VerificationException: invalid instruction target).
+            var offsets = new System.Collections.Generic.Dictionary<Instruction, int>();
+            int pos = 0;
+            foreach (var ins in instrs)
+            {
+                offsets[ins] = pos;
+                pos += ins.GetSize();
+            }
+            foreach (var i in instrs)
+            {
+                string name = i.OpCode.ToString();
+                if (name.EndsWith(".s", StringComparison.Ordinal)
+                    && i.Operand is Instruction target)
+                {
+                    int dist = offsets[target] - (offsets[i] + i.GetSize());
+                    Assert.True(dist >= sbyte.MinValue && dist <= sbyte.MaxValue,
+                        $"short branch {name} overflows its sbyte window");
+                }
+            }
+            // The old ret-targeting branch is long form now.
+            var retTargeter = instrs.First(
+                i => i.Operand is Instruction t && instrs.IndexOf(t) == instrs.Count - 1);
+            Assert.Equal(OpCodes.Beq, retTargeter.OpCode);
             read.Write(dstOut);
         }
         finally

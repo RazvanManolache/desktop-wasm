@@ -971,6 +971,15 @@ internal static class TemplateApplier
 
     private static void ResolveAll(Control control)
     {
+        var previous = XamlLoader.CustomElementSource;
+        if (control.ActiveTemplate?.TemplateScopeAssembly is { } source)
+            XamlLoader.CustomElementSource = source;
+        try { ResolveAllInScope(control); }
+        finally { XamlLoader.CustomElementSource = previous; }
+    }
+
+    private static void ResolveAllInScope(Control control)
+    {
         RestoreDirtied(control);
         if (control.ActiveEntries is { } entries)
             foreach (var entry in entries)
@@ -1307,7 +1316,9 @@ internal static class TemplateApplier
                 ?? FindLoadedConvertedType(source[..dot]);
             if (owner is not null)
             {
-                var dp = DependencyProperty.FromName(owner, source[(dot + 1)..]);
+                var dp = DependencyProperty.FromName(owner, source[(dot + 1)..])
+                    ?? owner.GetField(source[(dot + 1)..] + "Property",
+                        BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy)?.GetValue(null) as DependencyProperty;
                 if (dp is not null)
                 {
                     value = parent.GetValue(dp);
@@ -1323,6 +1334,11 @@ internal static class TemplateApplier
             }
             else if (TryReadNested(parent, source, out value))
             {
+                return true;
+            }
+            else if (XamlLoader.TryResolveConvertedAttachedDp(source[..dot], source[(dot + 1)..]) is { } attached)
+            {
+                value = parent.GetValue(attached);
                 return true;
             }
             value = parent.GetAttached(source);
@@ -1358,7 +1374,7 @@ internal static class TemplateApplier
     {
         Type? found = null;
         var flags = BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy;
-        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+        foreach (var assembly in XamlLoader.ConvertedSearchAssemblies())
         {
             if (ReferenceEquals(assembly, typeof(FrameworkElement).Assembly)) continue;
             Type? candidate;

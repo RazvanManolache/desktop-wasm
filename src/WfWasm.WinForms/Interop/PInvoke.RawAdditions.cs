@@ -44,7 +44,7 @@ namespace Windows.Win32
 
         public static HRESULT OleCreatePropertyFrame(HWND hwndOwner, uint x, uint y, string? lpszCaption, uint cObjects, global::Windows.Win32.System.Com.IUnknown** ppUnk, uint cPages, in Guid pPageClsID, uint lcid, uint dwReserved = 0, void* pvReserved = null) => HRESULT.S_OK;
 
-        public static HRESULT StgOpenStorageOnILockBytes(global::Windows.Win32.System.Com.ILockBytes* plkbyt, global::Windows.Win32.System.Com.IStorage* pstgPriority, global::Windows.Win32.System.Com.STGM grfMode, void* snbExclude, uint reserved, global::Windows.Win32.System.Com.IStorage** ppstgOpen) => HRESULT.E_FAIL;
+        public static HRESULT StgOpenStorageOnILockBytes(global::Windows.Win32.System.Com.StructuredStorage.ILockBytes* plkbyt, global::Windows.Win32.System.Com.IStorage* pstgPriority, global::Windows.Win32.System.Com.STGM grfMode, void* snbExclude, uint reserved, global::Windows.Win32.System.Com.IStorage** ppstgOpen) => HRESULT.E_FAIL;
 
         public static BOOL KillTimer(HWND hWnd, nuint uIDEvent) => (BOOL)true;
 

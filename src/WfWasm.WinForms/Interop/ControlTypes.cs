@@ -164,13 +164,6 @@ internal unsafe partial struct TASKDIALOGCONFIG
     }
 }
 
-[StructLayout(LayoutKind.Sequential)]
-internal struct CHARRANGE
-{
-    public int cpMin;
-    public int cpMax;
-}
-
 [Flags]
 internal enum LIST_VIEW_ITEM_STATE_FLAGS : uint
 {

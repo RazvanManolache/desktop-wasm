@@ -11,6 +11,31 @@ public class Label : ContentControl
         FocusableProperty.OverrideMetadata(typeof(Label), new FrameworkPropertyMetadata(false));
     }
 
+    /// <summary>Target element identity (matches
+    /// System.Windows.Controls.Label.TargetProperty); the DP store is the
+    /// value authority and the CLR wrapper dual-lands it so GetValue
+    /// readers see CLR-applied targets too. ElementName bindings resolve
+    /// at attach time through the existing namescope machinery. Access-key
+    /// focus forwarding to the target is a documented follow-up.</summary>
+    public static readonly DependencyProperty TargetProperty =
+        DependencyProperty.Register("Target", typeof(UIElement), typeof(Label),
+            new FrameworkPropertyMetadata(null));
+
+    private UIElement? _target;
+
+    /// <summary>Element that receives focus when the label's access key is
+    /// invoked (retained; focus forwarding is a follow-up).</summary>
+    public UIElement? Target
+    {
+        get => _target ?? (UIElement?)GetValue(TargetProperty);
+        set
+        {
+            if (ReferenceEquals(_target, value)) return;
+            _target = value;
+            SetValue(TargetProperty, value);
+        }
+    }
+
     private readonly TextBlock _text = new();
     private Thickness _padding = new(5);
     private string _font = "14px sans-serif";

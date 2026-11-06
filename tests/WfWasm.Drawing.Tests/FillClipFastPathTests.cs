@@ -130,6 +130,88 @@ public sealed class FillClipFastPathTests
     }
 
     [Fact]
+    public void Translucent_Fill_Blends_Exact_Math()
+    {
+        // Semi-transparent SourceOver flat fill takes the BlendOverInt row
+        // loop: ((255*R*129 + 255*126) / 255) per channel over white.
+        using var bmp = new WfBitmap(20, 20);
+        using var g = WfGraphics.FromImage(bmp);
+        g.Clear(WfColor.White);
+        int before = bmp.PaintVersion;
+        g.FillRectangle(new WfSolidBrush(WfColor.FromArgb(129, 255, 0, 0)),
+            new WfRectangleF(0, 0, 20, 20));
+        int r = (255 * 129 + 255 * 126) / 255;
+        int gb = (0 * 129 + 255 * 126) / 255;
+        int a = 129 + (255 * 126) / 255;
+        int expected = (a << 24) | (r << 16) | (gb << 8) | gb;
+        Assert.Equal(expected, bmp.GetPixel(0, 0).ToArgb());
+        Assert.Equal(expected, bmp.GetPixel(19, 19).ToArgb());
+        Assert.Equal(before + 400, bmp.PaintVersion);
+    }
+
+    [Fact]
+    public void Translucent_Fill_Single_Rect_Clip_Matches_Intersection()
+    {
+        using var clipped = new WfBitmap(20, 20);
+        using (var g = WfGraphics.FromImage(clipped))
+        {
+            g.Clear(WfColor.White);
+            g.SetClip(new WfRectangleF(4, 4, 10, 10), WfCombineMode.Intersect);
+            g.FillRectangle(new WfSolidBrush(WfColor.FromArgb(129, 255, 0, 0)),
+                new WfRectangleF(0, 0, 20, 20));
+        }
+        using var reference = new WfBitmap(20, 20);
+        using (var g = WfGraphics.FromImage(reference))
+        {
+            g.Clear(WfColor.White);
+            g.FillRectangle(new WfSolidBrush(WfColor.FromArgb(129, 255, 0, 0)),
+                new WfRectangleF(4, 4, 10, 10));
+        }
+        Assert.Equal(Pixels(reference), Pixels(clipped));
+        Assert.Equal(reference.PaintVersion, clipped.PaintVersion);
+        Assert.Equal(WfColor.White.ToArgb(), clipped.GetPixel(3, 3).ToArgb());
+        Assert.Equal(WfColor.White.ToArgb(), clipped.GetPixel(14, 14).ToArgb());
+    }
+
+    [Fact]
+    public void Translucent_Fill_Multi_Rect_Clip_Keeps_Slow_Path_Pixels()
+    {
+        using var bmp = new WfBitmap(20, 20);
+        using var g = WfGraphics.FromImage(bmp);
+        g.Clear(WfColor.White);
+        int before = bmp.PaintVersion;
+        var union = new WfRegion(new WfRectangleF(0, 0, 6, 20));
+        union.Union(new WfRectangleF(14, 0, 6, 20));
+        g.Clip = union;
+        g.FillRectangle(new WfSolidBrush(WfColor.FromArgb(129, 255, 0, 0)),
+            new WfRectangleF(0, 0, 20, 20));
+        int r = (255 * 129 + 255 * 126) / 255;
+        int gb = (0 * 129 + 255 * 126) / 255;
+        int a = 129 + (255 * 126) / 255;
+        int expected = (a << 24) | (r << 16) | (gb << 8) | gb;
+        Assert.Equal(expected, bmp.GetPixel(0, 10).ToArgb());
+        Assert.Equal(expected, bmp.GetPixel(19, 10).ToArgb());
+        Assert.Equal(WfColor.White.ToArgb(), bmp.GetPixel(10, 10).ToArgb());
+        Assert.Equal(before + 240, bmp.PaintVersion);
+    }
+
+    [Fact]
+    public void Translucent_SourceCopy_Still_Writes_Raw_Argb()
+    {
+        // SourceCopy is replace-with-self: alpha is written, not blended.
+        using var bmp = new WfBitmap(10, 10);
+        using var g = WfGraphics.FromImage(bmp);
+        g.Clear(WfColor.White);
+        g.CompositingMode = WfDraw::System.Drawing.Drawing2D.CompositingMode.SourceCopy;
+        int before = bmp.PaintVersion;
+        g.FillRectangle(new WfSolidBrush(WfColor.FromArgb(129, 255, 0, 0)),
+            new WfRectangleF(0, 0, 10, 10));
+        Assert.Equal(WfColor.FromArgb(129, 255, 0, 0).ToArgb(),
+            bmp.GetPixel(5, 5).ToArgb());
+        Assert.Equal(before + 100, bmp.PaintVersion);
+    }
+
+    [Fact]
     public void Skipped_Fills_Skip_Attribution()
     {
         // Attribution runs after the no-op skips: transparent and
@@ -155,5 +237,101 @@ public sealed class FillClipFastPathTests
             WfCounters.PerfEnabled = saved;
             WfCounters.TakeBigFills(out long _, out long _, out string? _, out int _);
         }
+    }
+
+    [Fact]
+    public void Multi_Rect_Disjoint_Bulk_Matches_Slow_Path()
+    {
+        // Two-disjoint-rect union takes the per-rect bulk row loops: exact
+        // pixels and version of the per-pixel loop (6*20 + 6*20 writes).
+        using var bulk = new WfBitmap(20, 20);
+        using (var g = WfGraphics.FromImage(bulk))
+        {
+            g.Clear(WfColor.White);
+            var union = new WfRegion(new WfRectangleF(0, 0, 6, 20));
+            union.Union(new WfRectangleF(14, 0, 6, 20));
+            g.Clip = union;
+            g.FillRectangle(new WfSolidBrush(WfColor.FromArgb(129, 255, 0, 0)),
+                new WfRectangleF(0, 0, 20, 20));
+        }
+        using var reference = new WfBitmap(20, 20);
+        int expectedVersion;
+        using (var g = WfGraphics.FromImage(reference))
+        {
+            g.Clear(WfColor.White);
+            int before = reference.PaintVersion;
+            g.Clip = new WfRegion(new WfRectangleF(0, 0, 6, 20));
+            g.FillRectangle(new WfSolidBrush(WfColor.FromArgb(129, 255, 0, 0)),
+                new WfRectangleF(0, 0, 20, 20));
+            g.Clip = new WfRegion(new WfRectangleF(14, 0, 6, 20));
+            g.FillRectangle(new WfSolidBrush(WfColor.FromArgb(129, 255, 0, 0)),
+                new WfRectangleF(0, 0, 20, 20));
+            expectedVersion = reference.PaintVersion;
+            Assert.Equal(before + 240, expectedVersion);
+        }
+        Assert.Equal(Pixels(reference), Pixels(bulk));
+        Assert.Equal(expectedVersion, bulk.PaintVersion);
+        Assert.Equal(WfColor.White.ToArgb(), bulk.GetPixel(10, 10).ToArgb());
+    }
+
+    [Fact]
+    public void Multi_Rect_Opaque_Bulk_Matches_Single_Rect_Fills()
+    {
+        using var bulk = new WfBitmap(20, 20);
+        using (var g = WfGraphics.FromImage(bulk))
+        {
+            g.Clear(WfColor.White);
+            var union = new WfRegion(new WfRectangleF(0, 0, 6, 20));
+            union.Union(new WfRectangleF(14, 0, 6, 20));
+            g.Clip = union;
+            g.FillRectangle(new WfSolidBrush(WfColor.Red), new WfRectangleF(0, 0, 20, 20));
+        }
+        using var reference = new WfBitmap(20, 20);
+        using (var g = WfGraphics.FromImage(reference))
+        {
+            g.Clear(WfColor.White);
+            g.FillRectangle(new WfSolidBrush(WfColor.Red), new WfRectangleF(0, 0, 6, 20));
+            int afterFirst = reference.PaintVersion;
+            g.FillRectangle(new WfSolidBrush(WfColor.Red), new WfRectangleF(14, 0, 6, 20));
+            Assert.Equal(afterFirst + 120, reference.PaintVersion);
+        }
+        Assert.Equal(Pixels(reference), Pixels(bulk));
+        Assert.Equal(reference.PaintVersion, bulk.PaintVersion);
+    }
+
+    [Fact]
+    public void Multi_Rect_Overlapping_Keeps_Exact_Slow_Path()
+    {
+        // Overlapping rects refuse the bulk path (a second blend would be
+        // wrong for translucent fills): the per-pixel loop writes the union
+        // once per pixel.
+        using var bmp = new WfBitmap(20, 20);
+        using (var g = WfGraphics.FromImage(bmp))
+        {
+            g.Clear(WfColor.White);
+            var union = new WfRegion(new WfRectangleF(0, 0, 12, 20));
+            union.Union(new WfRectangleF(8, 0, 12, 20));
+            g.Clip = union;
+            g.FillRectangle(new WfSolidBrush(WfColor.FromArgb(129, 255, 0, 0)),
+                new WfRectangleF(0, 0, 20, 20));
+        }
+        using var reference = new WfBitmap(20, 20);
+        using (var g = WfGraphics.FromImage(reference))
+        {
+            g.Clear(WfColor.White);
+            g.FillRectangle(new WfSolidBrush(WfColor.FromArgb(129, 255, 0, 0)),
+                new WfRectangleF(0, 0, 12, 20));
+            g.FillRectangle(new WfSolidBrush(WfColor.FromArgb(129, 255, 0, 0)),
+                new WfRectangleF(8, 0, 12, 20));
+        }
+        // Reference double-blends the 4x20 overlap; the clipped fill blends
+        // every union pixel exactly once.
+        Assert.NotEqual(
+            reference.GetPixel(10, 10).ToArgb(),
+            bmp.GetPixel(10, 10).ToArgb());
+        int r = (255 * 129 + 255 * 126) / 255;
+        int gb = (0 * 129 + 255 * 126) / 255;
+        int a = 129 + (255 * 126) / 255;
+        Assert.Equal((a << 24) | (r << 16) | (gb << 8) | gb, bmp.GetPixel(10, 10).ToArgb());
     }
 }

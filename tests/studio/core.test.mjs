@@ -85,6 +85,11 @@ test('routes handle home, deep links, unknown routes and invalid escaping', () =
     assert.deepEqual(readRoute('/app/hello-real/'), {slug: 'hello-real'});
     assert.ok(readRoute('/app/%xx').unknown);
     assert.ok(readRoute('/not-an-app').unknown);
+    assert.equal(readRoute('/wpf', '/wpf'), null);
+    assert.equal(readRoute('/wpf/', '/wpf/'), null);
+    assert.deepEqual(readRoute('/wpf/app/hello-real', '/wpf'), {slug: 'hello-real'});
+    assert.ok(readRoute('/wpfx/app/hello-real', '/wpf').unknown);
+    assert.ok(readRoute('/app/hello-real', '/wpf').unknown);
 });
 test('metrics separate decoded bytes, network overhead and reused HTTP responses', () => {
     assert.deepEqual(resourceTotals([

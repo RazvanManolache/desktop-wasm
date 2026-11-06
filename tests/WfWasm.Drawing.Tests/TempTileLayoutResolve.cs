@@ -10,10 +10,25 @@ using Xunit;
 // are identical 367-byte placeholders (no real bitmap fits).
 public sealed class TempTileLayoutResolve
 {
+    // TMPMOVE canonical-only: fixture under retained/.
+    private static string RepoRoot =>
+        System.IO.Path.GetFullPath(System.IO.Path.Combine(System.AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+    private static string TileLayoutFixture
+    {
+        get
+        {
+            var rel = System.IO.Path.Combine("wfwasm-inputs", "syncfusion-winforms-demos", "layout", "Tile layout", "TileLayout", "CS", "obj", "Debug", "net9.0-windows", "TileLayoutDemo_2008.dll");
+            var canon = System.IO.Path.Combine(RepoRoot, ".artifacts", "tmp", "retained", rel);
+            return canon;
+        }
+    }
+    private static string RunsDir =>
+        System.IO.Path.Combine(RepoRoot, ".artifacts", "tmp", "runs", "drawing-temp");
+
     [Fact]
     public void Temp_TileLayout_ImageStreamers_ResolveToEmptyLists()
     {
-        var asm = Assembly.LoadFrom(@"E:\tmp\wfwasm-inputs\syncfusion-winforms-demos\layout\Tile layout\TileLayout\CS\obj\Debug\net9.0-windows\TileLayoutDemo_2008.dll");
+        var asm = Assembly.LoadFrom(TileLayoutFixture);
         var rm = new System.Resources.ResourceManager("TileLayoutDemo_2008.Form1", asm);
         var lines = new System.Collections.Generic.List<string>();
         foreach (string key in new[] { "imageStreamer1.Images", "imageStreamer2.Images", "imageStreamer9.Images" })
@@ -25,6 +40,7 @@ public sealed class TempTileLayoutResolve
             Assert.NotNull(list);
             Assert.Empty(list);
         }
-        System.IO.File.WriteAllLines(@"E:\tmp\tilelayout-resolve.txt", lines);
+        System.IO.Directory.CreateDirectory(RunsDir);
+        System.IO.File.WriteAllLines(System.IO.Path.Combine(RunsDir, "tilelayout-resolve.txt"), lines);
     }
 }

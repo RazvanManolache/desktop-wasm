@@ -257,6 +257,125 @@ public sealed class BrowserErrorReporterTests
     }
 
     [Fact]
+    public async Task Report_Carries_Backend_And_Generation_In_Payload()
+    {
+        // Error triage must tell which serving generation produced a
+        // crash (public vs staging vs stale): the payload carries both.
+        var handler = new CaptureHandler();
+        BrowserErrorReporter.Initialize(new HttpClient(handler) { BaseAddress = new Uri("http://127.0.0.1:5210") });
+        BrowserErrorReporter.JsTransportOverride = (url, json) => false;
+        BrowserErrorReporter.BackendProvider = () => "be-identity-marker";
+        BrowserErrorReporter.GenerationProvider = () => "gen-identity-marker";
+        try
+        {
+            BrowserErrorReporter.Report("first-chance", new NotSupportedException("identity-payload-marker"), "F.M");
+            for (int i = 0; i < 100 && !handler.SnapshotBodies().Any(b => b.Contains("identity-payload-marker")); i++)
+                await Task.Delay(50);
+            string ours = Assert.Single(handler.SnapshotBodies(), b => b.Contains("identity-payload-marker"));
+            Assert.Contains("be-identity-marker", ours);
+            Assert.Contains("gen-identity-marker", ours);
+        }
+        finally
+        {
+            BrowserErrorReporter.BackendProvider = null;
+            BrowserErrorReporter.GenerationProvider = null;
+            BrowserErrorReporter.JsTransportOverride = null;
+            BrowserErrorReporter.Initialize(new HttpClient(new CaptureHandler()));
+        }
+    }
+
+    // GAP-genprov-0836-k7d2: GenerationProvider must resolve the stamped
+    // window.wfwasmRuntime.generation (cached sync value read once via JS
+    // at init), mirroring BackendProvider. FAILS until the cache seam
+    // lands; do not weaken to provider-only coverage.
+    [Fact]
+    public async Task Report_Carries_Cached_Generation_After_NoteGeneration()
+    {
+        var handler = new CaptureHandler();
+        BrowserErrorReporter.Initialize(new HttpClient(handler) { BaseAddress = new Uri("http://127.0.0.1:5210") });
+        BrowserErrorReporter.JsTransportOverride = (url, json) => false;
+        BrowserErrorReporter.GenerationProvider = null;
+        BrowserErrorReporter.NoteGeneration(null);
+        BrowserErrorReporter.GenerationProvider = BrowserErrorReporter.CachedGeneration;
+        try
+        {
+            BrowserErrorReporter.NoteGeneration("gen-cache-marker");
+            BrowserErrorReporter.Report("first-chance", new NotSupportedException("cached-gen-marker"), "F.M");
+            for (int i = 0; i < 100 && !handler.SnapshotBodies().Any(b => b.Contains("cached-gen-marker")); i++)
+                await Task.Delay(50);
+            string ours = Assert.Single(handler.SnapshotBodies(), b => b.Contains("cached-gen-marker"));
+            Assert.Contains("gen-cache-marker", ours);
+        }
+        finally
+        {
+            BrowserErrorReporter.GenerationProvider = null;
+            BrowserErrorReporter.NoteGeneration(null);
+            BrowserErrorReporter.JsTransportOverride = null;
+            BrowserErrorReporter.Initialize(new HttpClient(new CaptureHandler()));
+        }
+    }
+
+    [Fact]
+    public void NoteGeneration_Blank_And_Overlong_Are_Normalized()
+    {
+        try
+        {
+            BrowserErrorReporter.NoteGeneration("   ");
+            Assert.Null(BrowserErrorReporter.CachedGeneration());
+            BrowserErrorReporter.NoteGeneration(new string('g', 500));
+            string? got = BrowserErrorReporter.CachedGeneration();
+            Assert.NotNull(got);
+            Assert.True(got.Length <= 120);
+        }
+        finally
+        {
+            BrowserErrorReporter.NoteGeneration(null);
+        }
+    }
+
+    [Fact]
+    public async Task Report_Backend_Falls_Back_To_Http_Authority()
+    {
+        // No provider and no server change: the reporting client's own
+        // origin still names the serving pair.
+        var handler = new CaptureHandler();
+        BrowserErrorReporter.Initialize(new HttpClient(handler) { BaseAddress = new Uri("http://127.0.0.1:5210") });
+        BrowserErrorReporter.JsTransportOverride = (url, json) => false;
+        BrowserErrorReporter.BackendProvider = null;
+        BrowserErrorReporter.GenerationProvider = null;
+        try
+        {
+            BrowserErrorReporter.Report("first-chance", new NotSupportedException("authority-fallback-marker"), "F.M");
+            for (int i = 0; i < 100 && !handler.SnapshotBodies().Any(b => b.Contains("authority-fallback-marker")); i++)
+                await Task.Delay(50);
+            string ours = Assert.Single(handler.SnapshotBodies(), b => b.Contains("authority-fallback-marker"));
+            Assert.Contains("127.0.0.1:5210", ours);
+        }
+        finally
+        {
+            BrowserErrorReporter.JsTransportOverride = null;
+            BrowserErrorReporter.Initialize(new HttpClient(new CaptureHandler()));
+        }
+    }
+
+    [Fact]
+    public void FormatReportHead_Orders_App_Backend_Gen_Before_Signature()
+    {
+        string head = BrowserErrorReporter.FormatReportHead(
+            "first-chance", "Sig|F|m", "paint", "127.0.0.1:5230", "20261104T143900Zfinal");
+        Assert.Equal("[report:first-chance] app=paint backend=127.0.0.1:5230 gen=20261104T143900Zfinal Sig|F|m", head);
+    }
+
+    [Fact]
+    public void FormatReportHead_Omits_Blank_Segments()
+    {
+        Assert.Equal("[report:first-chance] Sig|F|m",
+            BrowserErrorReporter.FormatReportHead("first-chance", "Sig|F|m", null, null, null));
+        Assert.Equal("[report:first-chance] app=paint Sig|F|m",
+            BrowserErrorReporter.FormatReportHead("first-chance", "Sig|F|m", "paint", "  ", ""));
+    }
+
+    [Fact]
     public void TopFrame_Strips_Assembly_Qualified_Generics()
     {
         // Observed live: the raw site segment was

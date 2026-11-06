@@ -82,18 +82,20 @@ public sealed class DockWindowTests
     }
 
     [Fact]
-    public void Placement_Grows_Dock_To_Fit_Visible_Content()
+    public void Placement_Grows_AutoSize_Dock_To_Fit_Visible_Content()
     {
-        // PDN tool windows are born smaller than their contents headless
-        // (Colors 209x217 vs ~376x250 of sliders); placement grows the
-        // frame to the visible-children union and pulls it into view so
-        // no drag is needed to reveal the clipped rows.
+        // Explicit AutoSize windows may grow to fit their visible content.
+        // Fixed-size palettes must retain their declared collapsed bounds
+        // (covered by ColorsCollapseClipTests), even with visible children
+        // deliberately outside that client area.
         using var host = new WinFormsAppHost();
         host.SelectScene(AppScene.Smoke);
         host.ViewWidth = 500;
         host.ViewHeight = 400;
         using var dlg = new FormsForm { Text = "Dock", Width = 209, Height = 217 };
-        var tall = new FormsButton { Left = 300, Top = 230, Width = 76, Height = 20, Visible = true };
+        var tall = new FormsButton { Left = 300, Top = 230, Width = 76, Height = 20, Visible = true,
+            Margin = System.Windows.Forms.Padding.Empty };
+        dlg.AutoSize = true;
         var hidden = new FormsButton { Left = 0, Top = 0, Width = 900, Height = 900, Visible = false };
         dlg.Controls.Add(tall);
         dlg.Controls.Add(hidden);

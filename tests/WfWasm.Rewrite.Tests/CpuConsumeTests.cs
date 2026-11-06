@@ -23,6 +23,18 @@ using System.Runtime.Loader;
 // the way live strokes do.
 public sealed class CpuConsumeTests
 {
+    // TMPMOVE canonical-only: rewritten fixtures under retained/.
+    private static string RepoRoot =>
+        Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+    private static string RewrittenSmall
+    {
+        get
+        {
+            var canon = Path.Combine(RepoRoot, ".artifacts", "tmp", "retained", "rewritten-small");
+            return canon;
+        }
+    }
+
     // The scenario returns weak refs; the drain runs here, in the caller
     // frame, where the scenario's reflection-invoke temps (arg arrays
     // rooting ctx/list under Debug lifetime) are already dead.
@@ -34,7 +46,7 @@ public sealed class CpuConsumeTests
             AppContext.BaseDirectory, "..", "..", "..", "..", "..",
             "src", "WfWasm.PdnCpu", "bin", "Debug", "net9.0", "WfWasm.PdnCpu.dll"));
         Assert.True(File.Exists(cpuDll), "dependency not built: " + cpuDll);
-        string forkDll = @"E:\tmp\rewritten-small\WfWasm.WinForms.dll";
+        string forkDll = Path.Combine(RewrittenSmall, "WfWasm.WinForms.dll");
         string drawingDll = Path.GetFullPath(Path.Combine(
             AppContext.BaseDirectory, "..", "..", "..", "..", "..",
             "src", "WfWasm.Drawing", "bin", "Debug", "net9.0", "WfWasm.Drawing.dll"));

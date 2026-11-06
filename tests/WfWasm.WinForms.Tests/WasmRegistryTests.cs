@@ -52,6 +52,19 @@ public sealed class WasmRegistryTests
     }
 
     [Fact]
+    public void CreateSubKey_Returns_NonNull_Handle()
+    {
+        // G5-bench krypton platform-shims leg:
+        // Registry.CurrentUser.CreateSubKey() must not return null; apps
+        // throw their own Exception on a null create-result. The headless
+        // create always succeeds; the returned key flows only through
+        // retargeted WasmRegistry calls (reads default, writes no-op).
+        Assert.NotNull(System.Windows.Forms.WasmRegistry.CreateSubKey(null, "Software\\Krypton"));
+        Assert.NotNull(System.Windows.Forms.WasmRegistry.CreateSubKey(null, "s", false,
+            Microsoft.Win32.RegistryOptions.None));
+    }
+
+    [Fact]
     public void Enumerations_Are_Empty()
     {
         Assert.Empty(System.Windows.Forms.WasmRegistry.GetSubKeyNames(null));

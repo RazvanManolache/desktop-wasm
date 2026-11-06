@@ -304,7 +304,7 @@ public static class FocusManager
         if (element.GetValue(FocusedElementProperty) is IInputElement local)
             return local;
         var focused = Keyboard.FocusedElement;
-        if (focused is not null && IsInScopeSubtree(element, focused))
+        if (focused is UIElement ui && IsInScopeSubtree(element, ui))
             return focused;
         return null;
     }

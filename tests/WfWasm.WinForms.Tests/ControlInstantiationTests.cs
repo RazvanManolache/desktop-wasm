@@ -5,19 +5,30 @@ namespace WfWasm.WinForms.Tests;
 
 public class ControlInstantiationTests
 {
+    // TMPMOVE canonical-only: rewritten fixtures resolve under the retained tree.
+    private static string RepoRoot =>
+        Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+    private static string RewrittenSmall
+    {
+        get
+        {
+            var canon = Path.Combine(RepoRoot, ".artifacts", "tmp", "retained", "rewritten-small");
+            return canon;
+        }
+    }
     private static void WithAssemblyResolver(Action action)
     {
         ResolveEventHandler resolver = (sender, args) =>
         {
             var an = new AssemblyName(args.Name);
             if (an.Name == "System.Windows.Forms" || an.Name == "System.Windows.Forms.Primitives" || an.Name == "WfWasm.WinForms")
-                return Assembly.LoadFrom(@"E:\tmp\rewritten-small\WfWasm.WinForms.dll");
+                return Assembly.LoadFrom(Path.Combine(RewrittenSmall, "WfWasm.WinForms.dll"));
             if (an.Name == "System.ComponentModel.Primitives")
                 return typeof(System.ComponentModel.Component).Assembly;
             if (an.Name == "System.Drawing.Common")
                 return typeof(System.Drawing.Font).Assembly;
             if (an.Name == "WfWasm.Drawing")
-                return Assembly.LoadFrom(@"E:\AI\Code\WindowsForms\src\WfWasm.Drawing\bin\Debug\net9.0\WfWasm.Drawing.dll");
+                return typeof(System.Drawing.Font).Assembly;
             return AppDomain.CurrentDomain.GetAssemblies().FirstOrDefault(a => a.GetName().Name == an.Name);
         };
         var listeners = new System.Diagnostics.TraceListener[System.Diagnostics.Trace.Listeners.Count];
@@ -59,7 +70,7 @@ public class ControlInstantiationTests
     {
         WithAssemblyResolver(() =>
         {
-            var asm = Assembly.LoadFrom(@"E:\tmp\rewritten-small\Calculator.dll");
+            var asm = Assembly.LoadFrom(Path.Combine(RewrittenSmall, "Calculator.dll"));
             var formType = asm.GetType("Calculator.Form1")!;
             using var form = (Form)Activator.CreateInstance(formType)!;
             form.Visible = true;
@@ -86,7 +97,7 @@ public class ControlInstantiationTests
     {
         WithAssemblyResolver(() =>
         {
-            var asm = Assembly.LoadFrom(@"E:\tmp\rewritten-small\TicTacToe.dll");
+            var asm = Assembly.LoadFrom(Path.Combine(RewrittenSmall, "TicTacToe.dll"));
             var formType = asm.GetType("Tic_Tac_Toe.Form1")!;
             using var form = (Form)Activator.CreateInstance(formType)!;
             form.Visible = true;
@@ -108,7 +119,7 @@ public class ControlInstantiationTests
     {
         WithAssemblyResolver(() =>
         {
-            var asm = Assembly.LoadFrom(@"E:\tmp\rewritten-small\SimpleDailyToDoList.dll");
+            var asm = Assembly.LoadFrom(Path.Combine(RewrittenSmall, "SimpleDailyToDoList.dll"));
             var formType = asm.GetType("SimpleDailyToDoList.ToDoListDashBoard_FR")!;
             using var form = (Form)Activator.CreateInstance(formType)!;
             form.Visible = true;
@@ -132,7 +143,7 @@ public class ControlInstantiationTests
     {
         WithAssemblyResolver(() =>
         {
-            var asm = Assembly.LoadFrom(@"E:\tmp\rewritten-small\Calendar.dll");
+            var asm = Assembly.LoadFrom(Path.Combine(RewrittenSmall, "Calendar.dll"));
             var formType = asm.GetType("grp2Calendar.Form1")!;
             using var form = (Form)Activator.CreateInstance(formType)!;
             form.Visible = true;

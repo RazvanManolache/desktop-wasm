@@ -1191,7 +1191,11 @@ public sealed class Style
         if (Triggers.Count > 0)
         {
             TriggerEvaluation.ApplyTriggers(target, this, context);
-            TriggerEvaluation.SubscribeTriggers(target, this);
+            // Refresh re-applications must not rewire (handlers were bound
+            // on first apply; re-adding them double-invokes and doubles per
+            // property change until the host dies, like EventSetter above).
+            if (!context.SkipEventWires)
+                TriggerEvaluation.SubscribeTriggers(target, this);
         }
     }
 
@@ -1321,8 +1325,51 @@ internal static class TriggerEvaluation
             dataContext.PropertyChanged += (_, _) => Reapply(target, style);
     }
 
+    /// <summary>Re-application reentrancy guard (tok-wpf-1941-q7). A nested
+    /// Reapply for an already-applying (target, style) pair is redundant —
+    /// the outer pass is still applying that style — and dropping it
+    /// terminates the PropertyChanged→Reapply cycle that otherwise overflows
+    /// the host when a re-applied setter announces every pass (e.g. deferred
+    /// brush values mint a fresh instance per pass, defeating Store's Equals
+    /// guard). Single-threaded nesting can only originate from the in-flight
+    /// pass's own writes, so nothing is lost. A global depth cap stays as the
+    /// backstop for cross-element pathological ping-pong and fails LOUD
+    /// (outside the swallow below) instead of killing the host.</summary>
+    private static readonly HashSet<(FrameworkElement Target, Style Style)> _reapplyActive = new();
+    private static int _reapplyDepth;
+    private const int MaxReapplyDepth = 100;
+
+    /// <summary>Nested same-pair reapplies dropped by the guard (diagnostic;
+    /// nonzero proves the guard engaged rather than the loop never starting).</summary>
+    internal static long ReapplyNestedDroppedCount { get; private set; }
+
     private static void Reapply(FrameworkElement target, Style style)
     {
+        bool entered;
+        int depth;
+        lock (_reapplyActive)
+        {
+            entered = _reapplyActive.Add((target, style));
+            if (entered) _reapplyDepth++;
+            depth = _reapplyDepth;
+        }
+        if (!entered)
+        {
+            ReapplyNestedDroppedCount++;
+            return;
+        }
+        if (depth > MaxReapplyDepth)
+        {
+            lock (_reapplyActive)
+            {
+                _reapplyActive.Remove((target, style));
+                _reapplyDepth--;
+            }
+            throw new InvalidOperationException(
+                $"Style re-application exceeded {MaxReapplyDepth} nested passes on " +
+                $"<{target.GetType().Name}> (style for {style.TargetType?.Name ?? "<any>"}); " +
+                "cross-element trigger ping-pong suspected.");
+        }
         try
         {
             style.ApplyTo(target, new StyleApplyContext { SkipEventWires = true });
@@ -1332,6 +1379,14 @@ internal static class TriggerEvaluation
         {
             // Refresh keeps old values when a key disappears mid-life; load
             // time stays loud at the load site instead.
+        }
+        finally
+        {
+            lock (_reapplyActive)
+            {
+                _reapplyActive.Remove((target, style));
+                _reapplyDepth--;
+            }
         }
     }
 
@@ -2216,4 +2271,3 @@ public abstract class TextBoxBase : Control
     {
     }
 }
-

@@ -1,4 +1,4 @@
-// SF02 row-drag loop (dw-runtime): headless replacement for the native
+﻿// SF02 row-drag loop (dw-runtime): headless replacement for the native
 // OLE modal drag loop for Syncfusion row drags. The vendor's
 // RowDragDropController calls Control.DoDragDrop, whose headless stub
 // returns None synchronously, so no DragOver/Drop ever fires. This helper
@@ -74,6 +74,124 @@ public sealed partial class WinFormsAppHost
         {
             Console.WriteLine("[DragLoop] DragStart capture EX: " + ex.GetType().Name + ": " + ex.Message.Split('\n')[0]);
         }
+    }
+
+    /// <summary>
+    /// Host-funnel gesture ghost: the vendor DragStart never fires in the
+    /// served demo flow (dead DoDragDrop stub short-circuits the vendor
+    /// sequence), so no session starts and the session chip never shows.
+    /// The host input funnel (down/move/up) always runs: while the left
+    /// button is held on an armed grid past a small threshold, show the
+    /// same chip with a "dragging" label. Region-dirty rules identical to
+    /// the session path; cleared on up/cancel/session-takeover.
+    /// </summary>
+    internal static bool IsArmedFor(Control target) =>
+        target is not null && s_dragDrivers.TryGetValue(target, out _);
+
+    internal static Control? s_pressTarget;
+    internal static int s_pressX;
+    internal static int s_pressY;
+    internal static Control? s_hostTarget;
+    internal static int s_hostX;
+    internal static int s_hostY;
+    internal static bool s_hasHostGhost;
+    private const int HostGhostThresholdPx = 8;
+
+    internal static void NoteHostPress(Control? target, int clientX, int clientY)
+    {
+        s_pressTarget = target;
+        s_pressX = clientX;
+        s_pressY = clientY;
+        ClearHostGhost();
+    }
+
+    internal static void NoteHostMove(Control? target, int clientX, int clientY, bool leftHeld)
+    {
+        if (!leftHeld || target is null)
+        {
+            ClearHostGhost();
+            return;
+        }
+        // A live session owns the chip for its target.
+        lock (RowDragLoopSession.GhostLock)
+        {
+            if (RowDragLoopSession.CurrentGhost is not null && RowDragLoopSession.CurrentGhost.Active
+                && ReferenceEquals(RowDragLoopSession.CurrentGhost.Target, target))
+            {
+                ClearHostGhost();
+                return;
+            }
+        }
+        if (!IsArmedFor(target))
+        {
+            ClearHostGhost();
+            return;
+        }
+        if (!ReferenceEquals(s_pressTarget, target))
+            return; // Press began elsewhere (or was never recorded).
+        int dx = clientX - s_pressX;
+        int dy = clientY - s_pressY;
+        if (dx * dx + dy * dy <= HostGhostThresholdPx * HostGhostThresholdPx)
+            return; // Below threshold: plain press, no ghost yet.
+        try
+        {
+            Rectangle fresh = new(clientX + RowDragLoopSession.GhostOffsetX, clientY + RowDragLoopSession.GhostOffsetY, (int)RowDragLoopSession.GhostWidth, (int)RowDragLoopSession.GhostHeight);
+            Rectangle dirty = s_hasHostGhost && ReferenceEquals(s_hostTarget, target)
+                ? Rectangle.Union(fresh, new Rectangle(s_hostX + RowDragLoopSession.GhostOffsetX, s_hostY + RowDragLoopSession.GhostOffsetY, (int)RowDragLoopSession.GhostWidth, (int)RowDragLoopSession.GhostHeight))
+                : fresh;
+            dirty = Rectangle.Intersect(dirty, new Rectangle(0, 0, target.Width, target.Height));
+            if (dirty.Width > 0 && dirty.Height > 0)
+                WasmRepaintGate.MarkDirtyChainRect(target, dirty);
+        }
+        catch { }
+        s_hostTarget = target;
+        s_hostX = clientX;
+        s_hostY = clientY;
+        s_hasHostGhost = true;
+    }
+
+    internal static void NoteHostUp()
+    {
+        s_pressTarget = null;
+        ClearHostGhost();
+    }
+
+    private static void ClearHostGhost()
+    {
+        s_hostTarget = null;
+        s_hasHostGhost = false;
+    }
+
+    internal static void AbortAllSessions()
+    {
+        foreach (RowDragDriver driver in RowDragDriver.Drivers())
+        {
+            try { driver.AbortSession(); }
+            catch { }
+        }
+    }
+
+    internal static void NoteHostPressFor(Control target, int absX, int absY, int originX, int originY)
+    {
+        NoteHostPress(target, absX - GetControlAbsX(target, originX), absY - GetControlAbsY(target, originY));
+    }
+
+    internal static void AbortAllDragSessions()
+    {
+        foreach (RowDragDriver driver in RowDragDriver.Drivers())
+        {
+            try { driver.AbortSession(); }
+            catch { }
+        }
+    }
+
+    /// <summary>Test-only: registers a host ghost without arming.</summary>
+    internal static void TestSetHostGhost(Control target, int clientX, int clientY)
+    {
+        s_hostTarget = target;
+        s_hostX = clientX;
+        s_hostY = clientY;
+        s_hasHostGhost = true;
     }
 }
 
@@ -177,7 +295,13 @@ internal sealed class RowDragDriver
         }
     }
 
-    private static IEnumerable<RowDragDriver> Drivers()
+    internal void AbortSession()
+    {
+        try { _session?.Abort(); }
+        catch { }
+    }
+
+    internal static IEnumerable<RowDragDriver> Drivers()
     {
         // ConditionalWeakTable has no public enumerator; track drivers here.
         lock (WinFormsAppHost.s_allDrivers)
@@ -206,7 +330,11 @@ internal sealed class RowDragDriver
             data.SetData("DragSourceDataGrid", grid);
             data.SetData("Records", records);
             EndSessionHandlers();
-            _session = new RowDragLoopSession(_target, data, DragDropEffects.Copy | DragDropEffects.Move);
+            _session = new RowDragLoopSession(_target, data, DragDropEffects.Copy | DragDropEffects.Move)
+            {
+                DragItemCount = list.Count,
+            };
+            Console.WriteLine("[DragLoop] session start records=" + list.Count + " target=" + _target.GetType().FullName);
             _moveHandler = (_, me) => PumpMove(me);
             _upHandler = (_, me) => PumpUp(me);
             _keyHandler = (_, ke) => PumpKey(ke);
@@ -254,6 +382,7 @@ internal sealed class RowDragDriver
 
     private void EndSessionHandlers()
     {
+        try { _session?.Abort(); } catch { }
         _session = null;
         if (_moveHandler is not null) { try { _target.MouseMove -= _moveHandler; } catch { } _moveHandler = null; }
         if (_upHandler is not null) { try { _target.MouseUp -= _upHandler; } catch { } _upHandler = null; }
@@ -351,11 +480,33 @@ public sealed class RowDragLoopSession
     private static bool s_surfaceChecked;
     private static bool s_surfaceOk;
 
+    // Ghost chip identity (asserted by RowDragGhostTests; keep stable):
+    // 132x30 rounded chip at cursor + (12,16) with "<n> row(s)" centered.
+    public const uint GhostFillRgba = 0x1E40AFCCu;
+    private const uint GhostLineRgba = 0x1E3A8AFFu;
+    internal const float GhostWidth = 132f;
+    internal const float GhostHeight = 30f;
+    internal const int GhostOffsetX = 12;
+    internal const int GhostOffsetY = 16;
+    private const string GhostFontCss = "12px 'Segoe UI', sans-serif";
+
+    internal static readonly object GhostLock = new();
+    internal static RowDragLoopSession? CurrentGhost;
+
     private readonly Control _target;
     private readonly IDataObject _data;
     private readonly DragDropEffects _allowed;
     private readonly Point _screenOrigin;
     private DragDropEffects _lastEffect = DragDropEffects.None;
+    private int _ghostX;
+    private int _ghostY;
+    private bool _hasGhost;
+
+    /// <summary>
+    /// Vendor record count for the ghost label ("N row(s)").
+    /// Set by the driver from DragStart args; 0 labels "dragging".
+    /// </summary>
+    public int DragItemCount { get; set; }
 
     public RowDragLoopSession(Control target, IDataObject data, DragDropEffects allowed)
     {
@@ -369,6 +520,8 @@ public sealed class RowDragLoopSession
     }
 
     public bool Active { get; private set; }
+
+    internal Control Target => _target;
 
     internal static bool SurfaceAvailable(Control target)
     {
@@ -408,6 +561,25 @@ public sealed class RowDragLoopSession
         DragEventArgs over = RaiseDragOver(p, keyState);
         _lastEffect = over.Effect;
         RaiseGiveFeedback(over.Effect);
+        // Ghost tracks the last held move. The host mousemove path only
+        // dirties a 96x96 cursor neighborhood, which clips the 132x30 chip
+        // tail â€” so mark the old+new chip union dirty here. Region-scoped
+        // (chip-sized, not full-canvas); rides the same frame as the move.
+        try
+        {
+            Rectangle fresh = new(clientX + GhostOffsetX, clientY + GhostOffsetY, (int)GhostWidth, (int)GhostHeight);
+            Rectangle dirty = _hasGhost
+                ? Rectangle.Union(fresh, new Rectangle(_ghostX + GhostOffsetX, _ghostY + GhostOffsetY, (int)GhostWidth, (int)GhostHeight))
+                : fresh;
+            dirty = Rectangle.Intersect(dirty, new Rectangle(0, 0, _target.Width, _target.Height));
+            if (dirty.Width > 0 && dirty.Height > 0)
+                WasmRepaintGate.MarkDirtyChainRect(_target, dirty);
+        }
+        catch { }
+        _ghostX = clientX;
+        _ghostY = clientY;
+        _hasGhost = true;
+        lock (GhostLock) CurrentGhost = this;
     }
 
     public void OnButtonUp(int clientX, int clientY, int keyState)
@@ -419,7 +591,7 @@ public sealed class RowDragLoopSession
         DragEventArgs over = RaiseDragOver(p, keyState);
         _lastEffect = over.Effect;
         RaiseDragDrop(p, keyState, _lastEffect);
-        Active = false;
+        EndGhost();
     }
 
     public void OnEscape()
@@ -428,10 +600,54 @@ public sealed class RowDragLoopSession
             return;
         RaiseQueryContinue(0, escapePressed: true, DragAction.Cancel);
         s_onDragLeave?.Invoke(_target, new object[] { EventArgs.Empty });
-        Active = false;
+        EndGhost();
     }
 
-    public void Abort() => Active = false;
+    public void Abort() => EndGhost();
+
+    private void EndGhost()
+    {
+        Active = false;
+        _hasGhost = false;
+        lock (GhostLock)
+        {
+            if (ReferenceEquals(CurrentGhost, this))
+                CurrentGhost = null;
+        }
+    }
+
+    /// <summary>
+    /// Paints the active drag ghost for exactly the session's target
+    /// control. Called once per control from the host paint overlay hook;
+    /// a no-op without an active moved session, so idle frames are
+    /// byte-identical to before.
+    /// </summary>
+    internal static void PaintDragGhost(WfWasm.Shim.ICanvas canvas, Control control, int absX, int absY)
+    {
+        RowDragLoopSession? s;
+        lock (GhostLock) s = CurrentGhost;
+        if (s is not null && s.Active && s._hasGhost && ReferenceEquals(s._target, control))
+        {
+            string label = s.DragItemCount > 0 ? $"{s.DragItemCount} row(s)" : "dragging";
+            DrawChip(canvas, absX + s._ghostX + GhostOffsetX, absY + s._ghostY + GhostOffsetY, label);
+            return;
+        }
+        if (WinFormsAppHost.s_hasHostGhost && ReferenceEquals(WinFormsAppHost.s_hostTarget, control))
+        {
+            DrawChip(canvas, absX + WinFormsAppHost.s_hostX + GhostOffsetX, absY + WinFormsAppHost.s_hostY + GhostOffsetY, "dragging");
+        }
+    }
+
+    private static void DrawChip(WfWasm.Shim.ICanvas canvas, float gx, float gy, string label)
+    {
+        canvas.FillRoundedRectangle(gx, gy, GhostWidth, GhostHeight, 4f, GhostFillRgba);
+        canvas.DrawLine(gx, gy, gx + GhostWidth, gy, 1f, GhostLineRgba);
+        canvas.DrawLine(gx, gy + GhostHeight, gx + GhostWidth, gy + GhostHeight, 1f, GhostLineRgba);
+        canvas.DrawLine(gx, gy, gx, gy + GhostHeight, 1f, GhostLineRgba);
+        canvas.DrawLine(gx + GhostWidth, gy, gx + GhostWidth, gy + GhostHeight, 1f, GhostLineRgba);
+        canvas.DrawTextAligned(label, gx + 10, gy + GhostHeight / 2f, GhostFontCss,
+            0xFFFFFFFFu, WfWasm.Shim.TextHAlign.Left, WfWasm.Shim.TextVAlign.Middle);
+    }
 
     private Point ToScreen(int clientX, int clientY) =>
         new(_screenOrigin.X + clientX, _screenOrigin.Y + clientY);

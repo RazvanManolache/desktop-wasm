@@ -155,6 +155,26 @@ public sealed class FillSkipSinksTests
     }
 
     [Fact]
+    public void FillRegion_Applies_DeviceTransform_ExactlyOnce()
+    {
+        // WC1718: FillRegion flattened scans through the device matrix and
+        // FillRectCore applied it again — every translated fill landed at
+        // double offset (ProgressBarAdv segments painted off-bar: empty
+        // fill while track+text painted). Single transform: world (1,1,2x2)
+        // with translate(4,3) lands at device (5,4,2x2).
+        using var bmp = new WfBitmap(16, 16);
+        using var g = WfGraphics.FromImage(bmp);
+        g.Clear(WfColor.White);
+        g.TranslateTransform(4, 3);
+        using var black = new WfSolidBrush(WfColor.Black);
+        using var region = new WfRegion(new WfRectangle(1, 1, 2, 2));
+        g.FillRegion(black, region);
+        Assert.Equal(WfColor.Black.ToArgb(), bmp.GetPixel(5, 4).ToArgb());
+        Assert.Equal(WfColor.Black.ToArgb(), bmp.GetPixel(6, 5).ToArgb());
+        Assert.Equal(WfColor.White.ToArgb(), bmp.GetPixel(1, 1).ToArgb());
+    }
+
+    [Fact]
     public void SourceOver_Translucent_Blends_Over_Cleared_Surface()
     {
         using var bmp = new WfBitmap(4, 4);

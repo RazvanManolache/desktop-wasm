@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <AssemblyName>UIAutomationProvider</AssemblyName>
+    <RootNamespace>System.Windows.Automation.Provider</RootNamespace>
+    <SignAssembly>false</SignAssembly>
+    <!-- Version is stamped per consuming app: C1 v10 / IG v8 (build with -p:AssemblyVersion= / -p:Version=). -->
+    <AssemblyVersion>10.0.0.0</AssemblyVersion>
+    <Version>10.0.0.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App" />
+  </ItemGroup>
+
+  <!-- Both stub files compile into each shim so every DLL is self-contained
+       (the two UIA assemblies reference each other's namespaces; a shared
+       compile avoids circular project references; duplicate types in the
+       sibling DLL are inert because resolution is by assembly name). -->
+  <ItemGroup>
+    <Compile Include="..\WfWasm.UiaShim.Types\Generated\UiaTypesStubs.g.cs" Link="UiaTypesStubs.g.cs" />
+  </ItemGroup>
+
+</Project>

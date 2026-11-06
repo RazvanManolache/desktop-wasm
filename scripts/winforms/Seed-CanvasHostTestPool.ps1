@@ -1,7 +1,7 @@
 ﻿# Seeds the Paint.NET test pool beside the CanvasHost test binary.
 # The 7 paint/scene/probe suites need 45 pool assemblies adjacent to the
 # test binary at RUNTIME (VSTest AssemblyResolve probes the test dir):
-# rewritten transform outputs (content-addressed under E:/tmp/wasm-cache),
+# rewritten transform outputs (content-addressed under canonical cache/wasm-cache),
 # 2 native-verbatim closure files, 6 WPF-stack host input files, plus
 # TerraFX from the frozen original test bin (no live cache entry,
 # hash-verified; regenerate via TransformOrCached if it ever goes missing).
@@ -13,9 +13,11 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 if (!$TestBinDir) { $TestBinDir = Join-Path $repoRoot "tests\WfWasm.CanvasHost.Tests\bin\Debug\net9.0" }
 New-Item -ItemType Directory -Force -Path $TestBinDir | Out-Null
-$cacheDir = "E:\tmp\wasm-cache\paintnet"
+# TMPMOVE canonical-only: cache/<name>. No legacy fallback.
+$cacheDir = Join-Path $repoRoot ".artifacts/tmp/cache/wasm-cache/paintnet"
 $closureDir = Join-Path $repoRoot "targets\paint.net"
-$hostDir = "E:\tmp\wfwasm-gpu-contract-tests\runner\inputs"
+# TMPMOVE canonical-only: retained/<name>. No legacy fallback.
+$hostDir = Join-Path $repoRoot ".artifacts/tmp/retained/wfwasm-gpu-contract-tests/runner/inputs"
 $origBinDir = "E:\AI\Code\WindowsForms\tests\WfWasm.CanvasHost.Tests\bin\Debug\net9.0"
 # name, expected sha256, source (cache:<entry> | closure:<file> | hostinputs:<file> | bin:<file>)
 $pool = @(

@@ -1,5 +1,14 @@
 export const channel = 'wfwasm-runtime-v1';
 
+// FACTORY-shell-4: canonical address-bar URL for the RUNNING session. The
+// server mints its own id into mount redirects and back/forward restores
+// dead ids; the shell is the sole session authority, so every select
+// canonically rewrites the URL to the live session (replaceState: no extra
+// history entry). Reload then reuses a live id server-side.
+export function sessionUrl(app, sessionId) {
+    return '/app/' + encodeURIComponent(app.slug) + '?session=' + encodeURIComponent(sessionId);
+}
+
 // A different port is still the same site. Loopback aliases let Chromium
 // isolate the runtime's synchronous assembly resolution from the menu.
 export function runtimeOriginFor(shellOrigin, configured, appSlug) {

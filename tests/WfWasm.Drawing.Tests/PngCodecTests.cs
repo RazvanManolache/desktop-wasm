@@ -204,10 +204,13 @@ public sealed class PngCodecTests
     }
 
     [Fact]
-    public void Interlaced_ThrowsNotSupported()
+    public void Interlaced_DecodesInsteadOfThrowing()
     {
+        // Adam7 milestone delivered (see PngAdam7Tests): a 1x1
+        // interlaced image carries a single pass-0 row.
         byte[] png = BuildPng(1, 1, 8, 6, [[0, 1, 2, 3, 4]], interlaced: true);
-        Assert.Throws<NotSupportedException>(() => DecodePng(png));
+        using var bitmap = DecodePng(png);
+        Assert.Equal(WfColor.FromArgb(4, 1, 2, 3).ToArgb(), bitmap.GetPixel(0, 0).ToArgb());
     }
 
     [Theory]

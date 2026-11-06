@@ -218,6 +218,77 @@ public static unsafe partial class CpuPaint
     // Color1/Color2 (ManagedColor endpoints, opaque replace). Scale maps to
     // feature size (sampled at Scale/8 px per noise cell, 4 octaves); Power
     // maps to a contrast exponent e = 2 - 2*Power (0.5 is identity).
+    // PdnCpu-side managed-effect diagnostic for the Clouds original
+    // failure (served dialog-never-opens with no captured stack): report,
+    // per genuine token property (Scale/Power/Seed/MixMode/Color1/Color2),
+    // whether it resolves and the exact sRGB bytes the CPU fallback would
+    // render. Fail-closed by contract: hostile shapes (throwing getters,
+    // missing token/owner) yield reason strings, never throws. A fully
+    // resolved report with "" Problems proves the PdnCpu side can render
+    // the token, routing any remaining dialog death to fork-side
+    // construction; a non-empty Problems pinpoints the unreadable seam.
+    public sealed class CloudsDiagnosis
+    {
+        public bool HasToken;
+        public bool ScalePresent; public int Scale;
+        public bool PowerPresent; public double Power;
+        public bool SeedPresent; public int Seed;
+        public bool MixModePresent; public string? MixMode;
+        public bool Color1Present; public uint Color1Argb;
+        public bool Color2Present; public uint Color2Argb;
+        public string Problems = "";
+    }
+
+    public static CloudsDiagnosis DiagnoseCloudsEffect(object? owner)
+    {
+        var d = new CloudsDiagnosis();
+        var problems = new System.Collections.Generic.List<string>();
+        try
+        {
+            object? token = owner is null ? null : GetEffectToken(owner);
+            d.HasToken = token is not null;
+            if (token is null)
+            {
+                problems.Add(owner is null ? "null owner" : "null token");
+            }
+            else
+            {
+                if (TryProbeRaw(token, "Scale", problems, out _)) { d.ScalePresent = true; d.Scale = Math.Clamp(TokenInt(token, "Scale", 250), 2, 1000); }
+                if (TryProbeRaw(token, "Power", problems, out _)) { d.PowerPresent = true; d.Power = Math.Clamp(TokenDouble(token, "Power", 0.5), 0, 1); }
+                if (TryProbeRaw(token, "Seed", problems, out _)) { d.SeedPresent = true; d.Seed = Math.Clamp(TokenInt(token, "Seed", 0), 0, 255); }
+                if (TryProbeRaw(token, "MixMode", problems, out object? mix)) { d.MixModePresent = true; try { d.MixMode = mix?.ToString(); } catch { d.MixMode = null; } }
+                if (TryProbeRaw(token, "Color1", problems, out _)) { d.Color1Present = true; d.Color1Argb = TokenColor(token, "Color1", 255, 255, 255, 255); }
+                if (TryProbeRaw(token, "Color2", problems, out _)) { d.Color2Present = true; d.Color2Argb = TokenColor(token, "Color2", 0, 0, 0, 255); }
+            }
+        }
+        catch (Exception ex)
+        {
+            problems.Add("diagnostic throw: " + ex.GetType().Name);
+        }
+        d.Problems = string.Join("; ", problems);
+        return d;
+    }
+
+    private static bool TryProbeRaw(object token, string name, System.Collections.Generic.List<string> problems, out object? raw)
+    {
+        try
+        {
+            raw = GetTokenValue(token, name);
+        }
+        catch (Exception ex)
+        {
+            raw = null;
+            problems.Add(name + " unreadable: " + ex.GetType().Name);
+            return false;
+        }
+        if (raw is null)
+        {
+            problems.Add(name + " missing");
+            return false;
+        }
+        return true;
+    }
+
     private static bool RenderCloudsTileCpu(object owner, object dst, object point)
     {
         if (!s_tileSources.TryGetValue(owner, out var source)) return false;
@@ -269,6 +340,8 @@ public static unsafe partial class CpuPaint
             byte b = Chan(t.GetProperty("B")?.GetValue(v), db);
             if (a == da && r == dr && g == dg && b == db)
             {
+                if (TryReadManagedColor(v, out byte ma, out byte mr, out byte mg, out byte mb))
+                    return Pack(ma, mr, mg, mb);
                 object? c = t.GetMethod("ToColor", System.Type.EmptyTypes)?.Invoke(v, null);
                 if (c is not null)
                 {
@@ -284,6 +357,48 @@ public static unsafe partial class CpuPaint
         catch { return Pack(da, dr, dg, db); }
     }
 
+    // Genuine Paint.NET 5 color properties carry ManagedColor values:
+    // no A/R/G/B properties and no ToColor, so the property read above
+    // always lands on the fallbacks. Convert through the genuine
+    // ManagedColorExtensions.GetSrgb in the value's own assembly
+    // (pristine and rewritten modules keep these member names) and
+    // read the srgbColor field's float R/G/B/A channels. Any miss
+    // fails closed (false) and the caller keeps its fallbacks.
+    private static bool TryReadManagedColor(object v, out byte a, out byte r, out byte g, out byte b)
+    {
+        a = r = g = b = 0;
+        try
+        {
+            System.Type? ext = v.GetType().Assembly.GetType("PaintDotNet.Imaging.ManagedColorExtensions");
+            if (ext is null) return false;
+            MethodInfo? getSrgb = null;
+            foreach (var m in ext.GetMethods(BindingFlags.Public | BindingFlags.Static))
+                if (m.Name == "GetSrgb" && m.GetParameters().Length == 1) { getSrgb = m; break; }
+            if (getSrgb is null) return false;
+            object? srgb = getSrgb.Invoke(null, new object[] { v });
+            if (srgb is null) return false;
+            object? channels = srgb.GetType().GetField("srgbColor",
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(srgb);
+            if (channels is null) return false;
+            System.Type ct = channels.GetType();
+            float fa = ReadFloatChannel(ct.GetProperty("A")?.GetValue(channels));
+            float fr = ReadFloatChannel(ct.GetProperty("R")?.GetValue(channels));
+            float fg = ReadFloatChannel(ct.GetProperty("G")?.GetValue(channels));
+            float fb = ReadFloatChannel(ct.GetProperty("B")?.GetValue(channels));
+            if (!float.IsFinite(fa) || !float.IsFinite(fr) || !float.IsFinite(fg) || !float.IsFinite(fb)) return false;
+            a = ToChannelByte(fa); r = ToChannelByte(fr); g = ToChannelByte(fg); b = ToChannelByte(fb);
+            return true;
+        }
+        catch { return false; }
+    }
+
+    private static float ReadFloatChannel(object? v)
+    {
+        try { return v is null ? float.NaN : Convert.ToSingle(v); }
+        catch { return float.NaN; }
+    }
+
+    private static byte ToChannelByte(float f) => (byte)Math.Clamp((int)Math.Round(f * 255f), 0, 255);
     private static byte Chan(object? v, byte fallback)
     {
         try { if (v is null) return fallback; double d = Convert.ToDouble(v); if (!double.IsFinite(d)) return fallback; return (byte)Math.Clamp((int)Math.Round(d), 0, 255); }

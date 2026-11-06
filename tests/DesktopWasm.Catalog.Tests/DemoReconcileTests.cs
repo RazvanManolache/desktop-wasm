@@ -141,7 +141,7 @@ public sealed class DemoReconcileTests : IDisposable
         }
         var auto = registry.Resolve("syncfusion-auto-complete");
         Assert.Contains(auto.Evidence, e => e.StartsWith("acceptance:", StringComparison.Ordinal));
-        Assert.Equal(50, registry.Apps.Count(a => a.Availability == AppAvailability.Available)); // RVW8900: +wpf-gallery staged
+        Assert.Equal(60, registry.Apps.Count(a => a.Availability == AppAvailability.Available)); // Nov6: eight prepared benchmark entries added; four observed launch faults remain gated.
     }
 
     [Fact]
@@ -174,7 +174,7 @@ public sealed class DemoReconcileTests : IDisposable
             CatalogValidator.ValidateDescriptor(app);
             Assert.True(Assert.Single(registry.Menu(), m => m.Id == id).IsLaunchable);
         }
-        Assert.Equal(50, registry.Apps.Count(a => a.Availability == AppAvailability.Available)); // RVW8900: +wpf-gallery staged
+        Assert.Equal(60, registry.Apps.Count(a => a.Availability == AppAvailability.Available)); // Nov6: eight prepared benchmark entries added; four observed launch faults remain gated.
     }
 
     [Fact]
@@ -204,7 +204,7 @@ public sealed class DemoReconcileTests : IDisposable
             CatalogValidator.ValidateDescriptor(app);
             Assert.True(Assert.Single(registry.Menu(), m => m.Id == id).IsLaunchable);
         }
-        Assert.Equal(50, registry.Apps.Count(a => a.Availability == AppAvailability.Available)); // RVW8900: +wpf-gallery staged
+        Assert.Equal(60, registry.Apps.Count(a => a.Availability == AppAvailability.Available)); // Nov6: eight prepared benchmark entries added; four observed launch faults remain gated.
     }
 
     [Fact]
@@ -231,7 +231,7 @@ public sealed class DemoReconcileTests : IDisposable
             CatalogValidator.ValidateDescriptor(app);
             Assert.True(Assert.Single(registry.Menu(), m => m.Id == id).IsLaunchable);
         }
-        Assert.Equal(50, registry.Apps.Count(a => a.Availability == AppAvailability.Available)); // RVW8900: +wpf-gallery staged
+        Assert.Equal(60, registry.Apps.Count(a => a.Availability == AppAvailability.Available)); // Nov6: eight prepared benchmark entries added; four observed launch faults remain gated.
     }
 
     [Fact]
@@ -252,7 +252,7 @@ public sealed class DemoReconcileTests : IDisposable
         Assert.Contains(app.Evidence, e => e.StartsWith("acceptance:", StringComparison.Ordinal));
         CatalogValidator.ValidateDescriptor(app);
         Assert.True(Assert.Single(registry.Menu(), m => m.Id == "syncfusion-auto-complete").IsLaunchable);
-        Assert.Equal(50, registry.Apps.Count(a => a.Availability == AppAvailability.Available)); // RVW8900: +wpf-gallery staged
+        Assert.Equal(60, registry.Apps.Count(a => a.Availability == AppAvailability.Available)); // Nov6: eight prepared benchmark entries added; four observed launch faults remain gated.
         Assert.Equal(AppAvailability.Staged, registry.Resolve("testapp-joint").Availability);
     }
 }

@@ -988,13 +988,16 @@ public static class WpfAppBoot
     /// </summary>
     internal static Func<string, Assembly?>? PackAssemblyResolver { get; set; }
 
-    private static Assembly? PreferredAssembly(string assemblyName)
+    internal static Assembly? PreferredAssembly(string assemblyName)
     {
         try
         {
-            return AppDomain.CurrentDomain.GetAssemblies()
-                .FirstOrDefault(a => string.Equals(a.GetName().Name, assemblyName, StringComparison.OrdinalIgnoreCase))
-                ?? PackAssemblyResolver?.Invoke(assemblyName);
+            // A package may carry a newer converted image with the same
+            // simple name as an earlier session. Its verified bytes own its
+            // pack resources; process load order must not choose the source.
+            return PackAssemblyResolver?.Invoke(assemblyName)
+                ?? AppDomain.CurrentDomain.GetAssemblies()
+                    .FirstOrDefault(a => string.Equals(a.GetName().Name, assemblyName, StringComparison.OrdinalIgnoreCase));
         }
         catch
         {
@@ -1082,9 +1085,7 @@ public static class WpfAppBoot
     private static IEnumerable<Assembly> CandidateAssemblies(Assembly? preferred)
     {
         var seen = new HashSet<Assembly>();
-        var ordered = new List<Assembly?>();
-        if (preferred is not null) ordered.Add(preferred);
-        ordered.Add(GetCalling());
+        var ordered = new List<Assembly?> { preferred, XamlLoader.CustomElementSource, Application.Current?.GetType().Assembly, GetCalling() };
         ordered.AddRange(AppDomain.CurrentDomain.GetAssemblies());
         foreach (var asm in ordered)
         {
@@ -1140,11 +1141,16 @@ public static class WpfAppBoot
         }
     }
 
+    private static readonly ConditionalWeakTable<Assembly, Type[]> CompleteTypeLists = new();
+
     internal static IEnumerable<Type> SafeGetTypes(Assembly asm)
     {
         try
         {
-            return asm.GetTypes();
+            // Converted themes repeatedly resolve owners during inflation.
+            // Complete immutable type lists can be reused. Partial load
+            // failures and growing Reflection.Emit assemblies cannot.
+            return asm.IsDynamic ? asm.GetTypes() : CompleteTypeLists.GetValue(asm, static image => image.GetTypes());
         }
         catch (ReflectionTypeLoadException ex)
         {

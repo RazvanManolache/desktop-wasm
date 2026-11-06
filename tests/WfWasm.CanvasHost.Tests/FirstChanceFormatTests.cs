@@ -69,4 +69,25 @@ public sealed class FirstChanceFormatTests
     }
 
     private static void ThrowForChain() => throw new InvalidOperationException("chained-marker");
+
+    [Fact]
+    public void FormatFirstChance_Real_Throw_Includes_TargetSite_Line()
+    {
+        Exception ex;
+        try
+        {
+            ThrowForTargetSite();
+            throw new InvalidOperationException("unreachable");
+        }
+        catch (Exception caught)
+        {
+            ex = caught;
+        }
+
+        var (lines, _) = WinFormsAppHost.FormatFirstChance(ex, frames: null);
+        string tsLine = Assert.Single(lines, l => l.StartsWith("[1ST-TS]"));
+        Assert.Contains(nameof(ThrowForTargetSite), tsLine);
+    }
+
+    private static void ThrowForTargetSite() => throw new InvalidOperationException("targetsite-marker");
 }

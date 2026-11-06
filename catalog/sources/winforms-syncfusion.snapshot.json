@@ -1,6 +1,6 @@
 {
   "name": "winforms-syncfusion",
-  "source": "<winforms-root>\\src\\WfWasm.CanvasHost\\SyncfusionDemos.json",
+  "source": "E:\\AI\\Code\\WindowsForms\\src\\WfWasm.CanvasHost\\SyncfusionDemos.json",
   "sourceSha256": "40BAE1E5F09605E1846515A4FCC09415547D22B693D5A9DCC85EE12EAAE0B0C7",
   "extractedUtc": "2026-10-30T12:03:16Z",
   "data": {

@@ -17,6 +17,26 @@ using Xunit;
 // desktop and trap the wasm interpreter with no managed frame).
 public sealed class SessionPrefetchWaitTests
 {
+    // TMPMOVE canonical-only: rewritten fixtures under retained/.
+    private static string RepoRoot =>
+        Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+    private static string RewrittenSmall
+    {
+        get
+        {
+            var canon = Path.Combine(RepoRoot, ".artifacts", "tmp", "retained", "rewritten-small");
+            return canon;
+        }
+    }
+    private static string RewrittenPaint
+    {
+        get
+        {
+            var canon = Path.Combine(RepoRoot, ".artifacts", "tmp", "retained", "rewritten-paint");
+            return canon;
+        }
+    }
+
     private const string OwnerFullName = "PaintDotNet.AppModel.WriteOnceSessionFile/ChunkedReadStream";
 
     private static void BuildSynthetic(string tempOut)
@@ -120,7 +140,7 @@ public sealed class SessionPrefetchWaitTests
         string tmp = Path.Combine(Path.GetTempPath(), $"{tag}_{Guid.NewGuid()}.dll");
         byte[] bytes = File.ReadAllBytes(src);
         string? dir = Path.GetDirectoryName(src);
-        using var resolver = new FrameworkResolver(dir, [@"E:\tmp\rewritten-small", @"E:\tmp\rewritten-paint"]);
+        using var resolver = new FrameworkResolver(dir, [RewrittenSmall, RewrittenPaint]);
         var readerParams = new ReaderParameters { AssemblyResolver = resolver };
         using (var ms = new MemoryStream(bytes))
         using (var read = AssemblyDefinition.ReadAssembly(ms, readerParams))
@@ -137,7 +157,7 @@ public sealed class SessionPrefetchWaitTests
         string tmp = Path.Combine(Path.GetTempPath(), $"{tag}_{Guid.NewGuid()}.dll");
         byte[] bytes = File.ReadAllBytes(src);
         string? dir = Path.GetDirectoryName(src);
-        using var resolver = new FrameworkResolver(dir, [@"E:\tmp\rewritten-small", @"E:\tmp\rewritten-paint"]);
+        using var resolver = new FrameworkResolver(dir, [RewrittenSmall, RewrittenPaint]);
         var readerParams = new ReaderParameters { AssemblyResolver = resolver };
         using (var ms = new MemoryStream(bytes))
         using (var read = AssemblyDefinition.ReadAssembly(ms, readerParams))
@@ -234,7 +254,7 @@ public sealed class SessionPrefetchWaitTests
     [Fact]
     public void Real_Paintdotnet_Dispose_Loses_Its_Only_Wait()
     {
-        string src = @"E:\tmp\rewritten-paint\paintdotnet.dll";
+        string src = Path.Combine(RewrittenPaint, "paintdotnet.dll");
         string? patched = null;
         try
         {
@@ -323,7 +343,7 @@ public sealed class SessionPrefetchWaitTests
     [Fact]
     public void Real_Paintdotnet_Prefetch_Runs_Inline()
     {
-        string src = @"E:\tmp\rewritten-paint\paintdotnet.dll";
+        string src = Path.Combine(RewrittenPaint, "paintdotnet.dll");
         string? patched = null;
         try
         {

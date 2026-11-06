@@ -159,10 +159,22 @@ public sealed class TextBoxTextLengthRedirectTests
         }
     }
 
+    // TMPMOVE canonical-only: fixtures under retained/.
+    private static string RepoRoot =>
+        Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+    private static string SyncfusionApps
+    {
+        get
+        {
+            var canon = Path.Combine(RepoRoot, ".artifacts", "tmp", "retained", "wfwasm-syncfusion-apps");
+            return canon;
+        }
+    }
+
     [Fact]
     public void Real_SfInput_TextLength_Sites_Rewritten_With_Intact_Control_Flow()
     {
-        string src = @"E:\tmp\wfwasm-syncfusion-apps\syncfusion-calendar\Syncfusion.SfInput.WinForms.dll";
+        string src = Path.Combine(SyncfusionApps, "syncfusion-calendar", "Syncfusion.SfInput.WinForms.dll");
         Assert.True(File.Exists(src), $"vendor SfInput missing: {src}");
         string tmp = Path.Combine(Path.GetTempPath(), $"SfInputTextLength_{Guid.NewGuid()}.dll");
         string out2 = Path.Combine(Path.GetTempPath(), $"SfInputTextLengthOut_{Guid.NewGuid()}.dll");

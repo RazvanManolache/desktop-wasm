@@ -29,6 +29,7 @@
     <ProjectReference Include="..\..\src\WfWasm.Drawing\WfWasm.Drawing.csproj" Aliases="WfDraw" />
     <ProjectReference Include="..\..\src\WfWasm.Rendering\WfWasm.Rendering.csproj" />
     <ProjectReference Include="..\..\src\WfWasm.ApiScan\WfWasm.ApiScan.csproj" />
+    <ProjectReference Include="..\..\src\WfWasm.Shim\WfWasm.Shim.csproj" />
   </ItemGroup>
 
 </Project>

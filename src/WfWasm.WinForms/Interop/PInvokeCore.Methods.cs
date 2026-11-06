@@ -1866,6 +1866,83 @@ namespace Windows.Win32
                 }
                 return default;
             }
+            // No native EDIT exists headless, so a raw WM_SETTEXT sent
+            // through SendMessage (Syncfusion MaskedEditBox.SetTextBoxText
+            // pushes display text exactly this way: StringToHGlobalAuto +
+            // SendMessage + FreeHGlobal) fell through to default and the
+            // text landed nowhere: KeyDown/KeyPress arrived but no visible
+            // commit, zero errors (RVW3293-VENDOR). The managed Text setter
+            // path works because it routes through SetWindowText into
+            // WindowTextStorage; answer the raw message the same way.
+            // Desktop parity: SETTEXT returns TRUE and resets the
+            // selection to 0,0; GETTEXT copies up to wParam TCHARs
+            // (wParam includes the NUL) and returns the copied count;
+            // GETTEXTLENGTH returns the length excluding the NUL.
+            // Scoped to TextBoxBase (the reported domain); other
+            // windows keep the old fallthrough.
+            if (Msg == WM_SETTEXT || Msg == WM_GETTEXT || Msg == WM_GETTEXTLENGTH)
+            {
+                if (global::System.Windows.Forms.Control.FromHandle((nint)hWnd.Value) is global::System.Windows.Forms.TextBoxBase edit)
+                {
+                    if (Msg == WM_SETTEXT)
+                    {
+                        string text = ReadNullTerminatedString(lParam);
+                        try
+                        {
+                            edit.Text = text;
+                        }
+                        catch
+                        {
+                            WindowTextStorage.Set(hWnd, text);
+                        }
+
+                        lock (s_editSelectionLock)
+                        {
+                            EditSelection selection = s_editSelection.GetOrCreateValue(edit);
+                            selection.Start = 0;
+                            selection.End = 0;
+                        }
+
+                        return (LRESULT)1;
+                    }
+
+                    if (Msg == WM_GETTEXTLENGTH)
+                    {
+                        return (LRESULT)WindowTextStorage.GetLength(hWnd);
+                    }
+
+                    int capacity;
+                    try
+                    {
+                        ulong raw = wParam.Value;
+                        capacity = raw > int.MaxValue ? int.MaxValue : (int)raw;
+                    }
+                    catch
+                    {
+                        capacity = 0;
+                    }
+
+                    if (capacity <= 0)
+                    {
+                        return (LRESULT)0;
+                    }
+
+                    try
+                    {
+                        unsafe
+                        {
+                            PWSTR destination = (char*)(void*)lParam.Value;
+                            return (LRESULT)WindowTextStorage.CopyTo(hWnd, destination, capacity);
+                        }
+                    }
+                    catch
+                    {
+                        return (LRESULT)0;
+                    }
+                }
+
+                return default;
+            }
             // No native RichEdit exists headless, so the framework's
             // EM_GETTEXTLENGTHEX traffic falls through to zero. That zero
             // is load-bearing: RichTextBox.TextLength sends this message
@@ -2055,4 +2132,3 @@ namespace Windows.Win32
         internal static unsafe LRESULT CallWindowProc(void* lpPrevWndFunc, HWND hWnd, uint Msg, WPARAM wParam, LPARAM lParam) => default;
     }
 }
-

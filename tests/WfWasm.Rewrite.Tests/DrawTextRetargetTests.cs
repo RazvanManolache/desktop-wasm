@@ -14,7 +14,17 @@ namespace WfWasm.Rewrite.Tests;
 // in place (never rewritten on disk).
 public sealed class DrawTextRetargetTests
 {
-    private const string VendorDir = @"E:/tmp/wfwasm-syncfusion-apps/syncfusion-treeview";
+    // TMPMOVE canonical-only: fixtures under retained/.
+    private static string RepoRoot =>
+        Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+    private static string VendorDir
+    {
+        get
+        {
+            var canon = Path.Combine(RepoRoot, ".artifacts", "tmp", "retained", "wfwasm-syncfusion-apps", "syncfusion-treeview");
+            return canon;
+        }
+    }
 
     private static AssemblyDefinition? LoadVendor(string file)
     {
