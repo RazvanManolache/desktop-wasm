@@ -11,6 +11,9 @@ from PIL import Image, ImageChops, ImageStat
 from playwright.sync_api import sync_playwright
 from build_pages import DEMOS, WINFORMS_DEMOS
 
+# Both untrimmed runtimes must cold-start on shared hosted-runner CPUs.
+STARTUP_TIMEOUT_MS = 240000
+
 
 class StaticHandler(SimpleHTTPRequestHandler):
     extensions_map = {**SimpleHTTPRequestHandler.extensions_map, '.wasm': 'application/wasm', '.mjs': 'text/javascript'}
@@ -73,8 +76,10 @@ def main():
                     assert not framework_requests, 'The landing page eagerly loaded .NET'
                     assert not page.locator('iframe').count()
                     for slug in DEMOS:
+                        print('Opening ' + slug, flush=True)
                         page.locator(f'.app-copy [data-demo="{slug}"]').click()
-                        page.wait_for_function("document.querySelector('#demo-status')?.dataset.state === 'ready'", timeout=120000)
+                        page.wait_for_function("['ready','error'].includes(document.querySelector('#demo-status')?.dataset.state)", timeout=STARTUP_TIMEOUT_MS)
+                        assert page.locator('#demo-status').get_attribute('data-state') == 'ready', page.locator('#demo-status').inner_text()
                         frame = next(frame for frame in page.frames if '/demos/?demo=' + slug in frame.url)
                         canvas = frame.locator('#wpfCanvas')
                         before = args.output / (slug + '-before.png')
@@ -119,7 +124,7 @@ def main():
                         print('Opening ' + slug, flush=True)
                         console.clear()
                         page.locator(f'.app-copy [data-demo="{slug}"]').click()
-                        page.wait_for_function("['ready','error'].includes(document.querySelector('#demo-status')?.dataset.state)", timeout=120000)
+                        page.wait_for_function("['ready','error'].includes(document.querySelector('#demo-status')?.dataset.state)", timeout=STARTUP_TIMEOUT_MS)
                         assert page.locator('#demo-status').get_attribute('data-state') == 'ready', page.locator('#demo-status').inner_text()
                         frame = next(frame for frame in page.frames if '/winforms/?demo=' + slug in frame.url)
                         canvas = frame.locator('#wfcanvas')
@@ -182,15 +187,19 @@ def main():
                     # work without any catch-all /app or /runtime server rewrite.
                     direct = url + 'demos/?demo=color-lab&renderer=auto'
                     assert page.goto(direct).status == 200
-                    page.wait_for_function("window.wasmWpfLoop?.running && !document.querySelector('.stage-overlay')", timeout=120000)
+                    page.wait_for_function("window.wasmWpfLoop?.running && !document.querySelector('.stage-overlay')", timeout=STARTUP_TIMEOUT_MS)
                     assert page.reload().status == 200
-                    page.wait_for_function("window.wasmWpfLoop?.running && !document.querySelector('.stage-overlay')", timeout=120000)
+                    page.wait_for_function("window.wasmWpfLoop?.running && !document.querySelector('.stage-overlay')", timeout=STARTUP_TIMEOUT_MS)
                     assert page.goto(url + 'winforms/?demo=calculator').status == 200
-                    page.wait_for_function("paintedLabels.includes('7') && paintedLabels.includes('DEL')", timeout=120000)
+                    page.wait_for_function("paintedLabels.includes('7') && paintedLabels.includes('DEL')", timeout=STARTUP_TIMEOUT_MS)
                     assert page.reload().status == 200
-                    page.wait_for_function("paintedLabels.includes('7') && paintedLabels.includes('DEL')", timeout=120000)
+                    page.wait_for_function("paintedLabels.includes('7') && paintedLabels.includes('DEL')", timeout=STARTUP_TIMEOUT_MS)
                     assert not errors, errors
                     assert not bad, bad
+                except Exception:
+                    print(json.dumps({'pageUrl': page.url, 'frameUrls': [frame.url for frame in page.frames],
+                        'pageErrors': errors, 'badResponses': bad, 'recentConsole': console[-20:]}), flush=True)
+                    raise
                 finally:
                     browser.close()
         finally:
