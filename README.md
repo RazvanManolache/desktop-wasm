@@ -5,8 +5,12 @@ applications running on WebAssembly. Real mixed-framework hosting (both UI
 stacks inside one app session) is work in progress.
 
 **[Try the live browser showcase](https://razvanmanolache.github.io/desktop-wasm/)** —
-calculator, project planner, color lab and asset explorer. These source-built WPF
-mini apps run directly from GitHub Pages. The runtime loads when you open a demo.
+four WPF mini apps plus the existing converted WinForms Calculator, To-do and
+Tic-Tac-Toe applications. The runtime loads when you open a demo. The site also
+shows local screenshots of larger applications with links to build them.
+Converted showcase inputs are pinned by checksum in
+[showcase-inputs.json](scripts/ci/showcase-inputs.json), with upstream attribution
+and available license texts in the input release.
 
 **Working demos (screenshots of tested builds, staged vs public labeled):**
 

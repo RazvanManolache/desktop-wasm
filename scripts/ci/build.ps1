@@ -33,6 +33,10 @@ if ($LASTEXITCODE) { throw 'Browser publish failed.' }
 if ($LASTEXITCODE) { throw 'Browser packaging failed.' }
 & python scripts/ci/smoke_browser.py .ci-dist/wpf/wwwroot
 if ($LASTEXITCODE) { throw 'Packaged browser smoke check failed.' }
+& dotnet publish src/WfWasm.CanvasHost -c Release -o .ci-dist/winforms -p:PublishTrimmed=false --nologo -m:1
+if ($LASTEXITCODE) { throw 'WinForms browser publish failed.' }
+& python scripts/ci/fetch_pages_inputs.py
+if ($LASTEXITCODE) { throw 'Showcase application input download failed.' }
 & python scripts/ci/build_pages.py
 if ($LASTEXITCODE) { throw 'GitHub Pages assembly failed.' }
 & python scripts/ci/smoke_pages.py .ci-dist/pages

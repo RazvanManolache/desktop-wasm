@@ -80,6 +80,8 @@
 // touched during later user interactions. No folder scan or dependency list is
 // downloaded. Main-thread sync XHR requires a text response, not arraybuffer.
 window.wfwasmFetchAssembly = function (app, name) {
+    // Static packages preload their complete verified assembly closure.
+    if (window.wfwasmRuntime?.staticHost) return new Uint8Array(0);
     const request = new XMLHttpRequest();
     request.open("GET", "/api/appresolve?app=" + encodeURIComponent(app) + "&name=" + encodeURIComponent(name), false);
     request.overrideMimeType("text/plain; charset=x-user-defined");

@@ -19,4 +19,11 @@ Project files declare NuGet dependencies, including Mono.Cecil, .NET browser hos
 
 ## Applications referenced by the catalog
 
+The GitHub Pages showcase separately downloads three checksum-pinned converted
+applications from the `showcase-inputs` release. Calculator is MIT-licensed and
+To-do is Apache-2.0-licensed. Their license texts and upstream source links are
+included in the bundle and deployed under `licenses/apps`. The original
+Tic-Tac-Toe application links to its upstream repository, which declares no
+license. These application inputs retain their upstream ownership.
+
 The catalog (`catalog/apps.json`, 139 entries) describes WinForms and WPF applications, including third-party samples (Paint.NET, Syncfusion and Telerik demos, WPF-Samples). No third-party application, executable, installer, converted assembly, commercial control library, or sample asset is distributed in this repository. Catalog entries carry provenance (repository, commit, license) and honest availability: entries whose inputs are not staged here report `missing-input` / `not-converted` / `unavailable`, never ready. Screenshots or captures, if any, document local experiments and do not grant redistribution rights or imply vendor affiliation.

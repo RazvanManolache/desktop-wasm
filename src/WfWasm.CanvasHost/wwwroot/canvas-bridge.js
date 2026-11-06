@@ -18,6 +18,7 @@ window.wfwasm._frames = 0;
 // dying runtime) and returns nothing, so managed code never holds a Task
 // for it: no CompleteTask completion, no FailFast vector.
 window.wfwasmReportError = function (url, json) {
+    if (window.wfwasmRuntime?.staticHost) return;
     try {
         fetch(url || '/api/client-errors', {
             method: 'POST',
@@ -719,6 +720,7 @@ window.wfwasm.installErrorReporting = function () {
         if (!queue.length) return;
         var batch = queue;
         queue = [];
+        if (window.wfwasmRuntime?.staticHost) return;
         try {
             fetch("/api/client-errors", {
                 method: "POST",

@@ -1,10 +1,12 @@
 (() => {
     const params = new URLSearchParams(location.search);
+    const staticHost = params.has('demo');
     const pathApp = /^\/app\/([^/]+)/.exec(location.pathname);
-    const app = (params.get('app') || (pathApp && decodeURIComponent(pathApp[1])) || (params.has('page') ? 'workspace' : 'smoke')).slice(0,120);
+    const app = (params.get('demo') || params.get('app') || (pathApp && decodeURIComponent(pathApp[1])) || (params.has('page') ? 'workspace' : 'smoke')).slice(0,120);
     const session = (params.get('session') || crypto.randomUUID()).slice(0,120);
     const label = (params.get('label') || app).slice(0,200);
     let parentOrigin = null, failed = false;
+    if (staticHost && window.parent !== window) parentOrigin = location.origin;
     try {
         const requested = new URL(params.get('parentOrigin'));
         if (window.parent !== window && requested.origin === new URL(document.referrer).origin && requested.origin !== location.origin)
@@ -13,12 +15,12 @@
     const send = (type, payload = {}) => {
         if (parentOrigin) window.parent.postMessage({...payload, channel:'wfwasm-runtime-v1', app, session, type}, parentOrigin);
     };
-    window.wfwasmRuntime = Object.freeze({app, session, label, send, fail(message) {
+    window.wfwasmRuntime = Object.freeze({app, session, label, staticHost, send, fail(message) {
         if (failed) return;
         failed = true;
         send('failed', {message: String(message || 'App runtime failed').slice(0,500)});
     }});
-    if (parentOrigin) document.documentElement.classList.add('embedded-runtime');
+    if (parentOrigin || staticHost) document.documentElement.classList.add('embedded-runtime');
     if (location.pathname === '/runtime.html' && !params.has('page')) {
         params.delete('app');
         params.set('runtime','1');

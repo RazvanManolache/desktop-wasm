@@ -9,7 +9,7 @@ import threading
 
 from PIL import Image, ImageChops, ImageStat
 from playwright.sync_api import sync_playwright
-from build_pages import DEMOS
+from build_pages import DEMOS, WINFORMS_DEMOS
 
 
 class StaticHandler(SimpleHTTPRequestHandler):
@@ -37,6 +37,7 @@ def main():
     parser.add_argument('root', type=Path)
     parser.add_argument('--output', type=Path, default=Path('.ci-results/pages'))
     parser.add_argument('--capture-previews', action='store_true')
+    parser.add_argument('--url', help='Verify the deployed showcase using the same interaction checks')
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     temp = args.output.resolve() / 'os-temp'
@@ -46,12 +47,22 @@ def main():
     with ThreadingHTTPServer(('127.0.0.1', 0), partial(StaticHandler, directory=str(args.root))) as server:
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
-        url = f'http://127.0.0.1:{server.server_port}/desktop-wasm/'
+        url = args.url or f'http://127.0.0.1:{server.server_port}/desktop-wasm/'
         try:
             with sync_playwright() as pw:
                 browser = pw.chromium.launch(headless=True, args=['--use-angle=swiftshader', '--enable-unsafe-swiftshader'])
                 try:
                     page = browser.new_page(viewport={'width': 1440, 'height': 1100})
+                    # Observe the labels actually painted by the native controls.
+                    page.add_init_script("""window.paintedLabels = [];
+                        const original = CanvasRenderingContext2D.prototype.fillText;
+                        CanvasRenderingContext2D.prototype.fillText = function(text, ...args) {
+                            window.paintedLabels.push(String(text));
+                            if (window.paintedLabels.length > 4000) window.paintedLabels.splice(0, 2000);
+                            return original.call(this, text, ...args);
+                        };""")
+                    console = []
+                    page.on('console', lambda message: console.append(message.text))
                     page.on('pageerror', lambda error: errors.append(str(error)))
                     page.on('request', lambda request: framework_requests.append(request.url) if '/_framework/' in request.url else None)
                     page.on('response', lambda response: bad.append(f'{response.status} {response.url}')
@@ -104,7 +115,64 @@ def main():
                         page.locator('#close-demo').click()
                         page.locator('#runtime-host iframe').wait_for(state='detached')
                         assert page.locator('iframe').count() == 0, 'Closing a demo left a runtime running'
+                    for slug in WINFORMS_DEMOS:
+                        print('Opening ' + slug, flush=True)
+                        console.clear()
+                        page.locator(f'.app-copy [data-demo="{slug}"]').click()
+                        page.wait_for_function("['ready','error'].includes(document.querySelector('#demo-status')?.dataset.state)", timeout=120000)
+                        assert page.locator('#demo-status').get_attribute('data-state') == 'ready', page.locator('#demo-status').inner_text()
+                        frame = next(frame for frame in page.frames if '/winforms/?demo=' + slug in frame.url)
+                        canvas = frame.locator('#wfcanvas')
+                        original_forms = {'calculator': 'Calculator.Form1', 'todo': 'SimpleDailyToDoList.ToDoListDashBoard_FR',
+                                          'tic-tac-toe': 'Tic_Tac_Toe.Form1'}
+                        assert any('Form=' + original_forms[slug] + ',' in line for line in console), console[-15:]
+                        if args.capture_previews:
+                            canvas.screenshot(path=str(Path(__file__).resolve().parents[2] / 'site/assets' / (slug + '.png')))
+                        canvas.screenshot(path=str(args.output / (slug + '-before.png')))
+                        bounds = canvas.bounding_box()
+                        def click_native(dx, dy):
+                            canvas.click(position={'x': bounds['width']/2 + dx, 'y': bounds['height']/2 + dy})
+                        frame.evaluate('paintedLabels.length = 0')
+                        if slug == 'calculator':
+                            for point in [(-141, -64), (68, 218), (-72, -64), (-2, 218)]:
+                                click_native(*point)
+                            frame.wait_for_function("paintedLabels.includes('15')")
+                        elif slug == 'todo':
+                            click_native(51, -101)
+                            canvas.press_sequentially('WinForms on GitHub')
+                            frame.evaluate('paintedLabels.length = 0')
+                            click_native(271, -67)
+                            frame.wait_for_function("paintedLabels.some(s => s.includes('WinForms on GitHub'))")
+                        else:
+                            for point in [(69, -37), (69, 47), (192, -37), (192, 47), (315, -37)]:
+                                click_native(*point)
+                            frame.wait_for_function("paintedLabels.includes('1 time(s)') && paintedLabels.includes('Game Over')")
+                            click_native(0, 30)  # Dismiss the game's native Game Over dialog.
+                            frame.evaluate('paintedLabels.length = 0')
+                            click_native(-92, 38)
+                            frame.wait_for_function("paintedLabels.includes('In Progress')")
+                        page.mouse.move(25, 25)
+                        page.wait_for_timeout(300)
+                        canvas.screenshot(path=str(args.output / (slug + '-after.png')))
+                        first = Image.open(args.output / (slug + '-before.png')).convert('RGB')
+                        second = Image.open(args.output / (slug + '-after.png')).convert('RGB')
+                        regions = {'calculator': (-174, -205, 171, -117), 'todo': (-329, -23, 336, 68),
+                                   'tic-tac-toe': (-374, 77, -64, 140)}
+                        x0, y0, x1, y1 = regions[slug]
+                        region = (int(first.width/2+x0), int(first.height/2+y0),
+                                  int(first.width/2+x1), int(first.height/2+y1))
+                        result_delta = sum(ImageStat.Stat(ImageChops.difference(first.crop(region), second.crop(region))).mean) / 3
+                        assert result_delta > 0.01, f'{slug} did not update its result region'
+                        cases.append({'demo': slug, 'framework': 'winforms', 'ready': True,
+                                      'originalForm': original_forms[slug], 'resultMeanDelta': result_delta})
+                        page.locator('#close-demo').click()
+                        page.locator('#runtime-host iframe').wait_for(state='detached')
                     page.screenshot(path=str(args.output / 'desktop.png'), full_page=True)
+                    assert page.locator('.source-grid article').count() == 4
+                    for image in page.locator('.source-grid img').all():
+                        image.scroll_into_view_if_needed()
+                        image.evaluate('(img) => img.decode()')
+                        assert image.evaluate('(img) => img.naturalWidth > 0')
                     page.set_viewport_size({'width': 390, 'height': 844})
                     page.goto(url)
                     page.wait_for_timeout(200)
@@ -117,6 +185,10 @@ def main():
                     page.wait_for_function("window.wasmWpfLoop?.running && !document.querySelector('.stage-overlay')", timeout=120000)
                     assert page.reload().status == 200
                     page.wait_for_function("window.wasmWpfLoop?.running && !document.querySelector('.stage-overlay')", timeout=120000)
+                    assert page.goto(url + 'winforms/?demo=calculator').status == 200
+                    page.wait_for_function("paintedLabels.includes('7') && paintedLabels.includes('DEL')", timeout=120000)
+                    assert page.reload().status == 200
+                    page.wait_for_function("paintedLabels.includes('7') && paintedLabels.includes('DEL')", timeout=120000)
                     assert not errors, errors
                     assert not bad, bad
                 finally:

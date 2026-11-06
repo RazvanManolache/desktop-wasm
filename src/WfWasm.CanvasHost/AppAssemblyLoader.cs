@@ -119,6 +119,7 @@ public sealed class PrefetchTelemetryTracker
 
 public static partial class AppAssemblyLoader
 {
+    internal static bool StaticHosting { get; set; }
     private sealed record ManifestFile(string name, string sha256, string url);
     private sealed record ManifestContent(string name, string url, string? sha256 = null);
     private sealed record ManifestDefaultFont(string name, float size);
@@ -543,7 +544,10 @@ public static partial class AppAssemblyLoader
 
     private static async Task<(Assembly, AppManifest)> LoadAppAsync(string app, HttpClient http, IJSRuntime? js)
     {
-        var manifest = await http.GetFromJsonAsync<AppManifest>("/api/appmanifest?app=" + Uri.EscapeDataString(app))
+        string manifestUrl = StaticHosting
+            ? "apps/" + Uri.EscapeDataString(app) + "/app-manifest.json"
+            : "/api/appmanifest?app=" + Uri.EscapeDataString(app);
+        var manifest = await http.GetFromJsonAsync<AppManifest>(manifestUrl)
             ?? throw new InvalidOperationException("No manifest for app '" + app + "'.");
         await PhaseAsync(js, "Downloading app entry assembly");
         // Even a legacy manifest containing a folder/catalog cannot cause a
@@ -559,6 +563,21 @@ public static partial class AppAssemblyLoader
         lock (Gate) Bytes[Key(file.name)] = entryBytes;
         NoteUsed(app, Key(file.name));
         await ReportAsync(js, entryBytes.Length, !ReferenceEquals(fetch, lazy));
+        if (StaticHosting)
+        {
+            // A static host has no assembly-resolution endpoint. Package the
+            // complete closure and verify it before the entry can request it.
+            foreach (var dependency in manifest.files.Where(f => !f.name.Equals(file.name, StringComparison.OrdinalIgnoreCase)))
+            {
+                byte[] bytes = await FetchVerifiedAsync(http, dependency);
+                lock (Gate) Bytes[Key(dependency.name)] = bytes;
+                await ReportAsync(js, bytes.Length, false);
+            }
+            var staticEntry = AppDomain.CurrentDomain.GetAssemblies().FirstOrDefault(a =>
+                string.Equals(a.GetName().Name, manifest.entry, StringComparison.OrdinalIgnoreCase))
+                ?? Assembly.Load(entryBytes);
+            return (staticEntry, manifest);
+        }
         // One async, verified bootstrap lane. The previous JS warmup and
         // managed warmup used different URLs for the same modules, then sync
         // resolution downloaded them again while the UI thread was blocked.

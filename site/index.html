@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="Explore DesktopWasm. Run small WPF applications directly in your browser with .NET and WebAssembly."
+      content="Explore DesktopWasm. Run small WinForms and WPF applications directly in your browser with .NET and WebAssembly."
     />
     <meta name="theme-color" content="#142b26" />
     <base href="@@BASE_PATH@@" />
@@ -38,7 +38,8 @@
           <h1 id="headline">Desktop apps.<br /><em>Open in a tab.</em></h1>
           <p class="hero-description">
             Familiar windows, real interactions, a new home in your browser.
-            Explore a few small apps built with our WPF compatibility engine.
+            Explore small apps built with our WinForms and WPF compatibility
+            engines.
           </p>
           <div class="hero-actions">
             <a
@@ -88,8 +89,8 @@
               <h2 id="collection-title">Take one for a spin.</h2>
             </div>
             <p>
-              Four source-built WPF examples.<br />Pick an app and make
-              something happen.
+              Converted WinForms apps and WPF mini apps.<br />Pick an app and
+              make something happen.
             </p>
           </div>
           <div class="app-grid">
@@ -108,7 +109,7 @@
                   loading="lazy"
               /></a>
               <div class="app-copy">
-                <p class="app-category">01 / Arithmetic</p>
+                <p class="app-category">WPF · 01 / Arithmetic</p>
                 <h3>Pocket calculator</h3>
                 <p>
                   A working keypad, decimal arithmetic and memory. Start with 7
@@ -138,7 +139,7 @@
                   loading="lazy"
               /></a>
               <div class="app-copy">
-                <p class="app-category">02 / Everyday work</p>
+                <p class="app-category">WPF · 02 / Everyday work</p>
                 <h3>Project planner</h3>
                 <p>
                   Add a task, mark it done, remove it. A little list with real
@@ -168,7 +169,7 @@
                   loading="lazy"
               /></a>
               <div class="app-copy">
-                <p class="app-category">03 / A splash of color</p>
+                <p class="app-category">WPF · 03 / A splash of color</p>
                 <h3>Color lab</h3>
                 <p>
                   Pick a palette and watch the canvas repaint. Forest, ocean or
@@ -198,7 +199,7 @@
                   loading="lazy"
               /></a>
               <div class="app-copy">
-                <p class="app-category">04 / Look around</p>
+                <p class="app-category">WPF · 04 / Look around</p>
                 <h3>Asset explorer</h3>
                 <p>
                   Expand folders and inspect files in a sample project tree.
@@ -212,6 +213,126 @@
                 >
               </div>
             </article>
+            <article class="app-card">
+              <a
+                class="app-preview"
+                href="winforms/?demo=calculator"
+                data-demo="calculator"
+                data-framework="winforms"
+                data-title="WinForms calculator"
+                aria-label="Run WinForms calculator"
+              >
+                <img
+                  src="assets/calculator.png"
+                  width="800"
+                  height="600"
+                  alt="The converted WinForms calculator"
+                  loading="lazy"
+                />
+              </a>
+              <div class="app-copy">
+                <p class="app-category">WinForms · Converted application</p>
+                <h3>Calculator</h3>
+                <p>
+                  The existing Windows calculator, converted to run in your
+                  browser.
+                </p>
+                <p class="app-source">
+                  From
+                  <a href="https://github.com/albisnesstz/csharp-win-calculator"
+                    >albisnesstz/csharp-win-calculator</a
+                  >
+                </p>
+                <a
+                  class="demo-open"
+                  href="winforms/?demo=calculator"
+                  data-demo="calculator"
+                  data-framework="winforms"
+                  data-title="WinForms calculator"
+                  >Run calculator <span aria-hidden="true">↗</span></a
+                >
+              </div>
+            </article>
+            <article class="app-card">
+              <a
+                class="app-preview"
+                href="winforms/?demo=todo"
+                data-demo="todo"
+                data-framework="winforms"
+                data-title="WinForms To-do"
+                aria-label="Run WinForms To-do"
+              >
+                <img
+                  src="assets/todo.png"
+                  width="800"
+                  height="600"
+                  alt="The converted WinForms To-do application"
+                  loading="lazy"
+                />
+              </a>
+              <div class="app-copy">
+                <p class="app-category">WinForms · Converted application</p>
+                <h3>To-do list</h3>
+                <p>
+                  Explore the original daily task-list application and its
+                  Windows controls.
+                </p>
+                <p class="app-source">
+                  From
+                  <a href="https://github.com/kasra10/simple-csharp-todolist"
+                    >kasra10/simple-csharp-todolist</a
+                  >
+                </p>
+                <a
+                  class="demo-open"
+                  href="winforms/?demo=todo"
+                  data-demo="todo"
+                  data-framework="winforms"
+                  data-title="WinForms To-do"
+                  >Run To-do <span aria-hidden="true">↗</span></a
+                >
+              </div>
+            </article>
+            <article class="app-card">
+              <a
+                class="app-preview"
+                href="winforms/?demo=tic-tac-toe"
+                data-demo="tic-tac-toe"
+                data-framework="winforms"
+                data-title="Tic-Tac-Toe"
+                aria-label="Run Tic-Tac-Toe"
+              >
+                <img
+                  src="assets/tic-tac-toe.png"
+                  width="800"
+                  height="600"
+                  alt="The existing converted Tic-Tac-Toe game"
+                  loading="lazy"
+                />
+              </a>
+              <div class="app-copy">
+                <p class="app-category">WinForms · Converted application</p>
+                <h3>Tic-tac-toe</h3>
+                <p>
+                  Play the original game we converted, including its own board
+                  and interface.
+                </p>
+                <p class="app-source">
+                  From
+                  <a href="https://github.com/zakaria-sahki/tic-tac-toe-game"
+                    >zakaria-sahki/tic-tac-toe-game</a
+                  >
+                </p>
+                <a
+                  class="demo-open"
+                  href="winforms/?demo=tic-tac-toe"
+                  data-demo="tic-tac-toe"
+                  data-framework="winforms"
+                  data-title="Tic-Tac-Toe"
+                  >Play tic-tac-toe <span aria-hidden="true">↗</span></a
+                >
+              </div>
+            </article>
           </div>
           <p class="download-note">
             The first app downloads a shared .NET runtime. Later launches can
@@ -219,6 +340,97 @@
             session.
           </p>
         </div>
+      </section>
+
+      <section
+        class="source-gallery wrap"
+        id="build-locally"
+        aria-labelledby="source-title"
+      >
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">More from the project</p>
+            <h2 id="source-title">Build these using the code.</h2>
+          </div>
+          <p>
+            Screenshots from local compatibility builds.<br />Explore the larger
+            applications on your machine.
+          </p>
+        </div>
+        <div class="source-grid">
+          <article>
+            <a
+              href="https://github.com/RazvanManolache/desktop-wasm#source-only-build"
+              ><img
+                src="assets/local-paint.png"
+                width="1400"
+                height="1000"
+                loading="lazy"
+                alt="Local Paint.NET preview with the Twist settings dialog"
+            /></a>
+            <h3>Paint.NET</h3>
+            <p>Drawing tools, menus and an effect settings dialog.</p>
+            <span>Local compatibility preview</span>
+          </article>
+          <article>
+            <a
+              href="https://github.com/RazvanManolache/desktop-wasm#source-only-build"
+              ><img
+                src="assets/local-richtext.png"
+                width="1400"
+                height="1000"
+                loading="lazy"
+                alt="Local Telerik RichTextEditor preview with text entered in a document"
+            /></a>
+            <h3>Telerik RichTextEditor</h3>
+            <p>A desktop document editor with text input.</p>
+            <span>Local compatibility preview</span>
+          </article>
+          <article>
+            <a
+              href="https://github.com/RazvanManolache/desktop-wasm#source-only-build"
+              ><img
+                src="assets/local-chart.png"
+                width="1400"
+                height="1000"
+                loading="lazy"
+                alt="Local Syncfusion chart preview showing stacked columns"
+            /></a>
+            <h3>Syncfusion Chart</h3>
+            <p>A chart type selection repaints the columns.</p>
+            <span>Local compatibility preview</span>
+          </article>
+          <article>
+            <a
+              href="https://github.com/RazvanManolache/desktop-wasm#source-only-build"
+              ><img
+                src="assets/local-wpf-gallery.png"
+                width="1400"
+                height="1000"
+                loading="lazy"
+                alt="Local WPF Gallery navigating between sample pages"
+            /></a>
+            <h3>Microsoft WPF Gallery</h3>
+            <p>Controls, tree navigation and sample pages.</p>
+            <span>Local compatibility preview</span>
+          </article>
+        </div>
+        <div class="source-actions">
+          <a
+            class="button primary"
+            href="https://github.com/RazvanManolache/desktop-wasm#source-only-build"
+            >Get the code and build <span aria-hidden="true">↗</span></a
+          ><a
+            class="text-link"
+            href="https://github.com/RazvanManolache/desktop-wasm/blob/main/inputs/README.md"
+            >Application input setup <span aria-hidden="true">↗</span></a
+          >
+        </div>
+        <p class="download-note">
+          Some examples need their upstream application files or vendor demo
+          inputs. The repository documents setup and the remaining compatibility
+          gaps.
+        </p>
       </section>
 
       <section class="about wrap" id="about" aria-labelledby="about-title">
@@ -231,9 +443,9 @@
             drawing, input and application behavior can run on WebAssembly.
           </p>
           <p>
-            These mini apps exercise the WPF engine. The wider compatibility
-            work includes converted desktop applications, vendor controls and
-            mixed-framework hosting.
+            These mini apps exercise the WinForms and WPF engines. The wider
+            compatibility work includes converted desktop applications, vendor
+            controls and mixed-framework hosting.
           </p>
           <a
             class="text-link"
@@ -247,7 +459,7 @@
             <h3>Real .NET execution</h3>
             <p>
               The app code runs in a browser-hosted .NET runtime. Pointer and
-              keyboard input go through the WPF engine.
+              keyboard input go through the selected desktop UI engine.
             </p>
           </div>
           <div>
@@ -289,7 +501,7 @@
     <dialog id="demo-dialog" aria-labelledby="demo-title">
       <div class="demo-toolbar">
         <div>
-          <p class="app-category">WPF / WebAssembly</p>
+          <p id="demo-framework" class="app-category">WPF / WebAssembly</p>
           <h2 id="demo-title">Pocket calculator</h2>
         </div>
         <div class="demo-actions">

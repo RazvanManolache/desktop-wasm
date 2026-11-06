@@ -1,0 +1,27 @@
+{
+  "url": "https://github.com/RazvanManolache/desktop-wasm/releases/download/showcase-inputs/converted-winforms-c057117b5dc4.zip",
+  "sha256": "c057117b5dc421cb66985a7eca8aae6bc0c99d7e084a3519bb246a15aa642341",
+  "bytes": 120947,
+  "apps": [
+    {
+      "app": "calculator",
+      "source": "https://github.com/albisnesstz/csharp-win-calculator",
+      "license": "MIT",
+      "conversion": "Existing locally converted assembly, preserved without source substitution.",
+      "licenseFile": "licenses/calculator.txt"
+    },
+    {
+      "app": "todo",
+      "source": "https://github.com/kasra10/simple-csharp-todolist",
+      "license": "Apache-2.0",
+      "conversion": "Existing locally converted assembly, preserved without source substitution.",
+      "licenseFile": "licenses/todo.txt"
+    },
+    {
+      "app": "tictactoe",
+      "source": "https://github.com/zakaria-sahki/tic-tac-toe-game",
+      "license": "No license declared upstream",
+      "conversion": "Existing locally converted assembly, preserved without source substitution."
+    }
+  ]
+}

@@ -40,6 +40,63 @@ button:focus-visible {
   width: min(1200px, calc(100% - 96px));
   margin-inline: auto;
 }
+.source-gallery {
+  padding-block: 80px;
+  border-bottom: 1px solid var(--line);
+}
+.source-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 34px 24px;
+}
+.source-grid img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 10;
+  object-fit: contain;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.source-grid h3 {
+  margin-top: 17px;
+  font-size: 20px;
+}
+.source-grid p {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.source-grid span {
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.source-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 22px;
+  margin-top: 32px;
+}
+.app-copy .app-source {
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+.app-source a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+@media (max-width: 620px) {
+  .source-gallery {
+    padding-block: 48px;
+  }
+  .source-grid {
+    grid-template-columns: 1fr;
+  }
+}
 .navigation {
   display: flex;
   align-items: center;
