@@ -53,9 +53,12 @@ def main():
         url = args.url or f'http://127.0.0.1:{server.server_port}/desktop-wasm/'
         try:
             with sync_playwright() as pw:
-                browser = pw.chromium.launch(headless=True, args=['--use-angle=swiftshader', '--enable-unsafe-swiftshader'])
+                browser = pw.chromium.launch(headless=True, args=['--use-angle=swiftshader', '--enable-unsafe-swiftshader',
+                    '--disable-background-timer-throttling', '--disable-renderer-backgrounding',
+                    '--disable-backgrounding-occluded-windows'])
                 try:
                     page = browser.new_page(viewport={'width': 1440, 'height': 1100})
+                    page.set_default_timeout(120000)
                     # Observe the labels actually painted by the native controls.
                     page.add_init_script("""window.paintedLabels = [];
                         const original = CanvasRenderingContext2D.prototype.fillText;
