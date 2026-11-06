@@ -13,40 +13,49 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 60
     steps:
-      - name: Enable long source paths on Windows
-        run: git config --global core.longpaths true
-      - uses: actions/checkout@v7.0.1
-      - uses: actions/setup-dotnet@v6.1.0
-        with:
-          dotnet-version: '9.0.x'
-      - uses: actions/setup-python@v7
-        with:
-          python-version: '3.14'
-      - name: Install browser build and test tools
-        run: |
-          dotnet workload install wasm-tools --skip-manifest-update
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          python -m pip install --upgrade pip
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          python -m pip install playwright==1.64.0
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          python -m playwright install chromium
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-      - name: Build, test, package and render browser demo
-        run: ./scripts/ci/build.ps1
-      - uses: actions/upload-artifact@v7.0.2
-        with:
-          name: DesktopWasm-browser-demos
-          path: .ci-dist/downloads/*
-          if-no-files-found: error
-          retention-days: 30
-          include-hidden-files: true
-      - name: Upload build and test evidence
-        if: always() && hashFiles('.ci-results/**') != ''
-        uses: actions/upload-artifact@v7.0.2
-        with:
-          name: DesktopWasm-build-reports
-          path: .ci-results/
-          if-no-files-found: error
-          retention-days: 30
-          include-hidden-files: true
+    - name: Enable long source paths on Windows
+      run: git config --global core.longpaths true
+    - uses: actions/checkout@v7.0.1
+    - uses: actions/setup-dotnet@v6.1.0
+      with:
+        dotnet-version: '9.0.x'
+    - uses: actions/setup-python@v7
+      with:
+        python-version: '3.14'
+    - name: Install browser build and test tools
+      run: |
+        dotnet workload install wasm-tools --skip-manifest-update
+        if ($LASTEXITCODE) { exit $LASTEXITCODE }
+        python -m pip install --upgrade pip
+        if ($LASTEXITCODE) { exit $LASTEXITCODE }
+        python -m pip install playwright==1.64.0
+        if ($LASTEXITCODE) { exit $LASTEXITCODE }
+        python -m playwright install chromium
+        if ($LASTEXITCODE) { exit $LASTEXITCODE }
+    - name: Build, test, package and render browser demo
+      run: ./scripts/ci/build.ps1
+    - uses: actions/github-script@v9
+      with:
+        script: |
+          const publish = require('./.github/scripts/publish-build.cjs');
+          await publish({github, context, core, glob, exec});
+      env:
+        BUILD_NAME: DesktopWasm-browser-demos
+        BUILD_PATHS: .ci-dist/downloads/*
+        BUILD_HIDDEN: 'true'
+        BUILD_MISSING: error
+      if: (success()) && success() && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && github.event_name != 'pull_request'
+    - name: Upload build and test evidence
+      if: (always() && hashFiles('.ci-results/**') != '') && success() && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && github.event_name != 'pull_request'
+      uses: actions/github-script@v9
+      with:
+        script: |
+          const publish = require('./.github/scripts/publish-build.cjs');
+          await publish({github, context, core, glob, exec});
+      env:
+        BUILD_NAME: DesktopWasm-build-reports
+        BUILD_PATHS: .ci-results/
+        BUILD_HIDDEN: 'true'
+        BUILD_MISSING: error
+    permissions:
+      contents: write
