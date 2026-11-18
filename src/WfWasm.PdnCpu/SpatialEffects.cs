@@ -180,6 +180,210 @@ public static unsafe partial class CpuPaint
         return output;
     }
 
+    // Portable tile-reflection fallback for TileReflectionGpuEffect
+    // (Effects > Distort > Tile Reflection). Approximation, not native
+    // parity: the classic openpdn TileEffect transfer (rotate into the
+    // warp frame, tan warp scaled by 1/squareSize, rotate back, wrapped
+    // bilinear resample) with a uniform sample grid in place of the
+    // classic RGSS offsets. Genuine-token evidence is thin (served M7
+    // probe: the dialog Angle slider defaults 30.00 over +/-180, the
+    // classic Rotation default and range): Rotation|Angle (degrees,
+    // default 30), SquareSize|TileSize (px, default 40), Curvature
+    // (default 8), Quality (default 2 with the classic ++ quirk).
+    // Fail-closed: a token with no recognized geometry property returns
+    // false so the product path runs as before. Open parity items for
+    // the served re-gate: exact token property names, wrap-vs-mirror
+    // edge mode, uniform-grid-vs-RGSS antialiasing.
+    private static bool RenderTileReflectionTileCpu(object owner, object dst, object point)
+    {
+        if (!s_tileSources.TryGetValue(owner, out var source)) return false;
+        object? token = GetEffectToken(owner);
+        if (token is null) return false;
+        bool any = false;
+        double rotation = TileProp(token, "Rotation", "Angle", 30, ref any);
+        double squareSize = TileProp(token, "SquareSize", "TileSize", 40, ref any);
+        double curvature = TileProp(token, "Curvature", null, 8, ref any);
+        bool qualityHit = false;
+        int quality = (int)Math.Round(TileProp(token, "Quality", null, 2, ref qualityHit));
+        if (!any) return false;
+        rotation = Math.Clamp(rotation, -180, 180);
+        squareSize = Math.Clamp(squareSize, 1, 800);
+        curvature = Math.Clamp(curvature, -100, 100);
+        quality = Math.Clamp(quality, 1, 5);
+        if (quality != 1) ++quality;
+        string key = FormattableString.Invariant($"{rotation:R}:{squareSize:R}:{curvature:R}:{quality}");
+        var cached = s_spatial.GetValue(source, _ => new SpatialResult());
+        byte[] pixels;
+        lock (cached.Gate)
+        {
+            if (cached.Key != key)
+            {
+                cached.Pixels = TileReflectionSource(source, rotation, squareSize, curvature, quality);
+                cached.Key = key;
+            }
+            pixels = cached.Pixels;
+        }
+        return CopyEffectTile(source, pixels, dst, point);
+    }
+
+    // Portable exposure fallback for ExposureGpuEffect (Adjustments >
+    // Exposure). Approximation, not native parity: per-channel gain
+    // out = in * 2^ev with ev = token/100 (dialog integer range
+    // [-200, 200] observed in served bytes; default 0 = identity),
+    // clamped to byte range; alpha preserved. The GPU path feeds a
+    // Direct2D Exposure device effect with the same scaled value.
+    private static bool RenderExposureTileCpu(object owner, object dst, object point)
+    {
+        if (!s_tileSources.TryGetValue(owner, out var source)) return false;
+        object? token = GetEffectToken(owner);
+        if (token is null) return false;
+        int exposure = Math.Clamp(TokenInt(token, "Exposure", 0), -200, 200);
+        string key = FormattableString.Invariant($"exposure:{exposure}");
+        var cached = s_spatial.GetValue(source, _ => new SpatialResult());
+        byte[] pixels;
+        lock (cached.Gate)
+        {
+            if (cached.Key != key)
+            {
+                cached.Pixels = ExposureSource(source, exposure / 100.0);
+                cached.Key = key;
+            }
+            pixels = cached.Pixels;
+        }
+        return CopyEffectTile(source, pixels, dst, point);
+    }
+
+    private static byte[] ExposureSource(TileSource source, double ev)
+    {
+        byte[] input = TightPixels(source);
+        var output = new byte[input.Length];
+        double gain = Math.Pow(2.0, ev);
+        for (int i = 0; i < output.Length; i += 4)
+        {
+            output[i] = ToByteClamped(input[i] * gain);
+            output[i + 1] = ToByteClamped(input[i + 1] * gain);
+            output[i + 2] = ToByteClamped(input[i + 2] * gain);
+            output[i + 3] = input[i + 3];
+        }
+        return output;
+    }
+
+    // Portable sepia fallback for SepiaGpuEffect. Approximation, not
+    // native parity: D2D sepia matrix blended with identity by
+    // intensity = token/100 (dialog integer range [50, 100] observed
+    // in served bytes; default 50). Alpha preserved.
+    private static bool RenderSepiaTileCpu(object owner, object dst, object point)
+    {
+        if (!s_tileSources.TryGetValue(owner, out var source)) return false;
+        object? token = GetEffectToken(owner);
+        if (token is null) return false;
+        int intensity = Math.Clamp(TokenInt(token, "Intensity", 50), 50, 100);
+        string key = FormattableString.Invariant($"sepia:{intensity}");
+        var cached = s_spatial.GetValue(source, _ => new SpatialResult());
+        byte[] pixels;
+        lock (cached.Gate)
+        {
+            if (cached.Key != key)
+            {
+                cached.Pixels = SepiaSource(source, intensity / 100.0);
+                cached.Key = key;
+            }
+            pixels = cached.Pixels;
+        }
+        return CopyEffectTile(source, pixels, dst, point);
+    }
+
+    private static byte[] SepiaSource(TileSource source, double amount)
+    {
+        byte[] input = TightPixels(source);
+        var output = new byte[input.Length];
+        for (int i = 0; i < output.Length; i += 4)
+        {
+            // Paint.NET tile buffers use BGRA byte order.
+            double b = input[i], g = input[i + 1], r = input[i + 2];
+            double sr = 0.393 * r + 0.769 * g + 0.189 * b;
+            double sg = 0.349 * r + 0.686 * g + 0.168 * b;
+            double sb = 0.272 * r + 0.534 * g + 0.131 * b;
+            output[i] = ToByteClamped(b + (sb - b) * amount);
+            output[i + 1] = ToByteClamped(g + (sg - g) * amount);
+            output[i + 2] = ToByteClamped(r + (sr - r) * amount);
+            output[i + 3] = input[i + 3];
+        }
+        return output;
+    }
+
+    private static byte ToByteClamped(double v) => (byte)Math.Clamp((int)Math.Round(v), 0, 255);
+
+    private static double TileProp(object token, string primary, string? alias, double fallback, ref bool any)
+    {
+        object? v = GetTokenValue(token, primary);
+        if (v is null && alias is not null) v = GetTokenValue(token, alias);
+        if (v is null) return fallback;
+        try
+        {
+            double d = Convert.ToDouble(v);
+            if (double.IsFinite(d)) { any = true; return d; }
+        }
+        catch
+        {
+        }
+        return fallback;
+    }
+
+    private static byte[] TileReflectionSource(TileSource source, double rotationDeg, double squareSize, double curvature, int samplesPerAxis)
+    {
+        byte[] input = TightPixels(source);
+        int w = source.Width, h = source.Height;
+        byte[] output = new byte[input.Length];
+        if (w <= 0 || h <= 0) return output;
+        double rotation = -rotationDeg * Math.PI / 180.0;
+        double sin = Math.Sin(rotation), cos = Math.Cos(rotation);
+        double scale = Math.PI / squareSize;
+        double intensity = curvature * curvature / 10.0 * Math.Sign(curvature);
+        double hw = w / 2.0, hh = h / 2.0;
+        int n = Math.Max(1, samplesPerAxis);
+        double[] acc = new double[4];
+        for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++)
+        {
+            acc[0] = acc[1] = acc[2] = acc[3] = 0;
+            for (int py = 0; py < n; py++)
+            for (int px = 0; px < n; px++)
+            {
+                double u1 = x - hw + (n == 1 ? 0 : (px + 0.5) / n - 0.5);
+                double v1 = y - hh + (n == 1 ? 0 : (py + 0.5) / n - 0.5);
+                double s1 = cos * u1 + sin * v1;
+                double t1 = -sin * u1 + cos * v1;
+                double s2 = intensity == 0 ? s1 : s1 + intensity * Math.Tan(s1 * scale);
+                double t2 = intensity == 0 ? t1 : t1 + intensity * Math.Tan(t1 * scale);
+                double u2 = cos * s2 - sin * t2;
+                double v2 = sin * s2 + cos * t2;
+                SampleWrappedBilinear(input, w, h, hw + u2, hh + v2, acc);
+            }
+            double m = (double)n * n;
+            int o = (y * w + x) * 4;
+            for (int c = 0; c < 4; c++)
+                output[o + c] = (byte)Math.Clamp((int)Math.Round(acc[c] / m), 0, 255);
+        }
+        return output;
+    }
+
+    private static void SampleWrappedBilinear(byte[] input, int w, int h, double xs, double ys, double[] acc)
+    {
+        double xw = xs % w; if (xw < 0) xw += w;
+        double yw = ys % h; if (yw < 0) yw += h;
+        int x0 = (int)Math.Floor(xw), y0 = (int)Math.Floor(yw);
+        double fx = xw - x0, fy = yw - y0;
+        int x1 = x0 + 1 == w ? 0 : x0 + 1;
+        int y1 = y0 + 1 == h ? 0 : y0 + 1;
+        for (int c = 0; c < 4; c++)
+        {
+            double s00 = input[(y0 * w + x0) * 4 + c], s10 = input[(y0 * w + x1) * 4 + c];
+            double s01 = input[(y1 * w + x0) * 4 + c], s11 = input[(y1 * w + x1) * 4 + c];
+            acc[c] += s00 * (1 - fx) * (1 - fy) + s10 * fx * (1 - fy) + s01 * (1 - fx) * fy + s11 * fx * fy;
+        }
+    }
+
     private static byte[] BulgeSource(TileSource source, double strength, double ox, double oy)
     {
         byte[] input = TightPixels(source);
@@ -455,13 +659,64 @@ public static unsafe partial class CpuPaint
     }
 
 
+    // Per-tile duck-typed reads without per-call reflection boxing.
+    // Open-instance getters are compiled once per (type, name) and
+    // cached; the old reflective read stays the fallback for exotic
+    // shapes (missing/non-int properties, build failures). Getters
+    // are pure reads, so invoking on a boxed struct copy still yields
+    // the right value. The sentinel keeps the cache null-free.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<(Type, string), object> s_tileIntReaders = new();
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<(Type, string), object> s_tilePtrReaders = new();
+    private static readonly object s_noTileReader = new();
+
+    private static int ReadTileInt(object target, string name)
+    {
+        var key = (target.GetType(), name);
+        object cached = s_tileIntReaders.GetOrAdd(key, static k =>
+        {
+            try
+            {
+                var prop = k.Item1.GetProperty(k.Item2, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                if (prop is null || !prop.CanRead || prop.PropertyType != typeof(int) || prop.GetIndexParameters().Length != 0)
+                    return s_noTileReader;
+                var self = System.Linq.Expressions.Expression.Parameter(typeof(object), "target");
+                var call = System.Linq.Expressions.Expression.Call(System.Linq.Expressions.Expression.Convert(self, k.Item1), prop.GetMethod);
+                return (object)System.Linq.Expressions.Expression.Lambda<System.Func<object, int>>(call, self).Compile();
+            }
+            catch { return s_noTileReader; }
+        });
+        if (ReferenceEquals(cached, s_noTileReader))
+            return Convert.ToInt32(key.Item1.GetProperty(name)?.GetValue(target));
+        return ((Func<object, int>)cached)(target);
+    }
+
+    private static IntPtr ReadTilePtr(object target, string name)
+    {
+        var key = (target.GetType(), name);
+        object cached = s_tilePtrReaders.GetOrAdd(key, static k =>
+        {
+            try
+            {
+                var prop = k.Item1.GetProperty(k.Item2, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                if (prop is null || !prop.CanRead || prop.PropertyType != typeof(IntPtr) || prop.GetIndexParameters().Length != 0)
+                    return s_noTileReader;
+                var self = System.Linq.Expressions.Expression.Parameter(typeof(object), "target");
+                var call = System.Linq.Expressions.Expression.Call(System.Linq.Expressions.Expression.Convert(self, k.Item1), prop.GetMethod);
+                return (object)System.Linq.Expressions.Expression.Lambda<System.Func<object, System.IntPtr>>(call, self).Compile();
+            }
+            catch { return s_noTileReader; }
+        });
+        if (ReferenceEquals(cached, s_noTileReader))
+            return UnboxPointer(key.Item1.GetProperty(name)?.GetValue(target));
+        return ((Func<object, IntPtr>)cached)(target);
+    }
+
     private static bool CopyEffectTile(TileSource source, byte[] pixels, object dst, object point)
     {
-        Type d = dst.GetType(), p = point.GetType();
-        int w = Convert.ToInt32(d.GetProperty("Width")?.GetValue(dst)), h = Convert.ToInt32(d.GetProperty("Height")?.GetValue(dst));
-        int stride = Convert.ToInt32(d.GetProperty("Stride")?.GetValue(dst));
-        IntPtr ptr = UnboxPointer(d.GetProperty("Ptr")?.GetValue(dst));
-        int x = Convert.ToInt32(p.GetProperty("X")?.GetValue(point)), y = Convert.ToInt32(p.GetProperty("Y")?.GetValue(point));
+        int w = ReadTileInt(dst, "Width"), h = ReadTileInt(dst, "Height");
+        int stride = ReadTileInt(dst, "Stride");
+        IntPtr ptr = ReadTilePtr(dst, "Ptr");
+        int x = ReadTileInt(point, "X"), y = ReadTileInt(point, "Y");
         if (w <= 0 || h <= 0 || stride < w * 4 || ptr == IntPtr.Zero || x < 0 || y < 0 || x + w > source.Width || y + h > source.Height) return false;
         for (int row = 0; row < h; row++)
             Marshal.Copy(pixels, ((y + row) * source.Width + x) * 4, ptr + row * stride, w * 4);

@@ -827,10 +827,19 @@ namespace System.Drawing
             return colors.Length == 0 ? colors : (Color[])colors.Clone();
         }
 
+        // Uniform positions are a pure function of the stop count (no
+        // brush identity), so the hot 0/1- and 2-stop shapes share
+        // frozen arrays instead of allocating per fill. The arrays are
+        // never mutated (LerpColor only reads differences) and the
+        // colors array stays a per-call clone (mutation snapshot rule).
+        private static readonly float[] SinglePosition = [0f];
+        private static readonly float[] TwoPositions = [0f, 1f];
         private static float[] UniformPositions(int count)
         {
         if (count <= 1)
-        return [0f];
+        return SinglePosition;
+        if (count == 2)
+        return TwoPositions;
         var positions = new float[count];
         for (int i = 0; i < count; i++)
         positions[i] = i / (float)(count - 1);
@@ -1035,13 +1044,22 @@ namespace System.Drawing
             }
             if (scans.Length < 2)
                 return false;
-            var spans = new List<(int sx0, int sy0, int sx1, int sy1)>(scans.Length);
-            foreach (RectangleF rect in scans)
+            // Two passes, no List: spans are a pure function of scans +
+            // fill bounds. Pass 1 validates and counts; small unions ride
+            // the stack, huge ones take exactly one array. Pass 2 fills
+            // the spans via the same helper, so both passes agree.
+            static bool TryScanSpan(RectangleF rect, int x0, int y0, int x1, int y1,
+                out (int sx0, int sy0, int sx1, int sy1) span, out bool skip)
             {
+                span = default;
+                skip = false;
                 if (float.IsNaN(rect.X) || float.IsNaN(rect.Y) || float.IsNaN(rect.Width) || float.IsNaN(rect.Height))
                     return false;
                 if (rect.Width <= 0 || rect.Height <= 0)
-                    continue;
+                {
+                    skip = true;
+                    return false;
+                }
                 if (rect.X != MathF.Floor(rect.X) || rect.Y != MathF.Floor(rect.Y) ||
                     rect.Width != MathF.Floor(rect.Width) || rect.Height != MathF.Floor(rect.Height))
                     return false;
@@ -1052,19 +1070,43 @@ namespace System.Drawing
                 int ix1 = (int)Math.Min(x1, rx1);
                 int iy1 = (int)Math.Min(y1, ry1);
                 if (ix1 <= ix0 || iy1 <= iy0)
-                    continue;
-                spans.Add((ix0, iy0, ix1, iy1));
+                {
+                    skip = true;
+                    return false;
+                }
+                span = (ix0, iy0, ix1, iy1);
+                return true;
             }
-            for (int i = 0; i < spans.Count; i++)
-                for (int j = i + 1; j < spans.Count; j++)
+            int kept = 0;
+            for (int i = 0; i < scans.Length; i++)
+            {
+                if (!TryScanSpan(scans[i], x0, y0, x1, y1, out _, out bool skip))
+                {
+                    if (!skip)
+                        return false;
+                    continue;
+                }
+                kept++;
+            }
+            if (kept == 0)
+                return true;
+            Span<(int sx0, int sy0, int sx1, int sy1)> spans =
+                kept <= 64 ? stackalloc (int, int, int, int)[kept] : new (int, int, int, int)[kept];
+            int n = 0;
+            for (int i = 0; i < scans.Length; i++)
+            {
+                if (!TryScanSpan(scans[i], x0, y0, x1, y1, out var span, out _))
+                    continue;
+                spans[n++] = span;
+            }
+            for (int i = 0; i < n; i++)
+                for (int j = i + 1; j < n; j++)
                 {
                     var (ax0, ay0, ax1, ay1) = spans[i];
                     var (bx0, by0, bx1, by1) = spans[j];
                     if (ax0 < bx1 && bx0 < ax1 && ay0 < by1 && by0 < ay1)
                         return false;
                 }
-            if (spans.Count == 0)
-                return true;
             int[] fillDst = _target.Pixels;
             int fillW = _target.Width;
             int total = 0;
@@ -2483,20 +2525,32 @@ namespace System.Drawing
         // LOG LINE only. HashSet+lock retained (equally bounded).
         private static readonly System.Collections.Generic.HashSet<string> s_dsRectLogged = new();
         private static int s_dsRectLoggedCount;
+        // Repeat gate for the rect census: the set key is font+geometry+wrap
+        // (WC1541), so a repeated shape is recognized from a stack-only
+        // struct without rebuilding the key/preview strings per DrawString.
+        // Same log lines, same 64-cap; the hot steady state allocates nothing.
+        private readonly record struct DsRectShape(string FontName, float Size, int Style, int X, int Y, int W, int H, bool NoWrap);
+        private static DsRectShape s_dsLastShape;
+        private static bool s_dsHasLastShape;
         private static void NoteDrawStringRect(string? text, Font font, RectangleF layoutRectangle, StringFormat? format)
         {
             try
             {
                 if (s_dsRectLoggedCount >= 64) return;
                 bool noWrap = format is not null && (format.FormatFlags & StringFormatFlags.NoWrap) != 0;
-                string preview = text is not null && text.Length > 24 ? text.Substring(0, 24) : text ?? "";
-                string key = font.Name + "," + font.Size + "," + (int)font.Style + "|" + (int)layoutRectangle.X + "," + (int)layoutRectangle.Y + " " + (int)layoutRectangle.Width + "x" + (int)layoutRectangle.Height + "|" + (noWrap ? "nw" : "w");
+                var shape = new DsRectShape(font.Name, font.Size, (int)font.Style, (int)layoutRectangle.X, (int)layoutRectangle.Y, (int)layoutRectangle.Width, (int)layoutRectangle.Height, noWrap);
                 lock (s_dsRectLogged)
                 {
-                    if (s_dsRectLoggedCount >= 64 || !s_dsRectLogged.Add(key)) return;
+                    if (s_dsRectLoggedCount >= 64) return;
+                    if (s_dsHasLastShape && s_dsLastShape.Equals(shape)) return;
+                    string preview = text is not null && text.Length > 24 ? text.Substring(0, 24) : text ?? "";
+                    string key = shape.FontName + "," + shape.Size + "," + shape.Style + "|" + shape.X + "," + shape.Y + " " + shape.W + "x" + shape.H + "|" + (shape.NoWrap ? "nw" : "w");
+                    if (!s_dsRectLogged.Add(key)) { s_dsLastShape = shape; s_dsHasLastShape = true; return; }
                     s_dsRectLoggedCount++;
+                    s_dsLastShape = shape;
+                    s_dsHasLastShape = true;
+                    System.Console.WriteLine("[DS-RECT] '" + preview + "' rect=" + layoutRectangle.X + "," + layoutRectangle.Y + " " + layoutRectangle.Width + "x" + layoutRectangle.Height + " nowrap=" + (noWrap ? "True" : "False"));
                 }
-                System.Console.WriteLine("[DS-RECT] '" + preview + "' rect=" + layoutRectangle.X + "," + layoutRectangle.Y + " " + layoutRectangle.Width + "x" + layoutRectangle.Height + " nowrap=" + (noWrap ? "True" : "False"));
             }
             catch
             {
@@ -2861,12 +2915,19 @@ namespace System.Drawing
         public Region[] MeasureCharacterRanges(string? text, Font font, RectangleF layoutRect, StringFormat? format) =>
             MeasureCharacterRanges(text, font, layoutRect, format, out _);
 
-        // Scoped per-range measurement (Syncfusion HTMLUI BaseElement /
+        // Multiline-aware per-range measurement (Syncfusion HTMLUI BaseElement /
         // SelectionManager shape): one Region per range stored via
-        // SetMeasurableCharacterRanges, each positioned by the tight
-        // single-line advance of its prefix through the shared MeasureReal
-        // core. Multi-line wrapping is not
-        // modeled (single line box at layoutRect.Y).
+        // SetMeasurableCharacterRanges. Explicit breaks (\r\n, \r, \n) stack
+        // line boxes at LineBoxHeight pitch (native oracle: second line at
+        // Y+lineH, spanning ranges union one fragment per covered line); each
+        // fragment keeps the tight single-line prefix advance through the
+        // shared MeasureReal core, so shaping context is preserved per line.
+        // Word-wrap rows are NOT split into fragments (no word-break engine):
+        // an over-wide line keeps one clipped box. Out-of-range First/Length
+        // clamps to empty (native GDI+ throws "Parameter is not valid" there;
+        // layout paths must stay fail-soft). Vertical LineAlignment applies to
+        // the whole block; horizontal Alignment applies per line, matching
+        // drawn positions (native oracle: centered lines carry distinct X).
         public Region[] MeasureCharacterRanges(string? text, Font font, RectangleF layoutRect, StringFormat? format, out int charsFitted)
         {
                 ArgumentNullException.ThrowIfNull(font);
@@ -2886,47 +2947,313 @@ namespace System.Drawing
                     charsFitted = 0;
                     return regions;
                 }
-                float totalW = MeasureReal(s, font, SizeF.Empty, true, null, true).Width;
-                float originX = layoutRect.X;
+                // Row structure: explicit breaks (\r\n and \n; a lone \r is an
+                // ordinary char, native oracle lone-cr) always start rows;
+                // an over-wide row wraps further at word boundaries (spaces,
+                // tabs, hyphens) with a character-break fallback, all widths
+                // through the shared tight MeasureReal core (native oracle:
+                // wrapped rows stack at line-box pitch; spanning ranges union
+                // one fragment per row). Small cases ride the stack; large
+                // inputs use heap rows. Row 0 and explicit-line starts are
+                // always laid out; later wrap rows only when their full box
+                // fits the rect, NoClip or not (noclip-short probe); NoClip
+                // skips bounds clipping only; NoWrap reports only each
+                // line's first wrap row.
+                int lineCount = 1;
+                for (int p = 0; p < s.Length; p++)
+                {
+                    char c = s[p];
+                    if (c == '\r')
+                    {
+                        if (p + 1 < s.Length && s[p + 1] == '\n')
+                        {
+                            lineCount++;
+                            p++;
+                        }
+                    }
+                    else if (c == '\n')
+                    {
+                        lineCount++;
+                    }
+                }
+                Span<int> lineStarts = lineCount <= 64 ? stackalloc int[lineCount] : new int[lineCount];
+                Span<int> lineLens = lineCount <= 64 ? stackalloc int[lineCount] : new int[lineCount];
+                Span<int> breakLens = lineCount <= 64 ? stackalloc int[lineCount] : new int[lineCount];
+                int lineStart = 0;
+                int lineIdx = 0;
+                for (int p = 0; p < s.Length; p++)
+                {
+                    char c = s[p];
+                    int bl = 0;
+                    if (c == '\r' && p + 1 < s.Length && s[p + 1] == '\n')
+                        bl = 2;
+                    else if (c == '\n')
+                        bl = 1;
+                    if (bl == 0)
+                        continue;
+                    lineStarts[lineIdx] = lineStart;
+                    lineLens[lineIdx] = p - lineStart;
+                    breakLens[lineIdx] = bl;
+                    lineIdx++;
+                    lineStart = p + bl;
+                    p += bl - 1;
+                }
+                lineStarts[lineIdx] = lineStart;
+                lineLens[lineIdx] = s.Length - lineStart;
+                breakLens[lineIdx] = 0;
+                // Whole-line widths feed the wrap decision and row alignment.
+                // Trailing spaces count only with MeasureTrailingSpaces.
+                bool keepTrailing = format is not null && (format.FormatFlags & StringFormatFlags.MeasureTrailingSpaces) != 0;
+                Span<float> lineWidths = lineCount <= 64 ? stackalloc float[lineCount] : new float[lineCount];
+                for (int k = 0; k < lineCount; k++)
+                {
+                    lineWidths[k] = lineLens[k] == 0
+                        ? 0f
+                        : MeasureMcrSpan(s, lineStarts[k], lineLens[k], font, keepTrailing);
+                }
+                // Upper bound: fitting lines stay single rows; over-wide lines
+                // split into at most ceil(width/rect)+1 rows.
+                int rowCap = 0;
+                for (int k = 0; k < lineCount; k++)
+                    rowCap += lineWidths[k] <= layoutRect.Width ? 1 : (int)Math.Ceiling(lineWidths[k] / layoutRect.Width) + 1;
+                Span<McrRow> rowBuf = rowCap <= 64 ? stackalloc McrRow[rowCap] : new McrRow[rowCap];
+                int rowCount = 0;
+                for (int k = 0; k < lineCount; k++)
+                {
+                    if (lineWidths[k] <= layoutRect.Width)
+                    {
+                        rowBuf[rowCount++] = new McrRow(lineStarts[k], lineLens[k], lineWidths[k], 0, breakLens[k]);
+                    }
+                    else
+                    {
+                        rowCount += SplitWrapRow(s, lineStarts[k], lineLens[k], lineWidths[k], layoutRect.Width, breakLens[k], rowBuf.Slice(rowCount), font, keepTrailing);
+                    }
+                }
+                ReadOnlySpan<McrRow> rows = rowBuf.Slice(0, rowCount);
+                float blockH = rowCount * lineH;
                 float originY = layoutRect.Y;
-                if (format is not null && lineH < layoutRect.Height)
+                // Center/Far align the block unconditionally: an overflowing
+                // block spills (native oracle valign-center/far-short), Near
+                // stays top-anchored and spills below.
+                if (format is not null)
                 {
                     if (format.LineAlignment == StringAlignment.Center)
-                        originY += (layoutRect.Height - lineH) / 2f;
+                        originY += (layoutRect.Height - blockH) / 2f;
                     else if (format.LineAlignment == StringAlignment.Far)
-                        originY += layoutRect.Height - lineH;
+                        originY += layoutRect.Height - blockH;
                 }
-                if (format is not null && totalW < layoutRect.Width)
+                bool clip = format is null || (format.FormatFlags & StringFormatFlags.NoClip) == 0;
+                bool wrapGate = format is not null && (format.FormatFlags & StringFormatFlags.NoWrap) != 0;
+                Span<float> rowX = rowCount <= 64 ? stackalloc float[rowCount] : new float[rowCount];
+                for (int k = 0; k < rowCount; k++)
                 {
-                    if (format.Alignment == StringAlignment.Center)
-                        originX += (layoutRect.Width - totalW) / 2f;
-                    else if (format.Alignment == StringAlignment.Far)
-                        originX += layoutRect.Width - totalW;
+                    float x = layoutRect.X;
+                    if (format is not null)
+                    {
+                        if (format.Alignment == StringAlignment.Center)
+                        {
+                            if (rows[k].Width < layoutRect.Width)
+                                x += (layoutRect.Width - rows[k].Width) / 2f;
+                        }
+                        else if (format.Alignment == StringAlignment.Far)
+                        {
+                            // Native right margin (~2px: oracle far-single
+                            // 368 vs 370, far-explicit 168/166).
+                            if (rows[k].Width < layoutRect.Width)
+                                x = layoutRect.Right - 2f - rows[k].Width;
+                        }
+                    }
+                    rowX[k] = x;
                 }
+                charsFitted = FitVisiblePrefix(s, rows, font, layoutRect, originY, lineH, wrapGate, keepTrailing);
                 for (int i = 0; i < ranges.Length; i++)
                 {
                     int first = Math.Max(0, ranges[i].First);
                     int len = Math.Max(0, ranges[i].Length);
                     if (first >= s.Length || len == 0)
                         continue;
-                    len = Math.Min(len, s.Length - first);
-                    float x = originX;
-                    if (first > 0)
-                        x += MeasureReal(s.Substring(0, first), font, SizeF.Empty, true, null, true).Width;
-                    // Prefix differences preserve the shaping/kerning context
-                    // at the beginning of the range (e.g. the V in AV).
-                    float endX = originX + MeasureReal(s.Substring(0, first + len), font, SizeF.Empty, true, null, true).Width;
-                    float w = endX - x;
-                    if (w <= 0f)
-                        continue;
-                    var bounds = new RectangleF(x, originY, w, lineH);
-                    if (format is null || (format.FormatFlags & StringFormatFlags.NoClip) == 0)
-                        bounds = RectangleF.Intersect(bounds, layoutRect);
-                    if (bounds.Width > 0f && bounds.Height > 0f)
-                        regions[i] = new Region(bounds);
+                    int end = Math.Min(s.Length, first + len);
+                    for (int k = 0; k < rowCount; k++)
+                    {
+                        float top = originY + k * lineH;
+                        bool explicitStart = k == 0 || rows[k - 1].ExplicitAfter > 0;
+                        // The laid-out gate is independent of NoClip (native
+                        // oracle noclip-short drops unfitting later wrap rows
+                        // just like the clipped case); NoClip only skips the
+                        // bounds Intersect below.
+                        if (!(k == 0 || explicitStart || (top >= layoutRect.Y && top + lineH <= layoutRect.Bottom)))
+                            continue;
+                        if (wrapGate && rows[k].WrapIndex > 0)
+                            continue;
+                        int ls = rows[k].Start;
+                        int le = ls + rows[k].Len;
+                        int o0 = Math.Max(first, ls);
+                        int o1 = Math.Min(end, le);
+                        if (o1 <= o0)
+                            continue;
+                        float x = rowX[k];
+                        if (o0 > ls)
+                            x += MeasureMcrSpan(s, ls, o0 - ls, font, keepTrailing);
+                        // Prefix differences preserve the shaping/kerning context
+                        // at the beginning of the range (e.g. the V in AV).
+                        float endX = rowX[k] + MeasureMcrSpan(s, ls, o1 - ls, font, keepTrailing);
+                        float w = endX - x;
+                        if (w <= 0f)
+                            continue;
+                        var bounds = new RectangleF(x, top, w, lineH);
+                        if (clip)
+                            bounds = RectangleF.Intersect(bounds, layoutRect);
+                        if (bounds.Width > 0f && bounds.Height > 0f)
+                            regions[i].Union(bounds);
+                    }
                 }
-                charsFitted = FitPrefixChars(s, font, layoutRect.Width);
                 return regions;
+        }
+
+        // Native MCR oracle wrap13: mid-row tabs advance exactly 0 in
+        // region geometry at every prefix length (no tab stops exist to
+        // model), and tab-only ranges are empty. Span-based: tab-free
+        // spans measure one Substring exactly as before; tabbed spans
+        // build one tab-free copy via string.Create instead of
+        // Substring+Replace (two allocs). MCR geometry only (painting and
+        // MeasureString keep their shaping), and the shared trailing-trim
+        // already zeroes row-end tabs.
+        // Wrap14/wrap15: trailing spaces measure zero by default but ~one
+        // space advance each with MeasureTrailingSpaces (exact at
+        // 8/16/24pt, within 1px at hinted 12pt). Wrap20: all-spaces
+        // spans count every space with the flag (empty without);
+        // trailing TABS stay zero even with the flag, and
+        // tab-containing all-blank spans keep the trim (unprobed
+        // natively: fail-closed).
+        private float MeasureMcrSpan(string s, int start, int length, Font font, bool keepTrailingSpaces = false)
+        {
+            int end = start + length;
+            int tabCount = 0;
+            int trailingSpaces = 0;
+            for (int i = start; i < end; i++)
+            {
+                char c = s[i];
+                if (c == '\t')
+                    tabCount++;
+                else if (c == ' ')
+                    trailingSpaces++;
+                else
+                    trailingSpaces = 0;
+            }
+            int strippedLen = length - tabCount;
+            if (strippedLen <= 0)
+                return 0f;
+            string span = tabCount == 0
+                ? (start == 0 && length == s.Length ? s : s.Substring(start, length))
+                : string.Create(strippedLen, (s, start, end), static (dst, st) =>
+                {
+                    int j = 0;
+                    for (int i = st.start; i < st.end; i++)
+                        if (st.s[i] != '\t')
+                            dst[j++] = st.s[i];
+                });
+            // Wrap20: an all-spaces span with the flag measures every
+            // space (native '   ' -> 3 advances, trailing-only sliver
+            // range -> full count); tab-containing all-blank spans stay
+            // fail-closed (unprobed natively).
+            if (keepTrailingSpaces && trailingSpaces == strippedLen && strippedLen > 0 && tabCount == 0)
+                return trailingSpaces * MeasureReal(" ", font, SizeF.Empty, true, null, false).Width;
+            if (!keepTrailingSpaces || trailingSpaces == 0 || trailingSpaces == strippedLen)
+                return MeasureReal(span, font, SizeF.Empty, true, null, true).Width;
+            float w = MeasureReal(span, font, SizeF.Empty, true, null, true).Width;
+            return w + trailingSpaces * MeasureReal(" ", font, SizeF.Empty, true, null, false).Width;
+        }
+
+        // One laid-out text row: explicit lines keep WrapIndex 0, wrap
+        // continuations count up; ExplicitAfter carries the line's \r\n|\r|\n
+        // length on its final row (0 for wrap splits and the last line).
+        private readonly record struct McrRow(int Start, int Len, float Width, int WrapIndex, int ExplicitAfter);
+
+        // Slice without allocating when the line is the whole string (the
+        // common single-line call).
+        private static string LineSlice(string s, int start, int len) =>
+            start == 0 && len == s.Length ? s : s.Substring(start, len);
+
+        // Greedy word wrap of one over-wide explicit line. Appends rows to
+        // dest (first has WrapIndex 0); the line's explicit break travels on
+        // the final row. Returns rows written. Breaks before the word that
+        // would overflow (widths through the tight core, so shaping matches
+        // the fragment math); a single over-wide word breaks by character.
+        // Trailing spaces/tabs stay in the row span (native indices) and
+        // measure zero via the shared trim, so space/tab-only fragments
+        // vanish alone; hyphens keep ink.
+        private int SplitWrapRow(string s, int lineStart, int lineLen, float lineWidth, float maxWidth, int explicitAfter, Span<McrRow> dest, Font font, bool keepTrailingSpaces)
+        {
+            int written = 0;
+            int wrapIndex = 0;
+            int pos = 0;
+            while (pos < lineLen)
+            {
+                int remaining = lineLen - pos;
+                float wholeW = pos == 0 ? lineWidth : MeasureMcrSpan(s, lineStart + pos, remaining, font, keepTrailingSpaces);
+                if (wholeW <= maxWidth || remaining == 1)
+                {
+                    dest[written++] = new McrRow(lineStart + pos, remaining, wholeW, wrapIndex++, explicitAfter);
+                    break;
+                }
+                int best = -1;
+                float bestW = 0f;
+                int bestTab = -1;
+                float bestTabW = 0f;
+                for (int q = lineLen - 1; q > pos; q--)
+                {
+                    // Break opportunities ride the row span: spaces
+                    // (row-trailing, measure zero via the shared trim) and
+                    // hyphens/percent (kept ink). Tabs are last-resort row
+                    // breaks: native oracle wrap16/19 lays 'AA BB-CC%DD\tEE
+                    // FF' out in 4 rows, ending row 1 at the earlier fitting
+                    // '%' instead of extending to the fitting tab break.
+                    // Native oracle wrap10/wrap11: '%' breaks after itself
+                    // like hyphen (4 single-token rows); '.', ',', ':', ';'
+                    // never break; '/', '?', '!', '+', '=', '(', ')', '\\',
+                    // '_' do not follow the break-after model (their counts
+                    // match character wrap, not separator rows) and stay
+                    // out. No tab stops exist in region geometry (wrap13:
+                    // tabs advance zero at every prefix length); trailing
+                    // tabs row-terminate through the shared trim. Rightmost
+                    // fitting wins within each class.
+                    char qc = s[lineStart + q];
+                    if (qc != ' ' && qc != '\t' && qc != '-' && qc != '%')
+                        continue;
+                    float pw = MeasureMcrSpan(s, lineStart + pos, q - pos + 1, font, keepTrailingSpaces);
+                    if (pw <= maxWidth)
+                    {
+                        if (qc == '\t')
+                        {
+                            if (bestTab < 0) { bestTab = q; bestTabW = pw; }
+                        }
+                        else
+                        {
+                            best = q;
+                            bestW = pw;
+                            break;
+                        }
+                    }
+                }
+                if (best < 0 && bestTab >= 0)
+                {
+                    best = bestTab;
+                    bestW = bestTabW;
+                }
+                if (best >= 0)
+                {
+                    dest[written++] = new McrRow(lineStart + pos, best - pos + 1, bestW, wrapIndex++, 0);
+                    pos = best + 1;
+                    continue;
+                }
+                int take = FitPrefixChars(s, lineStart + pos, remaining, font, maxWidth, keepTrailingSpaces);
+                if (take <= 0)
+                    take = 1;
+                float takeW = MeasureMcrSpan(s, lineStart + pos, take, font, keepTrailingSpaces);
+                dest[written++] = new McrRow(lineStart + pos, take, takeW, wrapIndex++, 0);
+                pos += take;
+            }
+            return written;
         }
 
         private Region EmptyRegion()
@@ -2936,22 +3263,51 @@ namespace System.Drawing
             return region;
         }
 
-        private int FitPrefixChars(string s, Font font, float width)
+        private int FitPrefixChars(string s, int start, int length, Font font, float width, bool keepTrailingSpaces)
         {
-            if (width <= 0f || s.Length == 0)
+            if (width <= 0f || length == 0)
                 return 0;
-            if (MeasureReal(s, font, SizeF.Empty, true, null, true).Width <= width)
-                return s.Length;
-            int lo = 0, hi = s.Length;
+            if (MeasureMcrSpan(s, start, length, font, keepTrailingSpaces) <= width)
+                return length;
+            int lo = 0, hi = length;
             while (lo < hi)
             {
                 int mid = (lo + hi + 1) / 2;
-                if (MeasureReal(s.Substring(0, mid), font, SizeF.Empty, true, null, true).Width <= width)
+                if (MeasureMcrSpan(s, start, mid, font, keepTrailingSpaces) <= width)
                     lo = mid;
                 else
                     hi = mid - 1;
             }
             return lo;
+        }
+
+        // Longest leading prefix on reportable, fully visible rows: walk rows
+        // top-down, fitting each horizontally; a fully fitting row consumes
+        // its explicit break and continues, a partial fit (or a row below
+        // the rect bottom, an unlaid wrap row, or a NoWrap-gated wrap row)
+        // stops. Unwrapped input reduces to the historical FitPrefixChars
+        // count whenever row 0 is fully visible.
+        private int FitVisiblePrefix(string s, ReadOnlySpan<McrRow> rows, Font font, RectangleF layoutRect, float originY, float lineH, bool wrapGate, bool keepTrailingSpaces)
+        {
+            int fitted = 0;
+            for (int k = 0; k < rows.Length; k++)
+            {
+                float top = originY + k * lineH;
+                bool explicitStart = k == 0 || rows[k - 1].ExplicitAfter > 0;
+                bool laid = k == 0 || explicitStart || (top >= layoutRect.Y && top + lineH <= layoutRect.Bottom);
+                if (!laid)
+                    break;
+                if (wrapGate && rows[k].WrapIndex > 0)
+                    break;
+                if (top < layoutRect.Y || top + lineH > layoutRect.Bottom)
+                    break;
+                int fit = FitPrefixChars(s, rows[k].Start, rows[k].Len, font, layoutRect.Width, keepTrailingSpaces);
+                fitted = rows[k].Start + fit;
+                if (fit < rows[k].Len)
+                    break;
+                fitted += rows[k].ExplicitAfter;
+            }
+            return Math.Min(fitted, s.Length);
         }
 
         // Raster-backed measurement (mirrors the DrawString core above):

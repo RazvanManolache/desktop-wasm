@@ -161,7 +161,7 @@ namespace System.Drawing.Text
         {
             ArgumentException.ThrowIfNullOrEmpty(filename);
             _files.Add(filename);
-            _families.Add(new FontFamily(System.IO.Path.GetFileNameWithoutExtension(filename)));
+            AddFamily(System.IO.Path.GetFileNameWithoutExtension(filename));
         }
 
         protected override void Dispose(bool disposing)
@@ -191,7 +191,7 @@ namespace System.Drawing.Text
             string? name = TryReadFamilyName(copy);
             if (name is not null)
             {
-                _families.Add(new FontFamily(name));
+                AddFamily(name);
                 if (s_privateFontBytes.Count < 32)
                     s_privateFontBytes.TryAdd(name, copy);
                 // Eager browser registration: wins the boot race so the first
@@ -200,11 +200,17 @@ namespace System.Drawing.Text
             }
         }
 
-        // Only fonts added to THIS collection (cf. desktop, where installed
-        // families never leak into a private collection). Returning the
-        // installed generics here made vendor load-once checks misfire:
-        // they saw a non-empty set before loading, skipped the load, and
-        // then indexed the still-null shared slot.
+        // GDI+ reports each family once, even when multiple weights are loaded.
+        // Ordinal comparison matches callers that index families by name.
+        private void AddFamily(string name)
+        {
+            foreach (FontFamily existing in _families)
+                if (string.Equals(existing.Name, name, StringComparison.Ordinal))
+                    return;
+            _families.Add(new FontFamily(name));
+        }
+
+        // Returning installed generics makes callers skip loading private fonts.
         internal override FontFamily[] GetFamilies() => _families.ToArray();
 
         // Best-effort TrueType 'name' table family (nameID 1) read. Never
@@ -247,7 +253,8 @@ namespace System.Drawing.Text
                     int nameId = ReadU16(bytes, record + 6);
                     int byteLength = ReadU16(bytes, record + 8);
                     int stringOffset = ReadU16(bytes, record + 10);
-                    if (nameId != 1)
+                    // An empty preferred record must not shadow a real name.
+                    if (nameId != 1 || byteLength == 0)
                         continue;
                     int start = storageOffset + stringOffset;
                     if (start < 0 || byteLength < 0 || start + byteLength > bytes.Length)

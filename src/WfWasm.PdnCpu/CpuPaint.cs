@@ -4693,9 +4693,87 @@ public static unsafe partial class CpuPaint
         return null;
     }
 
+    // Cached compiled int readers for token properties. The lookup
+    // (MostDerivedProperty per (type, name)) and the Convert call are
+    // pure functions of immutable inputs, so caching them cannot change
+    // behavior: same property, same Convert.ToInt32 overload as the
+    // reflective path, exact same fallbacks on miss. Only shapes with
+    // a direct Convert.ToInt32(propertyType) overload take the fast
+    // path (int/double/long/string/bool/...); enums, nullables and
+    // exotic shapes keep the verbatim legacy path below.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<(Type, string), object> s_tokenIntReaders = new();
+    private static readonly object s_noTokenIntReader = new();
+
+    private static bool TryReadTokenInt(object token, string name, out int value)
+    {
+        var key = (token.GetType(), name);
+        object cached = s_tokenIntReaders.GetOrAdd(key, static k =>
+        {
+            try
+            {
+                var prop = k.Item1.GetProperty(k.Item2, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.DeclaredOnly);
+                for (System.Type? t = k.Item1.BaseType; prop is null && t is not null; t = t.BaseType)
+                    prop = t.GetProperty(k.Item2, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.DeclaredOnly);
+                if (prop is null || !prop.CanRead || prop.GetIndexParameters().Length != 0)
+                    return s_noTokenIntReader;
+                var conv = typeof(Convert).GetMethod("ToInt32", new Type[] { prop.PropertyType });
+                if (conv is null || !conv.IsStatic)
+                    return s_noTokenIntReader;
+                var self = System.Linq.Expressions.Expression.Parameter(typeof(object), "token");
+                var call = System.Linq.Expressions.Expression.Call(conv, System.Linq.Expressions.Expression.Convert(System.Linq.Expressions.Expression.Property(System.Linq.Expressions.Expression.Convert(self, k.Item1), prop), prop.PropertyType));
+                return (object)System.Linq.Expressions.Expression.Lambda<Func<object, int>>(call, self).Compile();
+            }
+            catch { return s_noTokenIntReader; }
+        });
+        if (ReferenceEquals(cached, s_noTokenIntReader))
+        {
+            value = 0;
+            return false;
+        }
+        value = ((Func<object, int>)cached)(token);
+        return true;
+    }
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<(Type, string), object> s_tokenBoolReaders = new();
+
+    private static bool TryReadTokenBool(object token, string name, out bool value)
+    {
+        var key = (token.GetType(), name);
+        object cached = s_tokenBoolReaders.GetOrAdd(key, static k =>
+        {
+            try
+            {
+                var prop = k.Item1.GetProperty(k.Item2, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.DeclaredOnly);
+                for (System.Type? tt = k.Item1.BaseType; prop is null && tt is not null; tt = tt.BaseType)
+                    prop = tt.GetProperty(k.Item2, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.DeclaredOnly);
+                if (prop is null || !prop.CanRead || prop.GetIndexParameters().Length != 0)
+                    return s_noTokenIntReader;
+                var conv = typeof(Convert).GetMethod("ToBoolean", new Type[] { prop.PropertyType });
+                if (conv is null || !conv.IsStatic)
+                    return s_noTokenIntReader;
+                var self = System.Linq.Expressions.Expression.Parameter(typeof(object), "token");
+                var call = System.Linq.Expressions.Expression.Call(conv, System.Linq.Expressions.Expression.Convert(System.Linq.Expressions.Expression.Property(System.Linq.Expressions.Expression.Convert(self, k.Item1), prop), prop.PropertyType));
+                return (object)System.Linq.Expressions.Expression.Lambda<System.Func<object, bool>>(call, self).Compile();
+            }
+            catch { return s_noTokenIntReader; }
+        });
+        if (ReferenceEquals(cached, s_noTokenIntReader))
+        {
+            value = false;
+            return false;
+        }
+        value = ((System.Func<object, bool>)cached)(token);
+        return true;
+    }
+
     private static int GetTokenIntProperty(object token, string name, int defaultValue)
     {
-        try { return Convert.ToInt32(GetTokenValue(token, name) ?? defaultValue); }
+        try
+        {
+            if (TryReadTokenInt(token, name, out int fast))
+                return fast;
+            return Convert.ToInt32(GetTokenValue(token, name) ?? defaultValue);
+        }
         catch { return defaultValue; }
     }
 
@@ -4990,6 +5068,11 @@ public static unsafe partial class CpuPaint
             }
             if (owner is null)
                 return false;
+            // Menus may hand the renderer an IEffectProxy while the tile stash
+            // is keyed (and unwrapped) by the inner effect: unwrap identically
+            // here so the name gate and the tile-source lookup see the same
+            // owner the stash used. Identity for direct owners.
+            owner = UnwrapEffectSourceOwner(owner);
             string ownerName = owner.GetType().Name;
             if (ownerName.Contains("CurvesGpuEffect", StringComparison.Ordinal) || ownerName.Contains("PosterizeGpuEffect", StringComparison.Ordinal))
                 return RenderTransferTileCpu(owner, dst, src);
@@ -4998,6 +5081,7 @@ public static unsafe partial class CpuPaint
             bool isBulge = ownerName.Contains("BulgeGpuEffect", System.StringComparison.Ordinal);
             bool isTwist = ownerName.Contains("TwistGpuEffect", System.StringComparison.Ordinal);
             bool isClouds = ownerName.Contains("CloudsGpuEffect", System.StringComparison.Ordinal);
+            bool isTileReflection = ownerName.Contains("TileReflectionGpuEffect", System.StringComparison.Ordinal);
             bool isLevels = ownerName.Contains("LevelsGpuEffect", System.StringComparison.Ordinal);
             bool isAutoLevel = !isLevels
                 && ownerName.Contains("AutoLevelGpuEffect", System.StringComparison.Ordinal);
@@ -5009,9 +5093,11 @@ public static unsafe partial class CpuPaint
                 && ownerName.Contains("Desaturate", System.StringComparison.Ordinal);
             bool isBrightnessContrast = !isLevels && !isAutoLevel && !isInvert && !isInvertAlpha && !isDesaturate
                 && ownerName.Contains("BrightnessContrast", System.StringComparison.Ordinal);
+            bool isExposure = ownerName.Contains("ExposureGpuEffect", System.StringComparison.Ordinal);
+            bool isSepia = ownerName.Contains("SepiaGpuEffect", System.StringComparison.Ordinal);
             bool isHueSaturation = !isLevels && !isAutoLevel && !isInvert && !isInvertAlpha && !isDesaturate && !isBrightnessContrast
                 && ownerName.Contains("HueSaturation", System.StringComparison.Ordinal);
-            if (!isLevels && !isAutoLevel && !isInvert && !isInvertAlpha && !isDesaturate && !isBrightnessContrast && !isHueSaturation && !isBulge && !isTwist && !isClouds)
+            if (!isLevels && !isAutoLevel && !isInvert && !isInvertAlpha && !isDesaturate && !isBrightnessContrast && !isHueSaturation && !isBulge && !isTwist && !isClouds && !isTileReflection && !isExposure && !isSepia)
                 return false;
             if (isBulge)
                 return RenderBulgeTileCpu(owner, dst, src);
@@ -5019,6 +5105,8 @@ public static unsafe partial class CpuPaint
                 return RenderTwistTileCpu(owner, dst, src);
             if (isClouds)
                 return RenderCloudsTileCpu(owner, dst, src);
+            if (isTileReflection)
+                return RenderTileReflectionTileCpu(owner, dst, src);
             if (isAutoLevel)
                 return RenderAutoLevelTileCpu(owner, dst, src);
             if (isInvert)
@@ -5031,6 +5119,10 @@ public static unsafe partial class CpuPaint
                 return RenderBrightnessContrastTileCpu(owner, dst, src);
             if (isHueSaturation)
                 return RenderHueSaturationTileCpu(owner, dst, src);
+            if (isExposure)
+                return RenderExposureTileCpu(owner, dst, src);
+            if (isSepia)
+                return RenderSepiaTileCpu(owner, dst, src);
             object? token = GetEffectToken(owner);
             if (token is null)
                 return false;

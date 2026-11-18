@@ -278,6 +278,29 @@ public sealed class RasterTests
     }
 
     [Fact]
+    public void Bitmap_FlipHorizontal_Is_Involution()
+    {
+        // M3-13: a horizontal flip applied twice must restore every
+        // pixel (asymmetric fixture; a single-column loss or a shifted
+        // mirror would fail this). Pins the involution the served
+        // fixture verified (canvas-only diff 0 after flip-flip).
+        using var bitmap = new WfBitmap(7, 5);
+        for (int y = 0; y < 5; y++)
+            for (int x = 0; x < 7; x++)
+                bitmap.SetPixel(x, y, WfColor.FromArgb(255, (x * 37 + y * 11) & 255, (x * 13 + y * 61) & 255, (x * 7 + y * 3) & 255));
+        var before = new int[7 * 5];
+        for (int y = 0; y < 5; y++)
+            for (int x = 0; x < 7; x++)
+                before[y * 7 + x] = bitmap.GetPixel(x, y).ToArgb();
+        bitmap.RotateFlip(WfRotateFlipType.RotateNoneFlipX);
+        Assert.Equal(before[0], bitmap.GetPixel(6, 0).ToArgb()); // mirror direction check
+        bitmap.RotateFlip(WfRotateFlipType.RotateNoneFlipX);
+        for (int y = 0; y < 5; y++)
+            for (int x = 0; x < 7; x++)
+                Assert.Equal(before[y * 7 + x], bitmap.GetPixel(x, y).ToArgb());
+    }
+
+    [Fact]
     public void Bitmap_Clone_Crops()
     {
         using var bitmap = new WfBitmap(6, 6);
@@ -578,6 +601,32 @@ public sealed class RasterTests
             g.DrawImage(source, new WfRectangle(1, 1, 8, 8));
         }
         Assert.Equal(fast.ToRgbaBytes(), slow.ToRgbaBytes());
+    }
+
+    // Census (clipped-repaint shape): a flat fill under a two-rect
+    // union clip must not allocate a span List per call — the spans
+    // are a pure function of clip scans intersected with the fill.
+    [Fact]
+    public void MultiScanClip_BulkFill_StaysAllocationLean()
+    {
+        using var bmp = new WfBitmap(16, 16);
+        using var g = WfGraphics.FromImage(bmp);
+        using var brush = new WfSolidBrush(WfColor.FromArgb(255, 10, 20, 30));
+        using var region = new WfRegion(new WfRectangleF(0, 0, 6, 16));
+        region.Union(new WfRectangleF(10, 0, 6, 16));
+        g.SetClip(region, WfDraw::System.Drawing.Drawing2D.CombineMode.Replace);
+        var rect = new WfRectangleF(0, 0, 16, 16);
+        g.FillRectangle(brush, rect);
+        Assert.Equal(WfColor.FromArgb(255, 10, 20, 30).ToArgb(), bmp.GetPixel(2, 2).ToArgb());
+        Assert.Equal(WfColor.FromArgb(255, 10, 20, 30).ToArgb(), bmp.GetPixel(12, 2).ToArgb());
+        Assert.Equal(WfColor.FromArgb(0, 0, 0, 0).ToArgb(), bmp.GetPixel(8, 2).ToArgb());
+        GC.Collect(2, GCCollectionMode.Forced, true);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        const int n = 500;
+        for (int i = 0; i < n; i++)
+            g.FillRectangle(brush, rect);
+        long perCall = (GC.GetAllocatedBytesForCurrentThread() - before) / n;
+        Assert.True(perCall <= 128, $"multi-scan clip bulk fill allocated {perCall} B/call");
     }
 
     [Fact]
@@ -949,5 +998,66 @@ public sealed class RasterTests
             WfDraw::System.Drawing.Drawing2D.InterpolationMode.Default, null, out var key2));
         Assert.False(WfDrawImageCache.NoteRepeat(source, key2));
         Assert.False(WfDrawImageCache.NoteRepeat(other, key));
+    }
+
+    // Lifetime/bound pins (surface-lifetime validation): buckets are
+    // per-source and bounded; oversized layers bypass the memo.
+    [Fact]
+    public void Memo_Evicts_Oldest_Beyond_Eight_Entries()
+    {
+        using var source = PatternSource();
+        using var target = new WfBitmap(8, 8);
+        var first = default(WfDraw::System.Drawing.DrawImageKey);
+        var last = default(WfDraw::System.Drawing.DrawImageKey);
+        for (int k = 0; k < 9; k++)
+        {
+            Assert.True(WfDrawImageCache.KeyForBlit(source, target, k, 0, 6, 6, 6, 6,
+                WfDraw::System.Drawing.Drawing2D.InterpolationMode.Default, null, out var key));
+            if (k == 0) first = key;
+            if (k == 8) last = key;
+            WfDrawImageCache.Store(source, new WfDraw::System.Drawing.DrawImageEntry
+            {
+                Key = key,
+                Pixels = new int[36],
+                Ox = 0,
+                Oy = 0,
+                W = 6,
+                H = 6,
+            });
+        }
+        Assert.False(WfDrawImageCache.TryRecallBlit(source, first, out _));
+        Assert.True(WfDrawImageCache.TryRecallBlit(source, last, out _));
+    }
+
+    [Fact]
+    public void Memo_Bypasses_Oversized_Layers()
+    {
+        using var source = PatternSource();
+        using var target = new WfBitmap(8, 8);
+        Assert.False(WfDrawImageCache.KeyForBlit(source, target, 0, 0, 600, 600, 600, 600,
+            WfDraw::System.Drawing.Drawing2D.InterpolationMode.Default, null, out _));
+    }
+
+    [Fact]
+    public void Memo_Never_Recalls_Across_Sources()
+    {
+        // Same pixels, distinct bitmaps: the stash is keyed by source
+        // identity (plus PaintVersion), so a twin source misses.
+        using var source = PatternSource();
+        using var twin = PatternSource();
+        using var target = new WfBitmap(8, 8);
+        Assert.True(WfDrawImageCache.KeyForBlit(source, target, 0, 0, 6, 6, 6, 6,
+            WfDraw::System.Drawing.Drawing2D.InterpolationMode.Default, null, out var key));
+        WfDrawImageCache.Store(source, new WfDraw::System.Drawing.DrawImageEntry
+        {
+            Key = key,
+            Pixels = new int[36],
+            Ox = 0,
+            Oy = 0,
+            W = 6,
+            H = 6,
+        });
+        Assert.False(WfDrawImageCache.TryRecallBlit(twin, key, out _));
+        Assert.True(WfDrawImageCache.TryRecallBlit(source, key, out _));
     }
 }

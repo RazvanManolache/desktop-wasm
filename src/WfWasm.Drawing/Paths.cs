@@ -1403,17 +1403,22 @@ namespace System.Drawing
             for (int i = 0; i < _rects.Count; i++)
             {
                 RectangleF rect = _rects[i];
-                var corners = new PointF[]
-                {
-                    new(rect.X, rect.Y),
-                    new(rect.Right, rect.Y),
-                    new(rect.Right, rect.Bottom),
-                    new(rect.X, rect.Bottom),
-                };
-                matrix.TransformPoints(corners);
-                float minX = corners.Min(p => p.X);
-                float minY = corners.Min(p => p.Y);
-                scans[i] = new RectangleF(minX, minY, corners.Max(p => p.X) - minX, corners.Max(p => p.Y) - minY);
+                // Allocation-free corner transform (RTE fill/MCR scan hot path):
+                // TransformPoint is the exact per-point math TransformPoints
+                // applies (same order, same rounding); min/max over the four
+                // corners replaces the per-rect array plus four LINQ walks.
+                // NaN note: Math.Min/Max propagate NaN (unlike LINQ, which
+                // drops non-leading NaNs), so a NaN corner bails downstream
+                // via the IsNaN guard instead of painting a dropped-NaN bbox.
+                matrix.TransformPoint(rect.X, rect.Y, out float tx0, out float ty0);
+                matrix.TransformPoint(rect.Right, rect.Y, out float tx1, out float ty1);
+                matrix.TransformPoint(rect.Right, rect.Bottom, out float tx2, out float ty2);
+                matrix.TransformPoint(rect.X, rect.Bottom, out float tx3, out float ty3);
+                float minX = Math.Min(Math.Min(tx0, tx1), Math.Min(tx2, tx3));
+                float minY = Math.Min(Math.Min(ty0, ty1), Math.Min(ty2, ty3));
+                float maxX = Math.Max(Math.Max(tx0, tx1), Math.Max(tx2, tx3));
+                float maxY = Math.Max(Math.Max(ty0, ty1), Math.Max(ty2, ty3));
+                scans[i] = new RectangleF(minX, minY, maxX - minX, maxY - minY);
             }
 
             return scans;

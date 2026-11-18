@@ -52,6 +52,27 @@ public sealed class GradientAlphaTests
         Assert.Equal(WfColor.FromArgb(255, 255, 127, 127).ToArgb(), bmp.GetPixel(4, 4).ToArgb());
     }
 
+    // Allocation census (gauge-type repaint path): a repeated two-stop
+    // gradient fill must not rebuild the uniform stop-position array
+    // per call — positions are a pure function of the stop count.
+    [Fact]
+    public void TwoStop_GradientFill_StaysAllocationLean()
+    {
+        using var bmp = new WfBitmap(8, 8);
+        using var g = WfGraphics.FromImage(bmp);
+        using var brush = new WfGradientBrush(new WfRectangleF(0, 0, 8, 8),
+            WfColor.FromArgb(255, 255, 0, 0), WfColor.FromArgb(255, 0, 0, 255), WfGradientMode.Horizontal);
+        var rect = new WfRectangleF(0, 0, 8, 8);
+        g.FillRectangle(brush, rect);
+        GC.Collect(2, GCCollectionMode.Forced, true);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        const int n = 500;
+        for (int i = 0; i < n; i++)
+            g.FillRectangle(brush, rect);
+        long perCall = (GC.GetAllocatedBytesForCurrentThread() - before) / n;
+        Assert.True(perCall <= 80, $"two-stop gradient fill allocated {perCall} B/call");
+    }
+
     [Fact]
     public void ThreeStop_InterpolationColors_Are_Honored()
     {

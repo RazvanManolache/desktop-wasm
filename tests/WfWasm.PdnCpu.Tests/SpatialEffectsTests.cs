@@ -31,6 +31,144 @@ public sealed class SpatialEffectsTests
         Assert.Equal(200, CpuPaint.CurveTables(effect.Token)![0][128]);
     }
     [Fact]
+    public void Curves_Repeated_Render_StaysAllocationLean()
+    {
+        // CPU fallback census: a repeated curves tile with unchanged
+        // control points must not rebuild the 256-entry tables and hex
+        // key per tile — the key fingerprints the control-point inputs.
+        var effect = new CurvesGpuEffect();
+        byte[] src = new byte[8 * 8 * 4];
+        for (int i = 0; i < src.Length; i++) src[i] = (byte)(i * 7);
+        CpuPaint.NoteTileSourceBytes(effect, src, 8, 8, 32);
+        Render(effect, 8, 8);
+        GC.Collect(2, GCCollectionMode.Forced, true);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        const int n = 200;
+        for (int i = 0; i < n; i++)
+            Render(effect, 8, 8);
+        long perCall = (GC.GetAllocatedBytesForCurrentThread() - before) / n;
+        Assert.True(perCall <= 560, $"repeated curves tile allocated {perCall} B/call");
+    }
+    public sealed class LongTile { public long Width { get; set; } public long Height { get; set; } public long Stride { get; set; } public IntPtr Ptr { get; set; } }
+    public sealed class LongPoint { public long X { get; set; } public long Y { get; set; } }
+    [Fact]
+    public void CopyEffectTile_Falls_Back_On_NonInt_Shapes()
+    {
+        // Exotic tile/point shapes (long instead of int) take the
+        // reflective fallback and must render byte-identical pixels.
+        var effect = new CurvesGpuEffect();
+        byte[] src = new byte[8 * 8 * 4];
+        for (int i = 0; i < src.Length; i++) src[i] = (byte)(i * 11);
+        CpuPaint.NoteTileSourceBytes(effect, src, 8, 8, 32);
+        byte[] expected = Render(effect, 8, 8);
+        byte[] bytes = new byte[8 * 8 * 4];
+        var pin = GCHandle.Alloc(bytes, GCHandleType.Pinned);
+        try
+        {
+            var tile = new LongTile { Ptr = pin.AddrOfPinnedObject(), Width = 8, Height = 8, Stride = 32 };
+            var point = new LongPoint { X = 0, Y = 0 };
+            Assert.True(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(effect), tile, point));
+        }
+        finally { pin.Free(); }
+        Assert.Equal(expected, bytes);
+    }
+    public sealed class ExposureGpuEffect { public Token Token { get; } = new(); }
+    public sealed class SepiaGpuEffect { public Token Token { get; } = new(); }
+    [Fact]
+    public void Exposure_Zero_Is_Identity()
+    {
+        var effect = new ExposureGpuEffect(); effect.Token.Values["Exposure"] = 0;
+        byte[] src = new byte[8 * 8 * 4];
+        for (int i = 0; i < src.Length; i++) src[i] = (byte)(i * 7);
+        CpuPaint.NoteTileSourceBytes(effect, src, 8, 8, 32);
+        Assert.Equal(src, Render(effect, 8, 8));
+    }
+    [Fact]
+    public void Exposure_Plus100_Doubles_And_Clamps()
+    {
+        var effect = new ExposureGpuEffect(); effect.Token.Values["Exposure"] = 100;
+        byte[] src = { 64, 64, 64, 200, 200, 200, 200, 255 }; CpuPaint.NoteTileSourceBytes(effect, src, 2, 1, 8);
+        Assert.Equal(new byte[] { 128, 128, 128, 200, 255, 255, 255, 255 }, Render(effect, 2, 1));
+    }
+    [Fact]
+    public void Sepia_FullIntensity_UsesBgraOrderAndPreservesAlpha()
+    {
+        var effect = new SepiaGpuEffect();
+        effect.Token.Values["Intensity"] = 100;
+        byte[] src = { 190, 150, 100, 173 };
+        CpuPaint.NoteTileSourceBytes(effect, src, 1, 1, 4);
+        Assert.Equal(new byte[] { 132, 170, 191, 173 }, Render(effect, 1, 1));
+    }
+    [Fact]
+    public void Exposure_Changed_Value_ReRenders()
+    {
+        var effect = new ExposureGpuEffect(); effect.Token.Values["Exposure"] = 0;
+        byte[] src = new byte[8 * 8 * 4];
+        for (int i = 0; i < src.Length; i++) src[i] = (byte)(i * 7);
+        CpuPaint.NoteTileSourceBytes(effect, src, 8, 8, 32);
+        byte[] plain = Render(effect, 8, 8);
+        effect.Token.Values["Exposure"] = 50;
+        byte[] graded = Render(effect, 8, 8);
+        Assert.NotEqual(plain, graded);
+    }
+    public sealed class PosterizeRealToken
+    {
+        public int RedLevels { get; set; } = 2;
+        public int GreenLevels { get; set; } = 3;
+        public bool BlueEnable { get; set; }
+        public bool AlphaEnable { get; set; }
+        public int RedEnable { get; set; } = 1;
+        public int GreenEnable { get; set; } = 1;
+    }
+    public sealed class CloudsEffectProxy
+    {
+        public object InnerRef { get; }
+        public CloudsEffectProxy(object inner) => InnerRef = inner;
+    }
+    [Fact]
+    public void ProxyWrapped_Effect_Routes_To_Same_Cpu_Tiles()
+    {
+        // The stash unwraps proxies to the inner effect; dispatch must
+        // unwrap identically or the tile source misses and the GPU path
+        // runs (headless NRE when its color context is null). Direct and
+        // proxied owners must produce byte-identical tiles.
+        var effect = new CloudsGpuEffect();
+        effect.Token.Values["Scale"] = 4;
+        byte[] src = new byte[8 * 8 * 4];
+        for (int i = 0; i < src.Length; i++) src[i] = (byte)(i * 3 + 1);
+        CpuPaint.NoteTileSourceBytes(effect, src, 8, 8, 32);
+        byte[] expected = Render(effect, 8, 8);
+        byte[] bytes = new byte[8 * 8 * 4];
+        var pin = GCHandle.Alloc(bytes, GCHandleType.Pinned);
+        try
+        {
+            var tile = new Tile { Ptr = pin.AddrOfPinnedObject(), Width = 8, Height = 8, Stride = 32 };
+            Assert.True(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(new CloudsEffectProxy(effect)), tile, new Point { X = 0, Y = 0 }));
+        }
+        finally { pin.Free(); }
+        Assert.Equal(expected, bytes);
+    }
+    public sealed class PosterizeGpuEffectReal { public PosterizeRealToken Token { get; } = new(); }
+    [Fact]
+    public void Posterize_Repeated_Render_StaysAllocationLean()
+    {
+        // CPU fallback census on the REAL token shape (typed CLR
+        // properties, like production tokens): repeated posterize tiles
+        // must not rebuild names/arrays/key per tile.
+        var effect = new PosterizeGpuEffectReal();
+        byte[] src = new byte[8 * 8 * 4];
+        for (int i = 0; i < src.Length; i++) src[i] = (byte)(i * 5);
+        CpuPaint.NoteTileSourceBytes(effect, src, 8, 8, 32);
+        Render(effect, 8, 8);
+        GC.Collect(2, GCCollectionMode.Forced, true);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        const int n = 200;
+        for (int i = 0; i < n; i++)
+            Render(effect, 8, 8);
+        long perCall = (GC.GetAllocatedBytesForCurrentThread() - before) / n;
+        Assert.True(perCall <= 1600, "posterize tile allocated " + perCall + " B/call"); // red pre-fix at 2084; post-fix 1336-1469
+    }
+    [Fact]
     public void Posterize_honors_level_counts_disabled_channels_and_alpha()
     {
         var effect = new PosterizeGpuEffect(); effect.Token.Values["RedLevels"] = 2; effect.Token.Values["GreenLevels"] = 3;
@@ -155,6 +293,77 @@ public sealed class SpatialEffectsTests
         Assert.Equal(full, plane);
         byte[] left = Render(effect, 10, h), right = Render(effect, 10, h, 10);
         for (int y = 0; y < h; y++) { Assert.Equal(plane.AsSpan(y * 80, 40).ToArray(), left.AsSpan(y * 40, 40).ToArray()); Assert.Equal(plane.AsSpan(y * 80 + 40, 40).ToArray(), right.AsSpan(y * 40, 40).ToArray()); }
+    }
+    public sealed class TileReflectionGpuEffect { public Token Token { get; } = new(); }
+    [Fact]
+    public void TileReflection_is_handled_by_the_cpu_tile_path()
+    {
+        // LOOP1109-M7-03: served TileReflectionGpuEffect OK-apply NREs in
+        // the product tile path (TaskProgressDialog stuck, no
+        // doeffect-applied). The owned CPU path must answer its tiles, as
+        // it does for Twist/Bulge/Clouds. Neutral parameters (no rotation,
+        // no curvature, single sample) are identity; the fail-closed rule
+        // (no recognized geometry prop) still returns false.
+        var effect = new TileReflectionGpuEffect();
+        byte[] src = new byte[8 * 8 * 4];
+        for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++) { int i = (y * 8 + x) * 4; src[i] = (byte)(x * 31); src[i + 1] = (byte)(y * 31); src[i + 2] = (byte)((x + y) * 16); src[i + 3] = 255; }
+        CpuPaint.NoteTileSourceBytes(effect, src, 8, 8, 32);
+        effect.Token.Values["Rotation"] = 0;
+        effect.Token.Values["Curvature"] = 0;
+        effect.Token.Values["Quality"] = 1;
+        Assert.Equal(src, Render(effect, 8, 8));
+    }
+    [Fact]
+    public void TileReflection_warp_moves_content_with_alpha_preserved()
+    {
+        var effect = new TileReflectionGpuEffect();
+        int w = 8, h = 8;
+        byte[] src = new byte[w * h * 4];
+        for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) { int i = (y * w + x) * 4; src[i] = (byte)(x * 31); src[i + 1] = (byte)(y * 17); src[i + 2] = 9; src[i + 3] = 255; }
+        CpuPaint.NoteTileSourceBytes(effect, src, w, h, w * 4);
+        // The classic transfer rotates into the warp frame, applies the tan
+        // warp in that frame, and rotates back: with zero curvature any
+        // rotation is identity, so the warp (curvature 8) carries the
+        // change here.
+        effect.Token.Values["Rotation"] = 30;
+        effect.Token.Values["Curvature"] = 8;
+        effect.Token.Values["Quality"] = 1;
+        byte[] warped = Render(effect, w, h);
+        int changed = 0;
+        for (int i = 0; i < warped.Length; i += 4) if (warped[i] != src[i] || warped[i + 1] != src[i + 1] || warped[i + 2] != src[i + 2]) changed++;
+        Assert.True(changed > w * h / 2);
+        for (int i = 3; i < warped.Length; i += 4) Assert.Equal(255, warped[i]);
+        byte[] left = Render(effect, 4, 8), right = Render(effect, 4, 8, 4);
+        for (int y = 0; y < 8; y++) { Assert.Equal(warped.AsSpan(y * 32, 16).ToArray(), left.AsSpan(y * 16, 16).ToArray()); Assert.Equal(warped.AsSpan(y * 32 + 16, 16).ToArray(), right.AsSpan(y * 16, 16).ToArray()); }
+    }
+    [Fact]
+    public void TileReflection_alias_token_names_resolve_and_unknown_tokens_fall_through()
+    {
+        // Angle/TileSize aliases must render byte-identical to the classic
+        // Rotation/SquareSize names at equal values; a token with no
+        // recognized geometry property falls through (false) so the
+        // product path runs as before.
+        byte[] src = new byte[8 * 8 * 4];
+        for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++) { int i = (y * 8 + x) * 4; src[i] = (byte)(x * 31); src[i + 1] = (byte)(y * 17); src[i + 2] = 9; src[i + 3] = 255; }
+        var effect = new TileReflectionGpuEffect();
+        CpuPaint.NoteTileSourceBytes(effect, src, 8, 8, 32);
+        effect.Token.Values["Rotation"] = 45;
+        effect.Token.Values["SquareSize"] = 40;
+        effect.Token.Values["Curvature"] = 8;
+        effect.Token.Values["Quality"] = 1;
+        byte[] classic = Render(effect, 8, 8);
+        var aliased = new TileReflectionGpuEffect();
+        CpuPaint.NoteTileSourceBytes(aliased, src, 8, 8, 32);
+        aliased.Token.Values["Angle"] = 45;
+        aliased.Token.Values["TileSize"] = 40;
+        aliased.Token.Values["Curvature"] = 8;
+        aliased.Token.Values["Quality"] = 1;
+        Assert.Equal(classic, Render(aliased, 8, 8));
+        var bare = new TileReflectionGpuEffect();
+        CpuPaint.NoteTileSourceBytes(bare, src, 8, 8, 32);
+        byte[] bytes = new byte[8 * 8 * 4]; var pin = GCHandle.Alloc(bytes, GCHandleType.Pinned);
+        try { Assert.False(CpuPaint.TryRenderGpuTileCpu(new FakeGpuEffect.Renderer(bare), new Tile { Ptr = pin.AddrOfPinnedObject(), Width = 8, Height = 8, Stride = 32 }, new Point { X = 0, Y = 0 })); }
+        finally { pin.Free(); }
     }
     public sealed class Argb { public byte A { get; set; } public byte R { get; set; } public byte G { get; set; } public byte B { get; set; } }
     public sealed class CloudsGpuEffect { public Token Token { get; } = new(); }

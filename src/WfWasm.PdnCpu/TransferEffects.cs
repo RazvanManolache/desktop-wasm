@@ -3,6 +3,34 @@ public static unsafe partial class CpuPaint
 {
     // Portable natural cubic interpolation for the legacy 0..255 curve
     // control points. The same table drives the graph and CPU transfer.
+    private static readonly string[] CurveLevelNames = { "BlueLevels", "GreenLevels", "RedLevels", "AlphaLevels" };
+    private static readonly string[] CurveEnableNames = { "BlueEnable", "GreenEnable", "RedEnable", "AlphaEnable" };
+
+    // FNV-1a 64-bit fingerprint of the curve control-point inputs (list
+    // count + per-list count, keys, values; SortedList enumerates sorted
+    // so the print is order-stable). Lets cache hits skip CurveTables +
+    // hex key entirely. A null list fingerprints to a constant that
+    // can never collide with a hex print; its table build then throws
+    // exactly as before, on the miss path only.
+    internal static string? CurveFingerprint(object tokenOrControl)
+    {
+        var curves = MostDerivedProperty(tokenOrControl.GetType(), "ControlPoints")?.GetValue(tokenOrControl) as System.Collections.Generic.SortedList<int, int>[];
+        if (curves is null || curves.Length is not (1 or 3)) return null;
+        ulong h = 14695981039346656037ul;
+        h = (h ^ (ulong)(uint)curves.Length) * 1099511628211ul;
+        foreach (var list in curves)
+        {
+            if (list is null) return "curve:null";
+            h = (h ^ (ulong)(uint)list.Count) * 1099511628211ul;
+            foreach (var kv in list)
+            {
+                h = (h ^ (ulong)(uint)kv.Key) * 1099511628211ul;
+                h = (h ^ (ulong)(uint)kv.Value) * 1099511628211ul;
+            }
+        }
+        return $"curve:{h:x16}";
+    }
+
     public static byte[][]? CurveTables(object tokenOrControl)
     {
         var curves = MostDerivedProperty(tokenOrControl.GetType(), "ControlPoints")?.GetValue(tokenOrControl) as SortedList<int, int>[];
@@ -41,23 +69,32 @@ public static unsafe partial class CpuPaint
         if (!s_tileSources.TryGetValue(owner, out var source)) return false;
         var token = GetEffectToken(owner); if (token is null) return false;
         bool curves = owner.GetType().Name.Contains("Curves", StringComparison.Ordinal);
-        byte[][]? tables = curves ? CurveTables(token) : null;
-        if (curves && tables is null) return false;
-        int[] levels = new int[4]; bool[] enabled = new bool[4];
-        string[] names = { "Blue", "Green", "Red", "Alpha" };
+        // Curves key fingerprints the control-point INPUTS (a few ints),
+        // not the expanded 256-entry tables: hits skip both CurveTables
+        // (~800B) and the hex-joined key (~3KB). Tables are pure
+        // deterministic functions of the points, so equal fingerprints
+        // imply equal tables (2^-64 FNV-1a collision risk, far below the
+        // accepted PaintVersion-wrap risk); tables build only on miss.
+        string? fingerprint = curves ? CurveFingerprint(token) : null;
+        if (curves && fingerprint is null) return false;
+        Span<int> levels = stackalloc int[4];
+        Span<bool> enabled = stackalloc bool[4];
         if (!curves)
             for (int c = 0; c < 4; c++)
             {
-                levels[c] = Math.Clamp(GetTokenIntProperty(token, names[c] + "Levels", 16), 2, 64);
-                enabled[c] = Convert.ToBoolean(GetTokenValue(token, names[c] + "Enable") ?? true);
+                levels[c] = Math.Clamp(GetTokenIntProperty(token, CurveLevelNames[c], 16), 2, 64);
+                if (!TryReadTokenBool(token, CurveEnableNames[c], out bool en))
+                    en = Convert.ToBoolean(GetTokenValue(token, CurveEnableNames[c]) ?? true);
+                enabled[c] = en;
             }
-        string key = curves ? "curve:" + string.Join("/", tables!.Select(Convert.ToHexString))
-            : "posterize:" + string.Join(",", levels) + ":" + string.Join(",", enabled);
+        string key = fingerprint ?? $"posterize:{levels[0]},{levels[1]},{levels[2]},{levels[3]}:{enabled[0]},{enabled[1]},{enabled[2]},{enabled[3]}";
         var cached = s_spatial.GetValue(source, _ => new SpatialResult()); byte[] output;
         lock (cached.Gate)
         {
             if (cached.Key != key)
             {
+                byte[][]? tables = curves ? CurveTables(token) : null;
+                if (curves && tables is null) return false;
                 output = TightPixels(source);
                 for (int i = 0; i < output.Length; i += 4)
                 {
